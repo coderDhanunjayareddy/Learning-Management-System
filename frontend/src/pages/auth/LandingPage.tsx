@@ -1,0 +1,690 @@
+import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
+import logo from "/spectropy_logo.png";
+import EventsPage from './Eventspage';
+import FutureFoundationSlider from './FutureFoundationSlider';
+import HappyClientsSlider from './HappyClientsSlider';
+import ChallengesModal from '../../components/Landingpage/challenges';
+import Programfuturefoundation from './FFProgram';
+import SolutionFlow from '../../components/Landingpage/SolutionFlow';
+import Programcatalyst from './CATProgram';
+import Programmaestro from './MAEProgram';
+import Programpionner from './PIOProgram';
+import Fourpillars from './fourpillars';
+import AwardsRewards from './AwardsRewards';
+
+// --- SVGs for Icons ---
+const MenuIcon = () => (
+    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
+);
+const CloseIcon = () => (
+    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+);
+const ArrowRightIcon = () => (
+    <svg className="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
+);
+const PhoneIcon = () => (
+    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
+);
+const MailIcon = () => (
+    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+);
+const LocationIcon = () => (
+    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+);
+const ChartIcon = () => (
+    <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+);
+const BookIcon = () => (
+    <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
+);
+const ChipIcon = () => (
+    <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" /></svg>
+);
+const UserGroupIcon = () => (
+    <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+);
+
+// Program Icons
+const FutureIcon = () => <svg className="w-12 h-12 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>;
+const CatalystIcon = () => <svg className="w-12 h-12 text-teal-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>;
+const MaestroIcon = () => <svg className="w-12 h-12 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
+const PioneerIcon = () => <svg className="w-12 h-12 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" /></svg>;
+
+const LandingPage: React.FC = () => {
+    const [isScrolled, setIsScrolled] = useState(false);
+    const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+    const [activeModal, setActiveModal] = useState<string | null>(null);
+    const [showLoginOptions, setShowLoginOptions] = useState(false);
+
+    useEffect(() => {
+        const handleScroll = () => {
+            setIsScrolled(window.scrollY > 10);
+            if (showLoginOptions) setShowLoginOptions(false);
+        };
+        window.addEventListener('scroll', handleScroll);
+        return () => window.removeEventListener('scroll', handleScroll);
+    }, [showLoginOptions]);
+
+    const scrollToSection = (id: string) => {
+        const element = document.getElementById(id);
+        if (element) {
+            element.scrollIntoView({ behavior: 'smooth' });
+        }
+        setIsMobileMenuOpen(false);
+    };
+
+    const openModal = (modalName: string) => {
+        setActiveModal(modalName);
+        document.body.style.overflow = 'hidden'; // Prevent background scrolling
+    };
+
+    const closeModal = () => {
+        setActiveModal(null);
+        document.body.style.overflow = 'auto';
+    };
+
+    // Happy clients slider is rendered directly below the Programs section.
+    console.log("***activeModal:****", activeModal);
+    return (
+        <div className="min-h-screen bg-slate-50 font-sans text-slate-800 relative">
+
+            {/* --- MODALS (Overlays) --- */}
+            {activeModal && (
+                <div className={`fixed inset-0 z-[60] flex w-full h-full bg-white`}>
+                    <div className={`w-full h-full relative `}>
+                        {activeModal !== 'events' && (
+                            <button
+                                onClick={closeModal}
+                                className="absolute top-4 right-4 bg-slate-100 hover:bg-slate-200 p-2 rounded-full transition-colors"
+                            >
+                                <CloseIcon />
+                            </button>
+                        )}
+
+                        {/*<div className="p-8 md:p-12 h-full overflow-y-auto bg-red-500">*/}
+                        {activeModal === 'events' && (
+                            <button
+                                onClick={closeModal}
+                                className=" absolute top-4 right-4 bg-slate-100 hover:bg-slate-200 p-2 rounded-full transition-colors z-10"
+                            >
+                                <CloseIcon />
+                            </button>
+                        )}
+
+                        {/* Content for Core Challenges Modal */}
+                        <div className="container mx-auto px-4 py-4 h-full flex justify-center items-center">
+
+                            {/* Content for Core Challenges Modal (FULL SCREEN VERTICAL FLOW) */}
+                            <ChallengesModal activeModal={activeModal} />
+                            {/* Content for Solutions Modal */}
+                            <SolutionFlow activeModal={activeModal} />
+
+                            {/* Content for Programs Modal */}
+                            {/* --- 1. FUTURE FOUNDATION MODAL (Detailed View) --- */}
+                            {activeModal === 'program-future' && (
+                                < Programfuturefoundation/>
+                            )}
+
+                            {/* --- 2. CATALYST PROGRAM MODAL (Detailed View) --- */}
+                            {activeModal === 'program-catalyst' && (
+                                < Programcatalyst />
+                            )}
+
+                            {/* --- 3. MAESTRO PROGRAM MODAL (Detailed View) --- */}
+                            {activeModal === 'program-maestro' && (
+                              <Programmaestro/>
+                            )}
+                            {/* --- 4. PIONEER PROGRAM MODAL (Detailed View) --- */}
+                            {activeModal === 'program-pioneer' && (
+                                < Programpionner/>
+                            )}
+
+                            {/* Content for Blog Modal */}
+
+                            {activeModal === 'events' && (
+                                <EventsPage />
+                            )}
+
+                            {activeModal === 'Awards/Rewards' && (
+                                <AwardsRewards />
+                            )}
+
+                        </div>
+                        {/*</div>*/}
+                    </div>
+                </div>
+            )}
+
+            {/* --- HEADER --- */}
+            <header
+                className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${isScrolled ? 'bg-white shadow-md py-2' : 'bg-transparent py-4'
+                    }`}
+            >
+                <div className="container mx-auto px-4 md:px-6 flex justify-between items-center">
+                    {/* Logo */}
+                    <div className="flex items-center cursor-pointer" onClick={() => scrollToSection('home')}>
+                        {/* USER REQUEST 1: Logo Placeholder */}
+                        <img
+                            src={logo}
+                            alt="Spectropy Logo"
+                            className="h-10 md:h-12 w-auto object-contain"
+                        />
+                    </div>
+
+                    {/* Desktop Nav */}
+                    <nav className="hidden lg:flex items-center space-x-6 xl:space-x-8">
+                        {['Home', 'Courses', 'Why Foundation', 'Happy Clients'].map((item) => (
+                            <button
+                                key={item}
+                                onClick={() => scrollToSection(item.toLowerCase().replace(' ', '-'))}
+                                className="text-sm font-semibold text-slate-600 hover:text-blue-700 transition-colors"
+                            >
+                                {item}
+                            </button>
+                        ))}
+                        <button
+                            onClick={() => openModal('Awards/Rewards')}
+                            className="text-sm font-semibold text-slate-600 hover:text-blue-700 transition-colors"
+                        >
+                            Awards/Rewards
+                        </button>
+
+                        <button
+                            onClick={() => setActiveModal('events')}
+                            className="text-sm font-semibold text-slate-600 hover:text-blue-700 transition-colors"
+                        >
+                            Client Services
+                        </button>
+
+                        {/* USER REQUEST 6: Contact Button */}
+                        <button
+                            onClick={() => scrollToSection('contact-footer')}
+                            className="text-sm font-semibold text-slate-600 hover:text-blue-700 transition-colors"
+                        >
+                            Contact
+                        </button>
+
+                        {/* USER REQUEST 7: Login with Web Apps Dropdown */}
+                        <div className="relative">
+                            <button
+                                onClick={() => setShowLoginOptions(!showLoginOptions)}
+                                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-full text-sm font-bold transition-all shadow-sm hover:shadow-md flex items-center"
+                            >
+                                Login
+                                <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                            </button>
+
+                            {showLoginOptions && (
+                                <div className="absolute top-full right-0 mt-3 w-80 bg-white rounded-2xl shadow-2xl border border-blue-100 p-4 animate-fade-in z-50">
+                                    <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider px-2 mb-3">
+                                        Quick Access
+                                    </div>
+                                    <div className="grid gap-3 max-h-[60vh] overflow-y-auto pr-1">
+                                        <Link
+                                            to="/login-form"
+                                            className="block bg-blue-50 p-3 rounded-xl border border-blue-100 transition-all text-left hover:shadow-md hover:-translate-y-0.5"
+                                        >
+                                            <h3 className="font-bold text-blue-800">E-Learning (LMS)</h3>
+                                            <p className="text-xs text-slate-600 mt-1">For students, teachers, and admins</p>
+                                        </Link>
+
+                                        <Link
+                                            to="https://ra-portal-frontend.vercel.app/login"
+                                            className="block bg-blue-50 p-3 rounded-xl border border-slate-200 transition-all text-left hover:shadow-md hover:-translate-y-0.5"
+                                        >
+                                            <h3 className="font-bold text-blue-800">RA Portal</h3>
+                                            <p className="text-xs text-slate-600 mt-1">Results and Analysis Portal</p>
+                                        </Link>
+
+                                        <Link
+                                            to="https://academy.spectropy.com/s/authenticate?url=/"
+                                            className="block bg-blue-50 p-3 rounded-xl border border-slate-200 transition-all text-left hover:shadow-md hover:-translate-y-0.5"
+                                        >
+                                            <h3 className="font-bold text-blue-800">DITP</h3>
+                                            <p className="text-xs text-slate-600 mt-1">Digital Interactive Teaching Product</p>
+                                        </Link>
+
+                                        <Link
+                                            to="https://lms.spectropy.com/"
+                                            className="block bg-blue-50 p-3 rounded-xl border border-slate-200 transition-all text-left hover:shadow-md hover:-translate-y-0.5"
+                                        >
+                                            <h3 className="font-bold text-blue-800">Tab Exams</h3>
+                                            <p className="text-xs text-slate-600 mt-1">Online Assessment Platform</p>
+                                        </Link>
+                                        <Link
+                                            to="https://pms.spectropy.com/"
+                                            className="block bg-blue-50 p-3 rounded-xl border border-slate-200 transition-all text-left hover:shadow-md hover:-translate-y-0.5"
+                                        >
+                                            <h3 className="font-bold text-blue-800">PMS</h3>
+                                            <p className="text-xs text-slate-600 mt-1">Project Management System</p>
+                                        </Link>
+                                        <Link
+                                            to="https://spectropy-csm.onrender.com/"
+                                            className="block bg-blue-50 p-3 rounded-xl border border-slate-200 transition-all text-left hover:shadow-md hover:-translate-y-0.5"
+                                        >
+                                            <h3 className="font-bold text-blue-800">CSM</h3>
+                                            <p className="text-xs text-slate-600 mt-1">Client Service Management</p>
+                                        </Link>
+                                        <a
+                                            href="https://tlm-generator.vercel.app/"
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="block bg-blue-50 p-3 rounded-xl border border-slate-200 transition-all text-left hover:shadow-md hover:-translate-y-0.5"
+                                        >
+                                            <h3 className="font-bold text-blue-800">TLM Generator</h3>
+                                            <p className="text-xs text-slate-600 mt-1">Generate teaching-learning materials</p>
+                                        </a>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </nav>
+
+                    {/* Mobile Menu Toggle */}
+                    <button
+                        className="lg:hidden text-slate-700"
+                        onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                    >
+                        {isMobileMenuOpen ? <CloseIcon /> : <MenuIcon />}
+                    </button>
+                </div>
+
+                {/* Mobile Nav Dropdown */}
+                {isMobileMenuOpen && (
+                    <div className="absolute top-full left-0 w-full bg-white shadow-xl border-t border-slate-100 lg:hidden flex flex-col p-4 space-y-4">
+                        {['Home', 'Courses', 'Why Foundation', 'Happy Clients', 'Awards/Rewards'].map((item) => (
+                            <button
+                                key={item}
+                                onClick={() => scrollToSection(item.toLowerCase().replace(' ', '-'))}
+                                className="text-left text-slate-700 font-medium py-2 border-b border-slate-50"
+                            >
+                                {item}
+                            </button>
+                        ))}
+                        <button
+                            onClick={() => { openModal('blog'); setIsMobileMenuOpen(false); }}
+                            className="text-left text-slate-700 font-medium py-2 border-b border-slate-50"
+                        >
+                            Blog
+                        </button>
+                        <button
+                            onClick={() => { setActiveModal('events'); setIsMobileMenuOpen(false); }}
+                            className="text-left text-slate-700 font-medium py-2 border-b border-slate-50"
+                        >
+                            Events
+                        </button>
+                        <button
+                            onClick={() => scrollToSection('contact-footer')}
+                            className="text-left text-slate-700 font-medium py-2 border-b border-slate-50"
+                        >
+                            Contact
+                        </button>
+                        <div className="pt-2 flex flex-col gap-2">
+                            <span className="text-xs font-bold text-slate-400 uppercase">Login Options:</span>
+                            <Link
+                                to="https://ra-portal-frontend.vercel.app/login"
+                                className="bg-blue-50 text-blue-700 py-3 rounded-lg font-bold text-center block"
+                            >
+                                RA Portal
+                            </Link>
+                            <Link
+                                to="/login"
+                                className="bg-blue-600 text-white py-3 rounded-lg font-bold text-center block"
+                            >
+                                E-Learning
+                            </Link>
+                            <Link
+                                to="https://academy.spectropy.com/s/authenticate?url=/"
+                                className="bg-blue-600 text-white py-3 rounded-lg font-bold text-center block"
+                            >
+                                DITP
+                            </Link>
+                            <Link
+                                to="https://lms.spectropy.com/"
+                                className="bg-blue-600 text-white py-3 rounded-lg font-bold text-center block"
+                            >
+                                Tab Exams
+                            </Link>
+                            <Link
+                                to="https://pms.spectropy.com/"
+                                className="bg-blue-600 text-white py-3 rounded-lg font-bold text-center block"
+                            >
+                                PMS
+                            </Link>
+                            <Link
+                                to="https://spectropy-csm.onrender.com/"
+                                className="bg-blue-600 text-white py-3 rounded-lg font-bold text-center block"
+                            >
+                                CMS
+                            </Link>
+                        </div>
+                    </div>
+                )}
+            </header>
+
+            {/* --- SCROLL 1: HERO + PURPOSE --- */}
+            <section id="home" className="relative min-h-screen flex flex-col pt-24 pb-12 overflow-hidden bg-gradient-to-br from-blue-50 to-indigo-50">
+                <div className="absolute top-0 right-0 w-2/3 h-full bg-white opacity-40 skew-x-12 transform translate-x-1/4 pointer-events-none"></div>
+
+                {/* --- PART 1: HERO TEXT & BRIDGE VISUAL --- */}
+                <div className="container mx-auto px-6 grid lg:grid-cols-2 gap-12 items-center relative z-10 mb-16 h-[80vh]">
+
+                    {/* Text Content */}
+                    <div className="space-y-6 text-center lg:text-left ">
+                        <h1 className="text-4xl md:text-6xl font-extrabold text-slate-900 leading-tight">
+                            Building the <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600">Foundation</span> of the Future
+                        </h1>
+                        <div className="inline-block px-4 py-1.5 bg-blue-100 text-blue-800 text-xs font-bold rounded-full uppercase tracking-wider mb-2">
+                            The Purpose
+                        </div>
+                        <p className="text-lg md:text-xl text-slate-600 leading-relaxed max-w-lg mx-auto lg:mx-0">
+                            Strengthen academic foundation in formative years. We bridge the critical gap between classroom learning and competitive successful.
+                        </p>
+
+                        <div className="flex flex-col sm:flex-row gap-4 pt-4 justify-center lg:justify-start">
+                            <button
+                                onClick={() => scrollToSection('courses')}
+                                className="flex items-center justify-center bg-blue-900 hover:bg-blue-800 text-white px-8 py-4 rounded-xl font-bold text-lg transition-all shadow-lg hover:shadow-xl hover:-translate-y-1"
+                            >
+                                Explore Courses <ArrowRightIcon />
+                            </button>
+                            <button
+                                onClick={() => scrollToSection('why-foundation')}
+                                className="flex items-center justify-center bg-white border-2 border-slate-200 hover:border-blue-300 text-slate-700 px-8 py-4 rounded-xl font-bold text-lg transition-all"
+                            >
+                                Why Foundation Matters
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Visual Column: Bridge + Vision */}
+                    <div className="relative flex flex-col items-center">
+
+                        {/* 1. The Bridge Concept */}
+                        <div className="relative w-full aspect-video max-w-xl mb-6">
+                            <div className="relative z-10 bg-white p-5 md:p-8 rounded-3xl shadow-2xl border border-slate-100 flex flex-col justify-between h-full hover:scale-[1.02]">
+
+                                <div className="text-center mb-3">
+                                    <h3 className="inline-block px-3 py-1.5 bg-blue-100 text-blue-900 text-xl font-bold rounded-full uppercase tracking-wider mb-1">The Problem (The Gap)</h3>
+                                </div>
+
+                                {/* The Visual Bridge */}
+                                <div className="flex-grow flex items-center justify-between relative px-1">
+                                    {/* Left Pillar */}
+                                    <div className="flex flex-col items-center z-10">
+                                        <div className="w-16 h-24 bg-slate-200 rounded-t-lg border-x-2 border-t-2 border-slate-300 flex items-center justify-center">
+                                            <span className="text-4xl">🏫</span>
+                                        </div>
+                                        <span className="mt-2 font-bold text-slate-600 text-sm">Classroom </span>
+                                    </div>
+
+                                    {/* The Bridge & Gap */}
+                                    <div className="flex-grow h-full relative mx-2 flex flex-col justify-end pb-8 -mt-6">
+                                        <div className="absolute bottom-8 left-0 w-5/12 h-2 bg-red-400 rounded-l-full transform -rotate-6 origin-left"></div>
+                                        <div className="absolute bottom-8 right-0 w-5/12 h-2 bg-red-400 rounded-r-full transform rotate-6 origin-right"></div>
+
+                                        {/* Gap Text */}
+                                        <div className="absolute top-1/4 left-0 right-0 text-center">
+                                            <span className="text-l text-red-500 font-bold bg-red-50 px-2 py-1 rounded">Deep Conceptual Gaps </span>
+                                            <div className="text-2xl animate-bounce mt-1">⚡</div>
+                                        </div>
+
+                                        {/* Spectropy Solution Overlay */}
+                                        <div className="absolute bottom-12 left-0 right-0 flex justify-center">
+                                            <div className="bg-blue-600 text-white text-xs px-3 py-1 rounded-full shadow-lg z-20">
+                                                Bridging the Gap
+                                            </div>
+                                        </div>
+                                        <div className="absolute bottom-8 left-0 w-full h-2 bg-blue-500/30 rounded-full"></div>
+                                    </div>
+
+                                    {/* Right Pillar */}
+                                    <div className="flex flex-col items-center z-10">
+                                        <div className="w-16 h-24 bg-blue-100 rounded-t-lg border-x-2 border-t-2 border-blue-200 flex items-center justify-center">
+                                            <span className="text-4xl">🏆</span>
+                                        </div>
+                                        <span className="mt-2 font-bold text-slate-600 text-sm text-center leading-tight">Competitive<br />Exams </span>
+                                    </div>
+                                </div>
+
+                                <div className="mt-0 text-center pt-0">
+                                    <p className="text-slate-500 text-xs md:text-sm">Weak fundamentals lead to exponential struggle in higher classes.</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* 2. The Vision Block (Added Below Problem Block) */}
+                        <div className="w-full max-w-xl bg-white rounded-2xl p-4 shadow-lg border border-indigo-100 flex items-center gap-4 transform hover:scale-[1.02] transition-transform">
+                            {/* Simple Image Placeholder */}
+                            <div className="w-20 h-20 md:w-24 md:h-24 bg-indigo-50 rounded-xl flex-shrink-0 flex items-center justify-center text-4xl border border-indigo-100">
+                                🚀
+                            </div>
+                            {/* Vision Text */}
+                            <div className="flex-grow">
+                                <h4 className="text-indigo-900 font-extrabold text-sm md:text-base uppercase mb-1">The Vision: Future-Ready STEM Campus</h4>
+                                <p className="text-slate-600 text-xs md:text-sm font-medium leading-snug">
+                                    A movement for India's next generation.<br />
+                                    <span className="text-indigo-600 font-bold">Every child learns with confidence .</span>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* --- PART 2: CHALLENGES & SOLUTION BLOCKS --- */}
+                <div className="container mx-auto px-6 relative z-10">
+                    <div className="grid md:grid-cols-2 gap-12 max-w-6xl mx-auto">
+
+                        {/* Core Challenges Block */}
+                        <div className="bg-red-50 rounded-3xl p-8 md:p-10 border border-red-100 relative overflow-hidden group hover:shadow-xl transition-all">
+                            <div className="absolute top-0 right-0 bg-red-200 text-red-800 text-xs font-bold px-3 py-1 rounded-bl-xl">THE PROBLEM</div>
+                            <div className="mb-6">
+                                <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center text-3xl shadow-sm mb-4">⚠️</div>
+                                <h3 className="text-2xl md:text-3xl font-bold text-slate-900 mb-3">Core Challenges in Today's Learning </h3>
+                                <p className="text-slate-700 mb-6">
+                                    Curriculum is theoretical, conceptual gaps increase over time, and schools often lack diagnostic Tracking.
+                                </p>
+                                <button
+                                    onClick={() => openModal('challenges')}
+                                    className="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-6 rounded-lg transition-colors flex items-center"
+                                >
+                                    More Info <ArrowRightIcon />
+                                </button>
+                            </div>
+                            {/* Decorative BG element */}
+                            <div className="absolute -bottom-10 -right-10 w-40 h-40 bg-red-200 rounded-full opacity-50 mix-blend-multiply filter blur-xl"></div>
+                        </div>
+
+                        {/* Spectropy Solution Block */}
+                        <div className="bg-blue-50 rounded-3xl p-8 md:p-10 border border-blue-100 relative overflow-hidden group hover:shadow-xl transition-all">
+                            <div className="absolute top-0 right-0 bg-blue-200 text-blue-800 text-xs font-bold px-3 py-1 rounded-bl-xl">THE SOLUTION</div>
+                            <div className="mb-6">
+                                <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center text-3xl shadow-sm mb-4">💡</div>
+                                <h3 className="text-2xl md:text-3xl font-bold text-slate-900 mb-3">Spectropy IIT Foundation & STEM Solution</h3>
+                                <p className="text-slate-700 mb-6">
+                                    A comprehensive model with Structured Curriculum, AI Diagnostics, and Skill Development Ecosystem.
+                                </p>
+                                <button
+                                    onClick={() => openModal('solution')}
+                                    className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition-colors flex items-center"
+                                >
+                                    More Info <ArrowRightIcon />
+                                </button>
+                            </div>
+                            {/* Decorative BG element */}
+                            <div className="absolute -bottom-10 -right-10 w-40 h-40 bg-blue-200 rounded-full opacity-50 mix-blend-multiply filter blur-xl"></div>
+                        </div>
+
+                    </div>
+                </div>
+            </section>
+
+            {/* --- SCROLL 2: CHALLENGES & SOLUTIONS (USER REQUEST 3 & 4) --- */}
+            <section id="why-foundation" className="py-1 bg-white">               
+                    
+                    < Fourpillars />
+                
+            </section>
+
+            <FutureFoundationSlider />
+
+            {/* --- SCROLL 3: PROGRAMS + TRUST + CTA (USER REQUEST 5) --- */}
+            <section id="courses" className="py-24 bg-slate-900 text-white relative">
+                <div className="container mx-auto px-6">
+                    <div className="mb-16 text-center md:text-left">
+                        <h2 className="text-3xl md:text-4xl font-bold mb-4">Programs Designed for Excellence</h2>
+                        <p className="text-slate-400 max-w-2xl">Tailored academic architectures for every student's potential.</p>
+                    </div>
+
+                    <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-20">
+
+                        {/* USER REQUEST 5: Future Foundation Program (New) */}
+                        <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700 hover:border-blue-500 transition-all flex flex-col">
+                            <div className="mb-4"><FutureIcon /></div>
+                            <h3 className="text-xl font-bold mb-2">Future Foundation</h3>
+                            <p className="text-blue-300 font-medium mb-4 text-xs">Academic Core & Goals </p>
+                            <p className="text-slate-400 text-sm mb-6 flex-grow">Comprehensive blueprint bridging school curriculum with competitive excellence.</p>
+                            <button onClick={() => openModal('program-future')} className="text-blue-400 text-sm font-bold hover:text-white flex items-center self-start">
+                                More Info <ArrowRightIcon />
+                            </button>
+                        </div>
+
+                        {/* Catalyst Program */}
+                        <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700 hover:border-teal-500 transition-all flex flex-col">
+                            <div className="mb-4"><CatalystIcon /></div>
+                            <h3 className="text-xl font-bold mb-2">Catalyst Program</h3>
+                            <p className="text-teal-300 font-medium mb-4 text-xs">Bridge to Competitive </p>
+                            <p className="text-slate-400 text-sm mb-6 flex-grow">80% Foundation + 20% Advanced.Targeting NEET, EAPCET, Olympiads.</p>
+                            <button onClick={() => openModal('program-catalyst')} className="text-teal-400 text-sm font-bold hover:text-white flex items-center self-start">
+                                More Info <ArrowRightIcon />
+                            </button>
+                        </div>
+
+                        {/* Maestro Program */}
+                        <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700 hover:border-purple-500 transition-all transform md:-translate-y-4 shadow-2xl flex flex-col z-10">
+                            <div className="mb-4"><MaestroIcon /></div>
+                            <h3 className="text-xl font-bold mb-2">Maestro Program</h3>
+                            <p className="text-purple-300 font-medium mb-4 text-xs">Holistic Excellence </p>
+                            <p className="text-slate-400 text-sm mb-6 flex-grow">Vertical Expansion & Advanced Curriculum for JEE Main & Advanced.</p>
+                            <button onClick={() => openModal('program-maestro')} className="text-purple-400 text-sm font-bold hover:text-white flex items-center self-start">
+                                More Info <ArrowRightIcon />
+                            </button>
+                        </div>
+
+                        {/* Pioneer Program */}
+                        <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700 hover:border-orange-500 transition-all flex flex-col">
+                            <div className="mb-4"><PioneerIcon /></div>
+                            <h3 className="text-xl font-bold mb-2">Pioneer Program</h3>
+                            <p className="text-orange-300 font-medium mb-4 text-xs">Elite Academic Program </p>
+                            <p className="text-slate-400 text-sm mb-6 flex-grow">Level 5 Mastery (Rank Decider) questions for top tier successful.</p>
+                            <button onClick={() => openModal('program-pioneer')} className="text-orange-400 text-sm font-bold hover:text-white flex items-center self-start">
+                                More Info <ArrowRightIcon />
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Happy Clients Slider - keep inside the Programs section */}
+                    <div id="happy-clients" className="mb-20">
+                        <HappyClientsSlider />
+                    </div>
+
+                    {/* --- COMBINED CONTACT SECTION */}
+                    <div id="contact-footer" className="py-20">
+
+                        <div className="container mx-auto px-6 mb-16">
+                            <p className="text-center text-slate-400 text-xs font-extrabold uppercase tracking-[0.2em] mb-8">
+                                Trusted by Forward-Thinking Campuses
+                            </p>
+                            <div className="flex flex-wrap justify-center gap-12 md:gap-20 opacity-50 grayscale hover:grayscale-0 transition-all duration-500">
+                                {/* Visual Placeholders for Logos - Replace with <img /> if needed */}
+                                <h3 className="text-xl md:text-2xl font-serif font-bold text-slate-300 hover:text-slate-500 transition-colors cursor-default">CITY SCHOOL</h3>
+                                <h3 className="text-xl md:text-2xl font-mono font-bold text-slate-300 hover:text-slate-500 transition-colors cursor-default">GLOBAL ACADEMY</h3>
+                                <h3 className="text-xl md:text-2xl font-sans font-black italic text-slate-300 hover:text-slate-500 transition-colors cursor-default">STEM HIGH</h3>
+                                <h3 className="text-xl md:text-2xl font-serif font-bold text-slate-300 hover:text-slate-500 transition-colors cursor-default">FUTURE FOUNDATION</h3>
+                            </div>
+                        </div>
+
+                        {/* Main CTA & Contact Block */}
+                        <div className="container mx-auto px-4 md:px-6">
+                            <div className="relative bg-gradient-to-br from-blue-900 via-indigo-900 to-slate-900 rounded-[2.5rem] overflow-hidden shadow-2xl p-8 md:p-8 lg:p-8">
+
+                                {/* Abstract Background Decor */}
+                                <div className="absolute top-0 right-0 -mt-20 -mr-20 w-80 h-80 bg-blue-500/20 rounded-full blur-3xl"></div>
+                                <div className="absolute bottom-0 left-0 -mb-20 -ml-20 w-80 h-80 bg-indigo-500/20 rounded-full blur-3xl"></div>
+
+                                <div className="relative z-10 flex flex-col lg:flex-row items-center justify-between gap-12">
+
+                                    {/* LEFT: Heading & Actions */}
+                                    <div className="text-center lg:text-left lg:w-1/2 space-y-6">
+                                        <h2 className="text-3xl md:text-5xl font-extrabold text-white leading-tight">
+                                            Ready to Build a <br />
+                                            <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-teal-400">Future-Ready School?</span>
+                                        </h2>
+                                        <p className="text-blue-200 text-lg max-w-md mx-auto lg:mx-0 leading-relaxed">
+                                            Join the partner network transforming academic ecosystems. Let's discuss your school's vision today.
+                                        </p>
+                                        <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start pt-4">
+                                        </div>
+                                    </div>
+
+                                    {/* RIGHT: Contact Details Card */}
+                                    <div className="lg:w-5/12 w-full bg-white/5 backdrop-blur-md border border-white/10 rounded-3xl p-6 md:p-8 shadow-xl">
+                                        <div className="space-y-6">
+
+                                            {/* Address */}
+                                            <div className="flex items-start space-x-4 group">
+                                                <div className="flex-shrink-0 w-12 h-12 bg-blue-600/20 rounded-full flex items-center justify-center text-blue-400 group-hover:bg-blue-600 group-hover:text-white transition-all">
+                                                    <LocationIcon />
+                                                </div>
+                                                <div>
+                                                    <h4 className="text-white font-bold text-sm uppercase tracking-wide mb-1 opacity-80">Headquarters</h4>
+                                                    <p className="text-blue-100 text-sm leading-relaxed">
+                                                        G94H+MJP, Beside Guru Global School, <br />Hyderabad, Telangana 500085
+                                                    </p>
+                                                </div>
+                                            </div>
+
+                                            {/* Divider */}
+                                            <div className="h-px w-full bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
+
+                                            {/* Phones */}
+                                            <div className="flex items-start space-x-4 group">
+                                                <div className="flex-shrink-0 w-12 h-12 bg-green-600/20 rounded-full flex items-center justify-center text-green-400 group-hover:bg-green-600 group-hover:text-white transition-all">
+                                                    <PhoneIcon />
+                                                </div>
+                                                <div>
+                                                    <h4 className="text-white font-bold text-sm uppercase tracking-wide mb-1 opacity-80">Call Us</h4>
+                                                    <p className="text-blue-100 text-sm font-mono tracking-wide">
+                                                        +91 90143 412377
+                                                    </p>
+                                                </div>
+                                            </div>
+
+                                            {/* Divider */}
+                                            <div className="h-px w-full bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
+
+                                            {/* Email */}
+                                            <div className="flex items-start space-x-4 group">
+                                                <div className="flex-shrink-0 w-12 h-12 bg-purple-600/20 rounded-full flex items-center justify-center text-purple-400 group-hover:bg-purple-600 group-hover:text-white transition-all">
+                                                    <MailIcon />
+                                                </div>
+                                                <div>
+                                                    <h4 className="text-white font-bold text-sm uppercase tracking-wide mb-1 opacity-80">Email</h4>
+                                                    <p className="text-blue-100 text-sm">contact@spectropy.com</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+        </div>
+    );
+};
+
+export default LandingPage;

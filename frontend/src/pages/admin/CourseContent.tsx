@@ -1,0 +1,665 @@
+// ✅ src/pages/admin/CourseContent.tsx
+import { useState, useEffect } from "react";
+import { useParams } from "react-router-dom";
+import { useAuth } from "../../contexts/AuthContext";
+import api from "../../services/api";
+import LeftPanel from "../../components/CourseContent/LeftPanel"; // ✅ IMPORT LEFT PANEL
+import ContentViewer from "../common/ContentViewer";
+import { SlControlPlay, SlControlRewind } from "react-icons/sl";
+import toast from "react-hot-toast";
+
+
+interface ContentItem {
+  id: number;
+  course_id: number;
+  parent_id: number | null;
+  item_type: string;
+  title: string;
+  content_url?: string | null;
+  order_index: number;
+  created_at: string;
+  completion_status?: string | null; // 👈 ADD THIS
+
+}
+
+const ITEM_TYPES = [
+  { value: "folder", label: "Chapter (Folder)" },
+  { value: "video", label: "Video" },
+  { value: "audio", label: "Audio File" },
+  { value: "pdf", label: "PDF Document" },
+  { value: "scorm", label: "SCORM Package" },
+  { value: "html", label: "HTML Lesson" },
+  { value: "text", label: "Text File" },
+  { value: "link", label: "External Link" },
+];
+
+interface Chapter {
+  id: number;
+  title: string;
+  items: ContentItem[];
+}
+
+
+export default function CourseContent() {
+  const { courseId } = useParams<{ courseId: string }>();
+  const [chapters, setChapters] = useState<Chapter[]>([]);
+  const [selectedChapter, setSelectedChapter] = useState<number | null>(null);
+
+  // ✅ Add Item Modal
+  const [showAddItemModal, setShowAddItemModal] = useState(false);
+  const [itemType, setItemType] = useState("video");
+  const [itemTitle, setItemTitle] = useState("");
+
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [publicUrl, setPublicUrl] = useState("");
+  const [selectedItem, setSelectedItem] = useState<ContentItem | null>(null);
+
+  const [allItems, setAllItems] = useState<ContentItem[]>([]);
+
+  // ⭐ Modal + File state
+  const [showUpdateFileModal, setShowUpdateFileModal] = useState(false);
+  const [itemToUpdate, setItemToUpdate] = useState<ContentItem | null>(null);
+  const [newFile, setNewFile] = useState<File | null>(null);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [leftPanelOpen, setLeftPanelOpen] = useState(false);
+
+  // ✅ HANDLE REPLACE FILE
+  const handleReplaceFile = async () => {
+    if (!itemToUpdate) return;
+    setIsUpdating(true);
+
+    const formData = new FormData();
+
+    // ⭐ Add new name
+    formData.append("title", itemToUpdate.title);
+
+    // ⭐ Add file only if user changed it
+    if (newFile) {
+      formData.append("file", newFile);
+    }
+
+
+    try {
+      const res = await api.put(
+        `/admin/courses/${itemToUpdate.course_id}/content/${itemToUpdate.id}/file`,
+        formData,
+        { headers: { "Content-Type": "multipart/form-data" } }
+      );
+
+      const updatedUrl = res.data?.content_url;
+      const updatedType = res.data?.item?.item_type || itemToUpdate.item_type;
+      // ⭐ Update UI (title + content_url)
+      setChapters(prev =>
+        prev.map(ch => ({
+          ...ch,
+          items: ch.items.map((i: ContentItem) =>
+            i.id === itemToUpdate.id
+              ? { ...i, title: itemToUpdate.title, content_url: updatedUrl || i.content_url, item_type: updatedType, }
+              : i
+          )
+        }))
+      );
+
+      setAllItems(prev =>
+        prev.map(i =>
+          i.id === itemToUpdate.id
+            ? { ...i, title: itemToUpdate.title, content_url: updatedUrl || i.content_url, item_type: updatedType, }
+            : i
+        )
+      );
+
+      if (selectedItem?.id === itemToUpdate.id) {
+        setSelectedItem(prev =>
+          prev
+            ? { ...prev, title: itemToUpdate.title, content_url: updatedUrl || prev.content_url, item_type: updatedType, }
+            : null
+        );
+      }
+
+      setShowUpdateFileModal(false);
+      setItemToUpdate(null);
+      setNewFile(null);
+      alert("Item updated successfully!");
+
+    } catch (err) {
+      console.error(err);
+      alert("Failed to update item");
+    }
+    setIsUpdating(false);
+  };
+
+  const openReplaceModal = (item: ContentItem) => {
+    setItemToUpdate(item);
+    setShowUpdateFileModal(true);
+  };
+
+  const items = allItems;
+  const currentIndex = items.findIndex(i => i.id === selectedItem?.id);
+
+  const isFirstItem = currentIndex === 0;
+  //const isLastItem = currentIndex === items.length - 1;
+
+  const { user } = useAuth();
+
+  // ✅ Add Chapter Modal
+  const [chapterTitle, setChapterTitle] = useState("");
+  const [addingChapter, setAddingChapter] = useState(false);
+  const FILE_UPLOAD_TYPES = ["video", "audio", "pdf", "scorm", "html", "text"];
+  const URL_ONLY_TYPES = ["link"];
+
+
+  useEffect(() => {
+    fetchContent();
+  }, [courseId]);
+
+  // ✅ FETCH CONTENT + TRANSFORM INTO CHAPTER STRUCTURE
+  const fetchContent = async () => {
+    setLoading(true);
+    try {
+      const res = await api.get(`/admin/courses/${courseId}/content`);
+      const items = res.data;
+
+      // 🔥 store raw list
+
+      // ✅ Build chapters → items mapping
+      const topChapters = items.filter((i: ContentItem) => i.parent_id === null);//sets the top chapters with no parent id
+      const chapterMap: Chapter[] = topChapters.map((chapter: ContentItem) => ({
+        id: chapter.id,
+        title: chapter.title,
+        items: items.filter((i: ContentItem) => i.parent_id === chapter.id),
+
+      }));
+
+      setChapters(chapterMap); //sets the chapters with their respective items to state
+
+      // 🔥 set all items for progress tracking
+      setAllItems(items.filter((i: ContentItem) => i.item_type !== "folder"));
+    } catch (err) {
+      console.error("Failed to load course content", err);
+    }
+    setLoading(false);
+  };
+
+  // ✅ ADD CHAPTER
+  const handleAddChapter = async () => {
+    if (!chapterTitle.trim()) return alert("Enter a chapter title");
+
+
+    await api.post(`/admin/courses/${courseId}/content`, {
+      item_type: "folder",
+      title: chapterTitle.trim(),
+      parent_id: null,
+    });
+
+    setChapterTitle("");
+    setAddingChapter(false);
+    fetchContent();
+  };
+  // ✅ update the item as completed
+  const markItemCompleted = async (itemId: number) => {
+    try {
+      await api.post(`/student/item-attempt`, {
+        content_item_id: itemId,
+        completion_status: "completed"
+      });
+    } catch (err) {
+      console.error("❌ Failed to mark item completed", err);
+    }
+  };
+
+  const goToNext = async () => {
+    if (!selectedItem) return;
+
+    const index = items.findIndex(i => i.id === selectedItem.id);
+    await markItemCompleted(selectedItem.id);
+    if (user?.role === "student") {
+      await markItemCompleted(selectedItem.id);
+    }
+    // 🔥 Update chapters state
+    setChapters(prev =>
+      prev.map((ch) => ({
+        ...ch,
+        items: ch.items.map((i: ContentItem) =>
+          i.id === selectedItem?.id
+            ? { ...i, completion_status: "completed" }
+            : i
+        )
+      }))
+    );
+
+
+    // 🔥 Update ALL ITEMS (progress bar source)
+    setAllItems(prev =>
+      prev.map(i =>
+        i.id === selectedItem.id
+          ? { ...i, completion_status: "completed" }
+          : i
+      )
+    );
+
+
+    if (index < items.length - 1) {
+      setSelectedItem(items[index + 1]);
+    }
+  };
+
+  const goToPrevious = () => {
+    if (!selectedItem) return;
+
+    const index = items.findIndex(i => i.id === selectedItem.id);
+
+    if (index > 0) {
+      setSelectedItem(items[index - 1]);
+    }
+  };
+
+
+  // ✅ ADD ITEM TO CHAPTER
+  const handleAddItem = async (chapterId: number) => {
+    if (!itemTitle.trim()) {
+      toast.error("Enter a title");
+      return;
+    }
+    setShowAddItemModal(false);
+    try {
+      // ===============================
+      // FILE-BASED CONTENT
+      // ===============================
+      if (FILE_UPLOAD_TYPES.includes(itemType)) {
+        if (!selectedFile) {
+          toast.error("Please select a file");
+          return;
+        }
+
+        const uploadToast = toast.loading("Uploading content...");
+
+        const formData = new FormData();
+        formData.append("item_type", itemType);
+        formData.append("title", itemTitle);
+        formData.append("parent_id", chapterId.toString());
+        formData.append("file", selectedFile);
+
+        await api.post(
+          `/admin/courses/${courseId}/content/upload`,
+          formData,
+          { headers: { "Content-Type": "multipart/form-data" } }
+        );
+
+        toast.success("Item added successfully!", { id: uploadToast });
+      }
+
+      // ===============================
+      // LINK CONTENT
+      // ===============================
+      else if (URL_ONLY_TYPES.includes(itemType)) {
+        if (!publicUrl.trim()) {
+          toast.error("Please enter a valid URL");
+          return;
+        }
+
+        const uploadToast = toast.loading("Adding link...");
+
+        await api.post(`/admin/courses/${courseId}/content`, {
+          item_type: itemType,
+          title: itemTitle,
+          parent_id: chapterId,
+          content_url: publicUrl.trim(),
+        });
+
+        toast.success("Link added successfully!", { id: uploadToast });
+      }
+
+      // ===============================
+      // RESET STATE (SUCCESS ONLY)
+      // ===============================
+      setItemTitle("");
+      setSelectedFile(null);
+      setPublicUrl("");
+
+      fetchContent();
+
+    } catch (err) {
+      console.error("❌ Failed to add item:", err);
+      toast.error("Failed to add item");
+    }
+  };
+
+
+  // ✅ DRAG & DROP — REORDER CHAPTERS
+  const handleReorderChapters = async (newOrder: Chapter[]) => {
+    setChapters(newOrder);
+    // TODO: send reordered array to backend
+  };
+
+  // ✅ DRAG & DROP — REORDER ITEMS
+  const handleReorderItems = async (chapterId: number, newItems: ContentItem[]) => {
+    setChapters((prev) =>
+      prev.map((ch) =>
+        ch.id === chapterId ? { ...ch, items: newItems } : ch
+      )
+    );
+    // TODO: send reordered items to backend
+  };
+  return (
+    <div className="w-full h-screen flex flex-col">
+
+      {/* MAIN LAYOUT */}
+      <div className="flex flex-1 min-h-0 ">
+        {/* Mobile overlay for left panel */}
+        {leftPanelOpen && (
+          <div
+            className="fixed inset-0 bg-black/40 z-40 md:hidden"
+            onClick={() => setLeftPanelOpen(false)}
+          />
+        )}
+
+
+        {/* ✅ LEFT PANEL */}
+        <div
+          className={`
+    fixed md:static
+    inset-y-0 left-0
+    z-50
+    w-[320px]
+    border-r
+    bg-white
+    shrink-0
+    transform transition-transform duration-300
+    ${leftPanelOpen ? "translate-x-0" : "-translate-x-full"}
+    md:translate-x-0
+  `}
+        >
+
+          <LeftPanel
+            chapters={chapters}
+            allItems={items}
+            selectedItemId={selectedItem?.id}
+            onSelectItem={(item: ContentItem) => {
+              setSelectedItem(item);
+              setLeftPanelOpen(false);        // ✅ store the entire item
+            }}
+
+            onAddChapter={() => setAddingChapter(true)}
+            onAddItem={(id) => {
+              setSelectedChapter(id);
+              setShowAddItemModal(true);
+            }}
+            onReorderChapters={handleReorderChapters}
+            onReorderItems={handleReorderItems}
+            onUpdateFile={openReplaceModal}
+          />
+        </div>
+
+        {/* ✅ RIGHT SIDE — VIEW CONTENT */}
+        <div className="flex-1 bg-white  shrink-0 overflow-y-none flex flex-col">
+          {/* HEADER */}
+          <div className="w-full border-b border-gray-200 px-4 pt-4 pb-2.5">
+
+            {/* ROW 1: ☰ + TITLE */}
+            <div className="flex items-center gap-3 mb-3 md:mb-0 md:flex-row md:justify-between md:items-center">
+
+              <div className="flex items-center gap-3 min-w-0">
+                {/* ☰ — MOBILE ONLY */}
+                <button
+                  onClick={() => setLeftPanelOpen(true)}
+                  className="md:hidden p-2 border rounded-md"
+                  aria-label="Open course syllabus"
+                >
+                  ☰
+                </button>
+
+                <h1 className="text-lg md:text-xl font-semibold truncate">
+                  {selectedItem ? selectedItem.title.toUpperCase() : ""}
+                </h1>
+              </div>
+
+              {/* DESKTOP PREV / NEXT */}
+              <div className="hidden md:flex items-center gap-4">
+                <button
+                  onClick={goToPrevious}
+                  disabled={!selectedItem || isFirstItem}
+                  className={`flex items-center gap-2 py-2 rounded-md border justify-center transition-all duration-200 text-xs bg-maincolor text-white w-20
+          ${!selectedItem || isFirstItem
+                      ? "opacity-40 cursor-not-allowed"
+                      : "hover:bg-lightmain hover:border-gray-300 active:scale-95"
+                    }`}
+                >
+                  <SlControlRewind /> Previous
+                </button>
+
+                <button
+                  onClick={goToNext}
+                  disabled={!selectedItem}
+                  className={`flex items-center gap-2 py-2 rounded-md border justify-center transition-all duration-200 text-xs bg-maincolor text-white w-20
+          ${!selectedItem
+                      ? "opacity-40 cursor-not-allowed"
+                      : "hover:bg-lightmain hover:border-gray-300 active:scale-95"
+                    }`}
+                >
+                  Next <SlControlPlay />
+                </button>
+              </div>
+            </div>
+
+            {/* ROW 2: MOBILE ICON-ONLY PREV / NEXT */}
+            <div className="flex justify-end gap-3 md:hidden">
+              <button
+                onClick={goToPrevious}
+                disabled={!selectedItem || isFirstItem}
+                className={`p-2 rounded-md border bg-maincolor text-white
+        ${!selectedItem || isFirstItem
+                    ? "opacity-40 cursor-not-allowed"
+                    : "active:scale-95"
+                  }`}
+                aria-label="Previous"
+              >
+                <SlControlRewind />
+              </button>
+
+              <button
+                onClick={goToNext}
+                disabled={!selectedItem}
+                className={`p-2 rounded-md border bg-maincolor text-white
+        ${!selectedItem
+                    ? "opacity-40 cursor-not-allowed"
+                    : "active:scale-95"
+                  }`}
+                aria-label="Next"
+              >
+                <SlControlPlay />
+              </button>
+            </div>
+
+          </div>
+
+
+          {!selectedItem ? (
+            <p className="text-gray-400 text-center mt-20">
+              Select a chapter
+            </p>
+          ) : (
+            <ContentViewer item={selectedItem} />
+          )}
+        </div>
+      </div>
+
+      {/* ✅ ADD ITEM MODAL */}
+      {showAddItemModal && (
+        <div className="fixed inset-0 bg-black/40 flex justify-center items-center">
+          <div className="bg-white w-96 p-6 rounded shadow-lg">
+            <h3 className="text-lg font-semibold mb-4">Add Item</h3>
+
+            <select
+              value={itemType}
+              onChange={(e) => setItemType(e.target.value)}
+              className="w-full p-2 border rounded mb-3"
+            >
+              {ITEM_TYPES.filter((t) => t.value !== "folder").map((t) => (
+                <option key={t.value} value={t.value}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+
+            <input
+              type="text"
+              value={itemTitle}
+              onChange={(e) => setItemTitle(e.target.value)}
+              placeholder="Topic Name"
+              className="w-full p-2 border rounded mb-3"
+            />
+
+            {URL_ONLY_TYPES.includes(itemType) && (
+              <input
+                type="url"
+                value={publicUrl}
+                onChange={(e) => setPublicUrl(e.target.value)}
+                placeholder="Enter external link (https://...)"
+                className="w-full p-2 border rounded mb-3"
+              />
+            )}
+
+
+            {FILE_UPLOAD_TYPES.includes(itemType) && (
+              <input
+                type="file"
+                onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+                className="w-full p-2 border rounded mb-3"
+              />
+            )}
+
+            <div className="flex justify-end gap-3 mt-4">
+              <button
+                onClick={() => setShowAddItemModal(false)}
+                className="px-4 py-2 border rounded"
+              >
+                Cancel
+              </button>
+
+              <button
+                onClick={() => {
+                  if (selectedChapter !== null) {
+                    handleAddItem(selectedChapter);
+                  }
+                }}
+                className="px-4 py-2 bg-blue-900 text-white rounded"
+              >
+                Add
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ ADD CHAPTER MODAL */}
+      {addingChapter && (
+        <div className="fixed inset-0 bg-black/40 flex justify-center items-center">
+          <div className="bg-white w-96 p-6 rounded shadow-lg">
+            <h3 className="text-lg font-semibold mb-4">Add Chapter</h3>
+
+            <input
+              type="text"
+              value={chapterTitle}
+              onChange={(e) => setChapterTitle(e.target.value)}
+              placeholder="Chapter title"
+              className="w-full p-2 border rounded mb-3"
+            />
+
+            <div className="flex justify-end gap-3 mt-4">
+              <button
+                onClick={() => setAddingChapter(false)}
+                className="px-4 py-2 border rounded"
+              >
+                Cancel
+              </button>
+
+              <button
+                onClick={handleAddChapter}
+                className="px-4 py-2 bg-blue-900 text-white rounded"
+              >
+                Add
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showUpdateFileModal && (
+        <div className="fixed inset-0 bg-black/40 flex justify-center items-center z-50">
+          <div className="bg-white w-96 p-6 rounded shadow-lg">
+
+            <h3 className="text-lg font-semibold mb-4">
+              Update Item – {itemToUpdate?.title}
+            </h3>
+
+            {/* ⭐ Update Item Name */}
+            <label className="block text-sm font-medium mb-1">Item Name</label>
+            <input
+              type="text"
+              value={itemToUpdate?.title || ""}
+              onChange={(e) =>
+                setItemToUpdate(prev =>
+                  prev ? { ...prev, title: e.target.value } : null
+                )
+              }
+              className="w-full p-2 border rounded mb-4"
+            />
+
+            {/* ⭐ Replace File */}
+            <label className="block text-sm font-medium mb-1">Select New File</label>
+            <div className="mb-3 text-sm text-gray-600">
+              Current Type: <span className="font-medium">{itemToUpdate?.item_type}</span>
+            </div>
+
+            <input
+              type="file"
+              onChange={(e) => setNewFile(e.target.files?.[0] || null)}
+              className="w-full p-2 border rounded mb-4"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Uploading a different file type will automatically change the content type.
+            </p>
+
+            <div className="flex justify-end gap-3 mt-4">
+              <button
+                onClick={() => !isUpdating && setShowUpdateFileModal(false)}
+                disabled={isUpdating}
+                className="px-4 py-2 border rounded disabled:opacity-50"
+              >
+                Cancel
+              </button>
+
+
+              <button
+                onClick={handleReplaceFile}
+                disabled={isUpdating}
+                className={`px-4 py-2 rounded text-white 
+    ${isUpdating ? "bg-gray-400 cursor-not-allowed" : "bg-maincolor hover:bg-lightmain"}
+  `}
+              >
+                {isUpdating ? (
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    Updating...
+                  </div>
+                ) : (
+                  "Update"
+                )}
+              </button>
+
+            </div>
+          </div>
+        </div>
+      )}
+
+      {loading && (
+        <div className="text-center text-sm text-gray-400 py-1">
+          Refreshing content...
+        </div>
+      )}
+
+
+
+    </div>
+  );
+}

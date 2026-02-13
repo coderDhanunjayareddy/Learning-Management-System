@@ -1,0 +1,28 @@
+{
+  "name": "lms-backend",
+  "type": "module",
+  "scripts": {
+    "dev": "nodemon server.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.80.0",
+    "adm-zip": "^0.5.16",
+    "bcrypt": "^6.0.0",
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8",
+    "dotenv": "^16.3",
+    "express": "^4.18",
+    "fsy": "^1.0.5",
+    "helmet": "^7.0",
+    "jsonwebtoken": "^9.0",
+    "mime-types": "^3.0.1",
+    "multer": "^2.0.2",
+    "node-fetch": "^3.3.2",
+    "pg": "^8.16.3",
+    "uuid": "^13.0.0",
+    "xml2js": "^0.6.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0"
+  }
+}
