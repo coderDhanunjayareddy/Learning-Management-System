@@ -793,12 +793,6 @@ export default function CourseStudents() {
                                 Enroll
                               </button>
 
-                              <button
-                                onClick={() => navigate(`/admin/courses/${course.id}/edit`)}
-                                className="flex items-center justify-center gap-1 px-2 py-1.5 text-[11px] border rounded-md hover:bg-gray-50"
-                              >
-                                course discussion
-                              </button>
 
                               {/* Three-dot Menu */}
                               <div className="relative">
@@ -845,18 +839,17 @@ export default function CourseStudents() {
 
                         ) : (
                           // GRID VIEW
-                          <div className="bg-white rounded-lg shadow-sm hover:shadow-md transition flex flex-col h-80  relative">
+                          <div className="bg-white rounded-lg shadow-sm hover:shadow-md transition flex flex-col h-60 relative">
 
                             {/* ===================== */}
                             {/* 🔹 BANNER */}
                             {/* ===================== */}
-                            <div className="relative h-44 bg-linear-to-r from-blue-900 via-indigo-800 to-blue-700 overflow-hidden rounded-t-lg">
-
-                              {/* Abstract shapes */}
-                              <span className="absolute -top-6 -left-6 w-24 h-24 bg-white/10 rounded-full" />
-                              <span className="absolute top-8 left-24 w-14 h-14 bg-white/10 rotate-45" />
-                              <span className="absolute -bottom-8 right-8 w-28 h-28 bg-white/10 rounded-full" />
-                              <span className="absolute top-4 right-24 w-10 h-10 bg-white/10 rotate-12" />
+                            <div className="relative h-28 bg-amber-50 flex items-center justify-center overflow-hidden rounded-t-lg">
+                              <img
+                                src={brandLogo}
+                                alt={`${brandName} Logo`}
+                                className="h-10 w-auto opacity-70"
+                              />
 
                               {/* Status Button */}{/* Status Indicator */}
                               {course.published ? (
@@ -1019,12 +1012,6 @@ export default function CourseStudents() {
                                       Enroll
                                     </button>
 
-                                    <button
-                                      onClick={() => navigate(`/admin/courses/${course.id}/edit`)}
-                                      className="flex items-center justify-center gap-1 px-2 py-1.5 text-[11px] border rounded-md hover:bg-gray-50"
-                                    >
-                                      course discussions
-                                    </button>
                                   </div>
                                 </>
                               )}
