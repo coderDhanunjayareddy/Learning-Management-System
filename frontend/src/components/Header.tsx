@@ -1,4 +1,4 @@
-import logo from "/spectropy_logo.png"; // adjust path if needed
+import gvjbLogo from '/gvjb.png';
 import { useNavigate } from "react-router-dom";
 
 const Header = () => {
@@ -16,8 +16,8 @@ const Header = () => {
             {/* Logo */}
             <div className="flex items-center space-x-2 cursor-pointer" onClick={() => navigate("/")}>
                 <img
-                    src={logo}
-                    alt="Spectropy Logo"
+                    src={gvjbLogo}
+                    alt="GVB Logo"
                     className="h-10 w-auto md:h-10 lg:h-12 rounded-md"
                 />
             </div>
@@ -31,10 +31,6 @@ const Header = () => {
 
                 <span className={navItem} onClick={() => navigate("/courses")}>
                     Courses
-                </span>
-
-                <span className={navItem} onClick={() => navigate("/about")}>
-                    Membership
                 </span>
 
             </nav>

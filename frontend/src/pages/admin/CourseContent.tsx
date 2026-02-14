@@ -141,6 +141,7 @@ export default function CourseContent() {
   //const isLastItem = currentIndex === items.length - 1;
 
   const { user } = useAuth();
+  const isGvjbClient = user?.role === "client_admin";
 
   // ✅ Add Chapter Modal
   const [chapterTitle, setChapterTitle] = useState("");
@@ -342,7 +343,12 @@ export default function CourseContent() {
     // TODO: send reordered items to backend
   };
   return (
-    <div className="w-full h-screen flex flex-col">
+    <div
+      className={`w-full flex flex-col ${isGvjbClient
+        ? "min-h-screen bg-[radial-gradient(circle_at_top,_#fff7ed,_#ffffff_45%,_#fef9f3_100%)] text-slate-900"
+        : "h-screen"
+        }`}
+    >
 
       {/* MAIN LAYOUT */}
       <div className="flex flex-1 min-h-0 ">
@@ -363,7 +369,7 @@ export default function CourseContent() {
     z-50
     w-[320px]
     border-r
-    bg-white
+    ${isGvjbClient ? "border-amber-100 bg-white/90 backdrop-blur" : "border-gray-200 bg-white"}
     shrink-0
     transform transition-transform duration-300
     ${leftPanelOpen ? "translate-x-0" : "-translate-x-full"}
@@ -375,6 +381,7 @@ export default function CourseContent() {
             chapters={chapters}
             allItems={items}
             selectedItemId={selectedItem?.id}
+            isGvjbClient={isGvjbClient}
             onSelectItem={(item: ContentItem) => {
               setSelectedItem(item);
               setLeftPanelOpen(false);        // ✅ store the entire item
@@ -392,9 +399,14 @@ export default function CourseContent() {
         </div>
 
         {/* ✅ RIGHT SIDE — VIEW CONTENT */}
-        <div className="flex-1 bg-white  shrink-0 overflow-y-none flex flex-col">
+        <div className={`flex-1 shrink-0 overflow-y-none flex flex-col ${isGvjbClient ? "bg-white/80" : "bg-white"}`}>
           {/* HEADER */}
-          <div className="w-full border-b border-gray-200 px-4 pt-4 pb-2.5">
+          <div
+            className={`w-full border-b px-4 pt-4 pb-2.5 ${isGvjbClient
+              ? "border-amber-100 bg-white/70 backdrop-blur"
+              : "border-gray-200 bg-white"
+              }`}
+          >
 
             {/* ROW 1: ☰ + TITLE */}
             <div className="flex items-center gap-3 mb-3 md:mb-0 md:flex-row md:justify-between md:items-center">
@@ -403,7 +415,7 @@ export default function CourseContent() {
                 {/* ☰ — MOBILE ONLY */}
                 <button
                   onClick={() => setLeftPanelOpen(true)}
-                  className="md:hidden p-2 border rounded-md"
+                  className={`md:hidden p-2 border rounded-md ${isGvjbClient ? "border-amber-200" : "border-gray-300"}`}
                   aria-label="Open course syllabus"
                 >
                   ☰
@@ -419,10 +431,15 @@ export default function CourseContent() {
                 <button
                   onClick={goToPrevious}
                   disabled={!selectedItem || isFirstItem}
-                  className={`flex items-center gap-2 py-2 rounded-md border justify-center transition-all duration-200 text-xs bg-maincolor text-white w-20
+                  className={`flex items-center gap-2 py-2 rounded-md border justify-center transition-all duration-200 text-xs w-20 ${isGvjbClient
+                    ? "bg-amber-400 text-slate-900 border-amber-200"
+                    : "bg-maincolor text-white"
+                    }
           ${!selectedItem || isFirstItem
                       ? "opacity-40 cursor-not-allowed"
-                      : "hover:bg-lightmain hover:border-gray-300 active:scale-95"
+                      : isGvjbClient
+                        ? "hover:bg-amber-500 hover:border-amber-300 active:scale-95"
+                        : "hover:bg-lightmain hover:border-gray-300 active:scale-95"
                     }`}
                 >
                   <SlControlRewind /> Previous
@@ -431,10 +448,15 @@ export default function CourseContent() {
                 <button
                   onClick={goToNext}
                   disabled={!selectedItem}
-                  className={`flex items-center gap-2 py-2 rounded-md border justify-center transition-all duration-200 text-xs bg-maincolor text-white w-20
+                  className={`flex items-center gap-2 py-2 rounded-md border justify-center transition-all duration-200 text-xs w-20 ${isGvjbClient
+                    ? "bg-amber-400 text-slate-900 border-amber-200"
+                    : "bg-maincolor text-white"
+                    }
           ${!selectedItem
                       ? "opacity-40 cursor-not-allowed"
-                      : "hover:bg-lightmain hover:border-gray-300 active:scale-95"
+                      : isGvjbClient
+                        ? "hover:bg-amber-500 hover:border-amber-300 active:scale-95"
+                        : "hover:bg-lightmain hover:border-gray-300 active:scale-95"
                     }`}
                 >
                   Next <SlControlPlay />
@@ -447,7 +469,10 @@ export default function CourseContent() {
               <button
                 onClick={goToPrevious}
                 disabled={!selectedItem || isFirstItem}
-                className={`p-2 rounded-md border bg-maincolor text-white
+                className={`p-2 rounded-md border ${isGvjbClient
+                  ? "bg-amber-400 text-slate-900 border-amber-200"
+                  : "bg-maincolor text-white"
+                  }
         ${!selectedItem || isFirstItem
                     ? "opacity-40 cursor-not-allowed"
                     : "active:scale-95"
@@ -460,7 +485,10 @@ export default function CourseContent() {
               <button
                 onClick={goToNext}
                 disabled={!selectedItem}
-                className={`p-2 rounded-md border bg-maincolor text-white
+                className={`p-2 rounded-md border ${isGvjbClient
+                  ? "bg-amber-400 text-slate-900 border-amber-200"
+                  : "bg-maincolor text-white"
+                  }
         ${!selectedItem
                     ? "opacity-40 cursor-not-allowed"
                     : "active:scale-95"
@@ -487,13 +515,13 @@ export default function CourseContent() {
       {/* ✅ ADD ITEM MODAL */}
       {showAddItemModal && (
         <div className="fixed inset-0 bg-black/40 flex justify-center items-center">
-          <div className="bg-white w-96 p-6 rounded shadow-lg">
+          <div className={`bg-white w-96 p-6 rounded shadow-lg ${isGvjbClient ? "border border-amber-100" : ""}`}>
             <h3 className="text-lg font-semibold mb-4">Add Item</h3>
 
             <select
               value={itemType}
               onChange={(e) => setItemType(e.target.value)}
-              className="w-full p-2 border rounded mb-3"
+              className={`w-full p-2 border rounded mb-3 ${isGvjbClient ? "border-amber-200" : "border-gray-300"}`}
             >
               {ITEM_TYPES.filter((t) => t.value !== "folder").map((t) => (
                 <option key={t.value} value={t.value}>
@@ -507,7 +535,7 @@ export default function CourseContent() {
               value={itemTitle}
               onChange={(e) => setItemTitle(e.target.value)}
               placeholder="Topic Name"
-              className="w-full p-2 border rounded mb-3"
+              className={`w-full p-2 border rounded mb-3 ${isGvjbClient ? "border-amber-200" : "border-gray-300"}`}
             />
 
             {URL_ONLY_TYPES.includes(itemType) && (
@@ -516,7 +544,7 @@ export default function CourseContent() {
                 value={publicUrl}
                 onChange={(e) => setPublicUrl(e.target.value)}
                 placeholder="Enter external link (https://...)"
-                className="w-full p-2 border rounded mb-3"
+                className={`w-full p-2 border rounded mb-3 ${isGvjbClient ? "border-amber-200" : "border-gray-300"}`}
               />
             )}
 
@@ -525,14 +553,14 @@ export default function CourseContent() {
               <input
                 type="file"
                 onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
-                className="w-full p-2 border rounded mb-3"
+                className={`w-full p-2 border rounded mb-3 ${isGvjbClient ? "border-amber-200" : "border-gray-300"}`}
               />
             )}
 
             <div className="flex justify-end gap-3 mt-4">
               <button
                 onClick={() => setShowAddItemModal(false)}
-                className="px-4 py-2 border rounded"
+                className={`px-4 py-2 border rounded ${isGvjbClient ? "border-amber-200 hover:bg-amber-50" : "border-gray-300 hover:bg-gray-50"}`}
               >
                 Cancel
               </button>
@@ -543,7 +571,7 @@ export default function CourseContent() {
                     handleAddItem(selectedChapter);
                   }
                 }}
-                className="px-4 py-2 bg-blue-900 text-white rounded"
+                className={`px-4 py-2 rounded ${isGvjbClient ? "bg-amber-400 text-slate-900 hover:bg-amber-500" : "bg-blue-900 text-white hover:bg-blue-700"}`}
               >
                 Add
               </button>
@@ -555,7 +583,7 @@ export default function CourseContent() {
       {/* ✅ ADD CHAPTER MODAL */}
       {addingChapter && (
         <div className="fixed inset-0 bg-black/40 flex justify-center items-center">
-          <div className="bg-white w-96 p-6 rounded shadow-lg">
+          <div className={`bg-white w-96 p-6 rounded shadow-lg ${isGvjbClient ? "border border-amber-100" : ""}`}>
             <h3 className="text-lg font-semibold mb-4">Add Chapter</h3>
 
             <input
@@ -563,20 +591,20 @@ export default function CourseContent() {
               value={chapterTitle}
               onChange={(e) => setChapterTitle(e.target.value)}
               placeholder="Chapter title"
-              className="w-full p-2 border rounded mb-3"
+              className={`w-full p-2 border rounded mb-3 ${isGvjbClient ? "border-amber-200" : "border-gray-300"}`}
             />
 
             <div className="flex justify-end gap-3 mt-4">
               <button
                 onClick={() => setAddingChapter(false)}
-                className="px-4 py-2 border rounded"
+                className={`px-4 py-2 border rounded ${isGvjbClient ? "border-amber-200 hover:bg-amber-50" : "border-gray-300 hover:bg-gray-50"}`}
               >
                 Cancel
               </button>
 
               <button
                 onClick={handleAddChapter}
-                className="px-4 py-2 bg-blue-900 text-white rounded"
+                className={`px-4 py-2 rounded ${isGvjbClient ? "bg-amber-400 text-slate-900 hover:bg-amber-500" : "bg-blue-900 text-white hover:bg-blue-700"}`}
               >
                 Add
               </button>
@@ -586,7 +614,7 @@ export default function CourseContent() {
       )}
       {showUpdateFileModal && (
         <div className="fixed inset-0 bg-black/40 flex justify-center items-center z-50">
-          <div className="bg-white w-96 p-6 rounded shadow-lg">
+          <div className={`bg-white w-96 p-6 rounded shadow-lg ${isGvjbClient ? "border border-amber-100" : ""}`}>
 
             <h3 className="text-lg font-semibold mb-4">
               Update Item – {itemToUpdate?.title}
@@ -602,7 +630,7 @@ export default function CourseContent() {
                   prev ? { ...prev, title: e.target.value } : null
                 )
               }
-              className="w-full p-2 border rounded mb-4"
+              className={`w-full p-2 border rounded mb-4 ${isGvjbClient ? "border-amber-200" : "border-gray-300"}`}
             />
 
             {/* ⭐ Replace File */}
@@ -614,7 +642,7 @@ export default function CourseContent() {
             <input
               type="file"
               onChange={(e) => setNewFile(e.target.files?.[0] || null)}
-              className="w-full p-2 border rounded mb-4"
+              className={`w-full p-2 border rounded mb-4 ${isGvjbClient ? "border-amber-200" : "border-gray-300"}`}
             />
             <p className="text-xs text-gray-500 mt-1">
               Uploading a different file type will automatically change the content type.
@@ -624,7 +652,7 @@ export default function CourseContent() {
               <button
                 onClick={() => !isUpdating && setShowUpdateFileModal(false)}
                 disabled={isUpdating}
-                className="px-4 py-2 border rounded disabled:opacity-50"
+                className={`px-4 py-2 border rounded disabled:opacity-50 ${isGvjbClient ? "border-amber-200 hover:bg-amber-50" : "border-gray-300 hover:bg-gray-50"}`}
               >
                 Cancel
               </button>
@@ -633,8 +661,7 @@ export default function CourseContent() {
               <button
                 onClick={handleReplaceFile}
                 disabled={isUpdating}
-                className={`px-4 py-2 rounded text-white 
-    ${isUpdating ? "bg-gray-400 cursor-not-allowed" : "bg-maincolor hover:bg-lightmain"}
+                className={`px-4 py-2 rounded ${isUpdating ? "bg-gray-400 cursor-not-allowed text-white" : isGvjbClient ? "bg-amber-400 text-slate-900 hover:bg-amber-500" : "bg-maincolor text-white hover:bg-lightmain"}
   `}
               >
                 {isUpdating ? (

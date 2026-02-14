@@ -1,12 +1,40 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
 import api from '../../services/api';
-import logo from "/logo.png"; // adjust path if needed
+import spectropyLogo from "/logo.png";
+import gvjbLogo from "/gvjb.png";
 import { PiUsersBold } from "react-icons/pi";
 
 export default function EnrollUsers() {
   const { courseId } = useParams<{ courseId: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isGvjbClient = user?.role === 'client_admin';
+  const brandLogo = isGvjbClient ? gvjbLogo : spectropyLogo;
+  const shellClass = isGvjbClient
+    ? 'min-h-screen bg-[radial-gradient(circle_at_top,_#fff7ed,_#ffffff_45%,_#fef9f3_100%)] text-slate-900'
+    : '';
+  const layoutClass = isGvjbClient
+    ? 'flex min-h-screen flex-col lg:flex-row'
+    : 'flex h-screen bg-gray-50';
+  const sidebarThemeClass = isGvjbClient
+    ? 'bg-white/90 border-amber-100 backdrop-blur'
+    : 'bg-white border-gray-200';
+  const sidebarHeaderBorder = isGvjbClient ? 'border-amber-100' : 'border-gray-200';
+  const navActiveClass = isGvjbClient
+    ? 'bg-amber-100 text-amber-900 border-l-4 border-amber-600'
+    : 'bg-blue-50 text-blue-900 border-l-4 border-blue-900';
+  const navInactiveClass = isGvjbClient
+    ? 'text-slate-700 hover:bg-amber-50'
+    : 'text-gray-700 hover:bg-gray-100';
+  const navIconClass = isGvjbClient
+    ? 'text-lg text-amber-700'
+    : 'text-lg text-black';
+  const headerBorderClass = isGvjbClient ? 'border-amber-100' : 'border-gray-200';
+  const primaryButtonClass = isGvjbClient
+    ? 'bg-amber-400 text-slate-900 hover:bg-amber-500'
+    : 'bg-blue-900 text-white hover:bg-blue-700';
 
   const [role, setRole] = useState<'student' | 'teacher' | null>(null);
   const [email, setEmail] = useState('');
@@ -154,56 +182,65 @@ const handleUpdateRole = async (userId: number, currentRole: 'student' | 'teache
   };
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className={shellClass}>
+    <div className={layoutClass}>
       {/* Left Sidebar */}
-      <div className="w-64 bg-white border-r border-gray-200 flex flex-col">
+      <div className={`w-64 lg:w-72 border-r flex flex-col ${sidebarThemeClass}`}>
         {/* Logo/Brand */}
-        <div className="p-6 border-b border-gray-200">
+        <div className={`p-6 border-b ${sidebarHeaderBorder}`}>
           <div className="flex items-center space-x-2 cursor-pointer">
                 <img
-                    src={logo}
-                    alt="Spectropy Logo"
+                    src={brandLogo}
+                    alt="Brand Logo"
                     className="h-10 w-auto md:h-10 lg:h-12 rounded-md"
                 />
             </div>
+          {isGvjbClient && (
+            <p className="text-xs uppercase tracking-[0.3em] text-amber-700 mt-2">
+              GVB
+            </p>
+          )}
           <h1 className="text-lg font-semibold">Enroll Users</h1>
         </div>
 
         {/* Role Selection */}
-        <nav className="flex-1 p-4 space-y-1">
+        <nav className={`flex-1 p-4 ${isGvjbClient ? 'space-y-2' : 'space-y-1'}`}>
           <button
             onClick={() => setRole('student')}
-            className={`w-full flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors ${
+            className={`w-full flex items-center px-4 py-3 text-sm font-medium ${isGvjbClient ? 'rounded-2xl' : 'rounded-lg'} transition-colors ${
               role === 'student'
-                ? 'bg-blue-50 text-blue-900 border-l-4 border-blue-900'
-                : 'text-gray-700 hover:bg-gray-100'
+                ? navActiveClass
+                : navInactiveClass
             }`}
           >
           <div className="flex items-center space-x-2">
-                              <PiUsersBold  className="text-lg text-black"/>
+                              <PiUsersBold  className={navIconClass}/>
                               <span>Enroll student</span>
                               </div>
           </button>
           <button
             onClick={() => setRole('teacher')}
-            className={`w-full flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors ${
+            className={`w-full flex items-center px-4 py-3 text-sm font-medium ${isGvjbClient ? 'rounded-2xl' : 'rounded-lg'} transition-colors ${
               role === 'teacher'
-                ? 'bg-blue-50 text-blue-900 border-l-4 border-blue-900'
-                : 'text-gray-700 hover:bg-gray-100'
+                ? navActiveClass
+                : navInactiveClass
             }`}
           >
             <div className="flex items-center space-x-2">
-                              <PiUsersBold  className="text-lg text-black"/>
+                              <PiUsersBold  className={navIconClass}/>
                               <span>Enroll Teacher</span>
                               </div>
           </button>
         </nav>
 
         {/* Footer */}
-        <div className="p-4 border-t border-gray-200">
+        <div className={`border-t ${isGvjbClient ? 'border-amber-100 px-4 py-2 mt-auto' : 'border-gray-200 p-4'}`}>
           <button
             onClick={handleBack}
-            className="w-full flex items-center justify-center px-4 py-2 text-sm text-blue-900 hover:text-blue-600"
+            className={`w-full flex items-center justify-center ${isGvjbClient
+              ? 'rounded-full border border-amber-200 px-3 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-50'
+              : 'px-4 py-2 text-sm text-blue-900 hover:text-blue-600'
+              }`}
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -227,7 +264,7 @@ const handleUpdateRole = async (userId: number, currentRole: 'student' | 'teache
       {/* Right Panel - Content Area */}
       <div className="flex-1 overflow-y-auto">
         {/* Header */}
-        <div className="p-6 border-b border-gray-200">
+        <div className={`p-6 border-b ${headerBorderClass} ${isGvjbClient ? 'bg-white/70 backdrop-blur' : 'bg-white'}`}>
           <div className="flex justify-between items-center">
             <div>
               <h1 className="text-2xl font-bold">
@@ -235,7 +272,7 @@ const handleUpdateRole = async (userId: number, currentRole: 'student' | 'teache
                 {role === 'teacher' && 'Enroll Teacher'}
                 {!role && 'Manage Enrollments'}
               </h1>
-              <p className="text-gray-600 mt-1">
+              <p className={`${isGvjbClient ? 'text-slate-600' : 'text-gray-600'} mt-1`}>
                 {role === 'student' &&
                   'Add students to this course by entering their email.'}
                 {role === 'teacher' &&
@@ -247,7 +284,7 @@ const handleUpdateRole = async (userId: number, currentRole: 'student' | 'teache
             {role && (
               <button
                 onClick={() => setShowModal(true)}
-                className="bg-blue-900 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2"
+                className={`px-4 py-2 ${isGvjbClient ? 'rounded-full' : 'rounded-lg'} flex items-center gap-2 ${primaryButtonClass}`}
               >
                 Add User
               </button>
@@ -270,7 +307,7 @@ const handleUpdateRole = async (userId: number, currentRole: 'student' | 'teache
                {displayedEnrollments.map((enrollment) => (
   <div
     key={enrollment.user_id}
-    className="flex justify-between items-center p-4 bg-white rounded-lg border border-gray-200 relative"
+    className={`flex justify-between items-center p-4 bg-white rounded-lg border relative ${isGvjbClient ? 'border-amber-100' : 'border-gray-200'}`}
   >
     {/* User Info */}
     <div className="flex-1 min-w-0">
@@ -280,7 +317,7 @@ const handleUpdateRole = async (userId: number, currentRole: 'student' | 'teache
 
     {/* Role Badge + Menu */}
     <div className="flex items-center gap-2 ml-4">
-      <span className="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800 capitalize">
+      <span className={`px-2 py-1 text-xs font-semibold rounded-full capitalize ${isGvjbClient ? 'bg-amber-100 text-amber-900' : 'bg-blue-100 text-blue-800'}`}>
         {enrollment.role}
       </span>
 
@@ -291,22 +328,22 @@ const handleUpdateRole = async (userId: number, currentRole: 'student' | 'teache
             e.stopPropagation();
             setOpenMenuUserId((prev) => (prev === enrollment.user_id ? null : enrollment.user_id));
           }}
-          className="w-6 h-6 flex items-center justify-center text-gray-500 rounded hover:bg-gray-100"
-          aria-label="User actions"
-        >
+        className={`w-6 h-6 flex items-center justify-center text-gray-500 rounded ${isGvjbClient ? 'hover:bg-amber-50' : 'hover:bg-gray-100'}`}
+        aria-label="User actions"
+      >
           ⋮
         </button>
 
         {/* Dropdown */}
         {openMenuUserId === enrollment.user_id && (
           <div
-            className="absolute right-0 mt-1 w-44 bg-white border border-gray-200 rounded-md shadow-lg py-1 z-10"
+            className={`absolute right-0 mt-1 w-44 bg-white border rounded-md shadow-lg py-1 z-10 ${isGvjbClient ? 'border-amber-200' : 'border-gray-200'}`}
             onClick={(e) => e.stopPropagation()}
           >
             <button
               onClick={() => handleUpdateRole(enrollment.user_id, enrollment.role)}
               disabled={updatingUserId === enrollment.user_id}
-              className="w-full text-left px-3 py-1.5 text-sm hover:bg-gray-100 flex items-center gap-2 disabled:opacity-50"
+              className={`w-full text-left px-3 py-1.5 text-sm flex items-center gap-2 disabled:opacity-50 ${isGvjbClient ? 'hover:bg-amber-50' : 'hover:bg-gray-100'}`}
             >
               🔄 Change Role
             </button>
@@ -331,7 +368,7 @@ const handleUpdateRole = async (userId: number, currentRole: 'student' | 'teache
       {/* Email Input Modal */}
       {showModal && role && (
         <div className="fixed inset-0 bg-black/40 flex justify-center items-center z-50">
-          <div className="bg-white rounded-lg w-full max-w-md">
+          <div className={`bg-white rounded-lg w-full max-w-md ${isGvjbClient ? 'border border-amber-100' : ''}`}>
             <div className="p-6">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-lg font-medium">
@@ -342,7 +379,7 @@ const handleUpdateRole = async (userId: number, currentRole: 'student' | 'teache
                     setShowModal(false);
                     setMessage(null);
                   }}
-                  className="text-gray-500 hover:text-gray-700"
+                  className={isGvjbClient ? 'text-amber-700 hover:text-amber-800' : 'text-gray-500 hover:text-gray-700'}
                 >
                   ✕
                 </button>
@@ -367,7 +404,7 @@ const handleUpdateRole = async (userId: number, currentRole: 'student' | 'teache
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full p-2 border rounded"
+                    className={`w-full p-2 border rounded ${isGvjbClient ? 'border-amber-200' : 'border-gray-300'}`}
                     placeholder={`e.g. ${role}@example.com`}
                     required
                     autoFocus
@@ -381,14 +418,14 @@ const handleUpdateRole = async (userId: number, currentRole: 'student' | 'teache
                       setShowModal(false);
                       setMessage(null);
                     }}
-                    className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded"
+                    className={`px-4 py-2 rounded ${isGvjbClient ? 'text-amber-800 hover:bg-amber-50' : 'text-gray-700 hover:bg-gray-100'}`}
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={submitting}
-                    className="bg-blue-900 text-white px-5 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium"
+                    className={`px-5 py-2 ${isGvjbClient ? 'rounded-full' : 'rounded-lg'} disabled:opacity-50 font-medium ${primaryButtonClass}`}
                   >
                     {submitting ? 'Enrolling...' : 'Enroll'}
                   </button>
@@ -398,6 +435,7 @@ const handleUpdateRole = async (userId: number, currentRole: 'student' | 'teache
           </div>
         </div>
       )}
+    </div>
     </div>
   );
 }

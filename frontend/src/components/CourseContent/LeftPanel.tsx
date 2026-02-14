@@ -56,6 +56,7 @@ interface Props {
     onReorderItems: (chapterId: number, newItems: CourseItem[]) => void;
     onUpdateFile: (item: CourseItem) => void;
     selectedItemId?: number;
+    isGvjbClient?: boolean;
 }
 
 const LeftPanel: React.FC<Props> = ({
@@ -68,6 +69,7 @@ const LeftPanel: React.FC<Props> = ({
     onReorderItems,
     onUpdateFile,
     selectedItemId,
+    isGvjbClient = false,
 }) => {
     const [expanded, setExpanded] = useState<number | null>(null);
     const [openMenu, setOpenMenu] = useState<number | null>(null);
@@ -227,15 +229,20 @@ const LeftPanel: React.FC<Props> = ({
     };
 
     return (
-        <div className="w-full h-full bg-white border-r border-gray-200  flex flex-col">
+        <div
+            className={`w-full h-full border-r flex flex-col ${isGvjbClient
+                ? "bg-white/90 border-amber-100"
+                : "bg-white border-gray-200"
+                }`}
+        >
 
             {/* Header WITHOUT Add Chapter button */}
-            <div className=" py-2 border-b border-gray-200 shrink-0 flex justify-between items-center flex-col    ">
+            <div className={` py-2 border-b shrink-0 flex justify-between items-center flex-col ${isGvjbClient ? "border-amber-100" : "border-gray-200"}`}>
                 {/* LEFT SIDE — BACK */}
-                <div className="px-4 py-3 border-b border-gray-200 shrink-0 flex justify-between items-center w-full">
+                <div className={`px-4 py-3 border-b shrink-0 flex justify-between items-center w-full ${isGvjbClient ? "border-amber-100" : "border-gray-200"}`}>
                     <button
                         onClick={() => navigate("/admin/dashboard")}
-                        className="text-lg hover:text-lightmain"
+                        className={`text-lg ${isGvjbClient ? "hover:text-amber-700" : "hover:text-lightmain"}`}
                     >
                         <AiOutlineArrowLeft />
                     </button>
@@ -270,7 +277,7 @@ const LeftPanel: React.FC<Props> = ({
 
                                             {/* Chapter Header */}
                                             <div
-                                                className="flex justify-between items-center px-2 py-2 hover:bg-gray-50 rounded-t-lg "
+                                                className={`flex justify-between items-center px-2 py-2 rounded-t-lg ${isGvjbClient ? "hover:bg-amber-50" : "hover:bg-gray-50"}`}
                                             >
                                                 <div
                                                     {...dragProvided.dragHandleProps}
@@ -297,11 +304,11 @@ const LeftPanel: React.FC<Props> = ({
                                                     <BsThreeDotsVertical className="text-gray-600 hover:text-black cursor-pointer" />
 
                                                     {openMenu === chapter.id && (
-                                                        <div className="absolute right-0 top-6 bg-white border shadow-md rounded-md w-40 z-20">
+                                                        <div className={`absolute right-0 top-6 bg-white border shadow-md rounded-md w-40 z-20 ${isGvjbClient ? "border-amber-200" : "border-gray-200"}`}>
 
                                                             {/* Rename */}
                                                             <button
-                                                                className="block w-full px-3 py-2 text-left hover:bg-gray-100 text-sm"
+                                                                className={`block w-full px-3 py-2 text-left text-sm ${isGvjbClient ? "hover:bg-amber-50" : "hover:bg-gray-100"}`}
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
                                                                     setOpenMenu(null);
@@ -317,7 +324,7 @@ const LeftPanel: React.FC<Props> = ({
 
                                                             {/* Delete */}
                                                             <button
-                                                                className="block w-full px-3 py-2 text-left hover:bg-gray-100 text-sm text-red-600"
+                                                                className={`block w-full px-3 py-2 text-left text-sm text-red-600 ${isGvjbClient ? "hover:bg-amber-50" : "hover:bg-gray-100"}`}
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
                                                                     setOpenMenu(null);
@@ -340,7 +347,7 @@ const LeftPanel: React.FC<Props> = ({
                                                 >
                                                     {(dropProvided) => (
                                                         <div
-                                                            className="px-4 py-2 bg-white border-t border-gray-300"
+                                                            className={`px-4 py-2 bg-white border-t ${isGvjbClient ? "border-amber-200" : "border-gray-300"}`}
                                                             ref={dropProvided.innerRef}
                                                             {...dropProvided.droppableProps}
                                                         >
@@ -358,8 +365,12 @@ const LeftPanel: React.FC<Props> = ({
                                                                             onClick={() => onSelectItem(item)}
                                                                             className={`flex justify-between items-center p-1 my-1 relative group cursor-pointer 
                                                                                     ${selectedItemId === item.id
-                                                                                    ? "bg-blue-100 border border-blue-200 rounded"
-                                                                                    : "hover:bg-blue-50 hover:rounded"
+                                                                                    ? isGvjbClient
+                                                                                        ? "bg-amber-100 border border-amber-200 rounded"
+                                                                                        : "bg-blue-100 border border-blue-200 rounded"
+                                                                                    : isGvjbClient
+                                                                                        ? "hover:bg-amber-50 hover:rounded"
+                                                                                        : "hover:bg-blue-50 hover:rounded"
                                                                                 }
 `}
                                                                         >
@@ -383,11 +394,11 @@ const LeftPanel: React.FC<Props> = ({
                                                                             </div>
 
                                                                             {openItemMenu === item.id && (
-                                                                                <div className="absolute right-2 top-10 w-40 bg-white shadow-md border rounded-md z-50">
+                                                                                <div className={`absolute right-2 top-10 w-40 bg-white shadow-md border rounded-md z-50 ${isGvjbClient ? "border-amber-200" : "border-gray-200"}`}>
 
                                                                                     {/* Rename */}
                                                                                     <button
-                                                                                        className="w-full text-left px-3 py-2 hover:bg-gray-100 text-sm"
+                                                                                        className={`w-full text-left px-3 py-2 text-sm ${isGvjbClient ? "hover:bg-amber-50" : "hover:bg-gray-100"}`}
                                                                                         onClick={(e) => {
                                                                                             e.stopPropagation();
                                                                                             setOpenItemMenu(null);
@@ -403,7 +414,7 @@ const LeftPanel: React.FC<Props> = ({
 
                                                                                     {/* Update / Replace file */}
                                                                                     <button
-                                                                                        className="w-full text-left px-3 py-2 hover:bg-gray-100 text-sm"
+                                                                                        className={`w-full text-left px-3 py-2 text-sm ${isGvjbClient ? "hover:bg-amber-50" : "hover:bg-gray-100"}`}
                                                                                         onClick={(e) => {
                                                                                             e.stopPropagation();
                                                                                             setOpenItemMenu(null);
@@ -418,7 +429,7 @@ const LeftPanel: React.FC<Props> = ({
 
                                                                                     {/* Delete */}
                                                                                     <button
-                                                                                        className="w-full text-left px-3 py-2 hover:bg-gray-100 text-sm text-red-600"
+                                                                                        className={`w-full text-left px-3 py-2 text-sm text-red-600 ${isGvjbClient ? "hover:bg-amber-50" : "hover:bg-gray-100"}`}
                                                                                         onClick={(e) => {
                                                                                             e.stopPropagation();
                                                                                             setOpenItemMenu(null);
@@ -439,7 +450,7 @@ const LeftPanel: React.FC<Props> = ({
 
                                                             <button
                                                                 onClick={() => onAddItem(chapter.id)}
-                                                                className="text-blue-600 text-sm mt-2 hover:underline "
+                                                                className={`text-sm mt-2 hover:underline ${isGvjbClient ? "text-amber-700" : "text-blue-600"}`}
                                                             >
                                                                 + Add Topic
                                                             </button>
@@ -459,10 +470,10 @@ const LeftPanel: React.FC<Props> = ({
             </DragDropContext>
 
             {/* Bottom Add Chapter button */}
-            <div className="p-3 border-t border-gray-200 shrink-0">
+            <div className={`p-3 border-t shrink-0 ${isGvjbClient ? "border-amber-100" : "border-gray-200"}`}>
                 <button
                     onClick={onAddChapter}
-                    className="flex items-center gap-1 px-3 py-2 bg-maincolor hover:bg-lightmain text-white rounded-md w-full justify-center"
+                    className={`flex items-center gap-1 px-3 py-2 rounded-md w-full justify-center ${isGvjbClient ? "bg-amber-400 text-slate-900 hover:bg-amber-500" : "bg-maincolor hover:bg-lightmain text-white"}`}
                 >
                     <MdAdd className="text-lg" />
                     Add Chapter

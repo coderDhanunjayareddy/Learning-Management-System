@@ -1,5 +1,20 @@
 import pool from "../config/db.js"; // or your db connection
 
+const hasCourseAccess = async (courseId, req) => {
+  const role = req.user?.role;
+  const clientId = req.user?.client_id;
+  const shouldScope = Boolean(clientId) && role !== 'super_admin';
+
+  if (!shouldScope) return true;
+
+  const result = await pool.query(
+    'SELECT 1 FROM courses WHERE id = $1 AND client_id = $2',
+    [courseId, clientId]
+  );
+
+  return result.rows.length > 0;
+};
+
 // POST /admin/courses/:courseId/enrollments
 export const enrollUserByEmail = async (req, res) => {
   const { courseId } = req.params;
@@ -17,18 +32,30 @@ export const enrollUserByEmail = async (req, res) => {
   const client = await pool.connect();
 
   try {
+    const allowed = await hasCourseAccess(courseId, req);
+    if (!allowed) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
     await client.query('BEGIN');
 
     // 1. Find user by email (case-insensitive)
     const userResult = await client.query(
-      'SELECT id FROM users WHERE LOWER(email) = LOWER($1)',
+      'SELECT id, client_id FROM users WHERE LOWER(email) = LOWER($1)',
       [email.trim()]
     );
 
     if (userResult.rows.length === 0) {
       throw new Error('User not found. Please ensure the user exists.');
     }
-    const userId = userResult.rows[0].id;
+    const { id: userId, client_id: userClientId } = userResult.rows[0];
+    const requesterClientId = req.user?.client_id;
+    const requesterRole = req.user?.role;
+    const shouldScope = Boolean(requesterClientId) && requesterRole !== 'super_admin';
+    if (shouldScope && userClientId !== requesterClientId) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'User does not belong to this client.' });
+    }
 
     // 2. Check if already enrolled in this course
     const existingEnrollment = await client.query(
@@ -80,21 +107,30 @@ export const getCourseEnrollments = async (req, res) => {
   }
 
   try {
-    const result = await pool.query(
-      `
-        SELECT 
-          u.id AS user_id,
-          u.full_name AS name,
-          u.email,
-          e.role,
-          e.enrolled_at
-        FROM enrollments e
-        JOIN users u ON e.user_id = u.id
-        WHERE e.course_id = $1
-        ORDER BY e.role, u.email
-      `,
-      [courseIdInt]
-    );
+    const allowed = await hasCourseAccess(courseIdInt, req);
+    if (!allowed) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const requesterClientId = req.user?.client_id;
+    const requesterRole = req.user?.role;
+    const shouldScope = Boolean(requesterClientId) && requesterRole !== 'super_admin';
+
+    const query = `
+      SELECT 
+        u.id AS user_id,
+        u.full_name AS name,
+        u.email,
+        e.role,
+        e.enrolled_at
+      FROM enrollments e
+      JOIN users u ON e.user_id = u.id
+      WHERE e.course_id = $1
+      ${shouldScope ? 'AND u.client_id = $2' : ''}
+      ORDER BY e.role, u.email
+    `;
+    const params = shouldScope ? [courseIdInt, requesterClientId] : [courseIdInt];
+    const result = await pool.query(query, params);
 
     res.json(result.rows);
   } catch (err) {
@@ -128,18 +164,32 @@ export const getCourseEnrollments = async (req, res) => {
 export const getStudentCourse = async (req, res) => {
   const { courseId } = req.params;
   const userId = req.user.id;
+  const userRole = req.user?.role;
 
   try {
-    // 1. Verify enrollment + course published
-    const enrollment = await pool.query(
-      `
-        SELECT e.role, c.published, c.title, c.description
-        FROM enrollments e
-        JOIN courses c ON e.course_id = c.id
-        WHERE e.user_id = $1 AND e.course_id = $2 AND e.role = 'student' AND c.published = true
-      `,
-      [userId, courseId]
-    );
+    // 1. Verify enrollment (student must be published, teacher can view unpublished)
+    let enrollment;
+    if (userRole === 'teacher') {
+      enrollment = await pool.query(
+        `
+          SELECT e.role, c.published, c.title, c.description
+          FROM enrollments e
+          JOIN courses c ON e.course_id = c.id
+          WHERE e.user_id = $1 AND e.course_id = $2 AND e.role = 'teacher'
+        `,
+        [userId, courseId]
+      );
+    } else {
+      enrollment = await pool.query(
+        `
+          SELECT e.role, c.published, c.title, c.description
+          FROM enrollments e
+          JOIN courses c ON e.course_id = c.id
+          WHERE e.user_id = $1 AND e.course_id = $2 AND e.role = 'student' AND c.published = true
+        `,
+        [userId, courseId]
+      );
+    }
 
     if (enrollment.rows.length === 0) {
       return res.status(403).json({ error: 'Access denied or course not published' });
@@ -264,23 +314,43 @@ export const getStudentCourse = async (req, res) => {
 export const getStudentEnrolledCourses = async (req, res) => {
   try {
     const userId = req.user.id; // Make sure your auth middleware sets req.user
+    const userRole = req.user?.role;
 
-    const result = await pool.query(
-      `
-        SELECT 
-          c.id,
-          c.title,
-          c.description,
-          e.enrolled_at
-        FROM enrollments e
-        JOIN courses c ON e.course_id = c.id
-        WHERE e.user_id = $1 
-          AND e.role = 'student'
-          AND c.published = true
-        ORDER BY e.enrolled_at DESC
-      `,
-      [userId]
-    );
+    let result;
+    if (userRole === 'teacher') {
+      result = await pool.query(
+        `
+          SELECT 
+            c.id,
+            c.title,
+            c.description,
+            e.enrolled_at
+          FROM enrollments e
+          JOIN courses c ON e.course_id = c.id
+          WHERE e.user_id = $1 
+            AND e.role = 'teacher'
+          ORDER BY e.enrolled_at DESC
+        `,
+        [userId]
+      );
+    } else {
+      result = await pool.query(
+        `
+          SELECT 
+            c.id,
+            c.title,
+            c.description,
+            e.enrolled_at
+          FROM enrollments e
+          JOIN courses c ON e.course_id = c.id
+          WHERE e.user_id = $1 
+            AND e.role = 'student'
+            AND c.published = true
+          ORDER BY e.enrolled_at DESC
+        `,
+        [userId]
+      );
+    }
 
     res.json(result.rows);
   } catch (err) {
@@ -346,12 +416,23 @@ export const deleteEnrollment = async (req, res) => {
   const { id: courseId, userId } = req.params;
 
   try {
-    const result = await pool.query(
-      `DELETE FROM enrollments 
-       WHERE course_id = $1 AND user_id = $2 
-       RETURNING *`,
-      [courseId, userId]
-    );
+    const allowed = await hasCourseAccess(courseId, req);
+    if (!allowed) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const requesterClientId = req.user?.client_id;
+    const requesterRole = req.user?.role;
+    const shouldScope = Boolean(requesterClientId) && requesterRole !== 'super_admin';
+
+    const query = `
+      DELETE FROM enrollments 
+      WHERE course_id = $1 AND user_id = $2
+      ${shouldScope ? 'AND user_id IN (SELECT id FROM users WHERE client_id = $3)' : ''}
+      RETURNING *
+    `;
+    const params = shouldScope ? [courseId, userId, requesterClientId] : [courseId, userId];
+    const result = await pool.query(query, params);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Enrollment not found' });
@@ -374,13 +455,24 @@ export const updateEnrollmentRole = async (req, res) => {
   }
 
   try {
-    const result = await pool.query(
-      `UPDATE enrollments 
-       SET role = $1, enrolled_at = NOW()  -- or add updated_at if you have it
-       WHERE course_id = $2 AND user_id = $3 
-       RETURNING *`,
-      [role, courseId, userId]
-    );
+    const allowed = await hasCourseAccess(courseId, req);
+    if (!allowed) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const requesterClientId = req.user?.client_id;
+    const requesterRole = req.user?.role;
+    const shouldScope = Boolean(requesterClientId) && requesterRole !== 'super_admin';
+
+    const query = `
+      UPDATE enrollments 
+      SET role = $1, enrolled_at = NOW()  -- or add updated_at if you have it
+      WHERE course_id = $2 AND user_id = $3
+      ${shouldScope ? 'AND user_id IN (SELECT id FROM users WHERE client_id = $4)' : ''}
+      RETURNING *
+    `;
+    const params = shouldScope ? [role, courseId, userId, requesterClientId] : [role, courseId, userId];
+    const result = await pool.query(query, params);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Enrollment not found' });

@@ -3,7 +3,8 @@ import { useState, useEffect, type SetStateAction, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import api from '../../services/api';
-import logo from "/logo.png";
+import spectropyLogo from "/logo.png";
+import gvjbLogo from "/gvjb.png";
 import { PiUsersBold } from "react-icons/pi";
 import { RiHome2Line } from "react-icons/ri";
 import { BiBookOpen } from "react-icons/bi";
@@ -30,6 +31,51 @@ export default function CourseStudents() {
   // 👇 Add these lines
   const userFullName = user?.full_name || 'Super Administrator';
   const userEmail = user?.email || 'super@lms.com';
+  const isGvjbClient = user?.role === 'client_admin';
+  const brandLogo = isGvjbClient ? gvjbLogo : spectropyLogo;
+  const brandName = isGvjbClient ? 'GVB' : 'Spectropy';
+  const dashboardTitle = isGvjbClient ? 'GVB Dashboard' : 'Admin Dashboard';
+  const homeTitle = isGvjbClient
+    ? 'Welcome to the GVB Dashboard'
+    : 'Welcome to the Admin Dashboard';
+  const clientMeta = isGvjbClient ? 'GVB Client' : null;
+  const shellClass = isGvjbClient
+    ? 'min-h-screen bg-[radial-gradient(circle_at_top,_#fff7ed,_#ffffff_45%,_#fef9f3_100%)] text-slate-900'
+    : 'h-screen bg-gray-50';
+  const layoutClass = isGvjbClient
+    ? 'flex min-h-screen flex-col lg:flex-row'
+    : 'flex h-screen';
+  const sidebarThemeClass = isGvjbClient
+    ? 'bg-white/90 border-amber-100 backdrop-blur'
+    : 'bg-white border-gray-200';
+  const sidebarHeaderBorder = isGvjbClient ? 'border-amber-100' : 'border-gray-200';
+  const navActiveClass = isGvjbClient
+    ? 'bg-amber-100 text-amber-900 border-l-4 border-amber-600'
+    : 'bg-blue-50 text-blue-900 border-l-4 border-blue-900';
+  const navInactiveClass = isGvjbClient
+    ? 'text-slate-700 hover:bg-amber-50'
+    : 'text-gray-700 hover:bg-gray-100';
+  const navRadiusClass = isGvjbClient ? 'rounded-2xl' : 'rounded-lg';
+  const navIconClass = isGvjbClient
+    ? 'text-lg text-amber-700 mr-3'
+    : 'text-lg text-black mr-3';
+  const userInfoWrapperClass = isGvjbClient ? 'px-4 pb-4' : 'mb-3 flex items-center';
+  const userInfoInnerClass = isGvjbClient
+    ? 'flex items-center rounded-2xl border border-amber-100 bg-amber-50 p-3'
+    : 'flex items-center';
+  const avatarClass = isGvjbClient
+    ? 'h-12 w-12 rounded-full bg-amber-200 flex items-center justify-center'
+    : 'h-12 w-12 rounded-full bg-blue-100 flex items-center justify-center ml-1';
+  const avatarTextClass = isGvjbClient
+    ? 'text-amber-900 font-semibold text-xl'
+    : 'text-blue-900 font-medium text-xl';
+  const headerClass = isGvjbClient
+    ? 'sticky top-0 z-40 border-b border-amber-100 bg-white/70 px-6 py-6 backdrop-blur'
+    : 'sticky top-0 z-40 p-6 border-b border-gray-200 bg-white';
+  const primaryButtonClass = isGvjbClient
+    ? 'bg-amber-400 text-slate-900 hover:bg-amber-500'
+    : 'bg-blue-900 text-white hover:bg-blue-700';
+  const secondaryBorderClass = isGvjbClient ? 'border-amber-200' : 'border-gray-300';
 
   const [activeTab, setActiveTab] = useState<'courses' | 'home' | 'users' | 'community'>('courses');
   const [title, setTitle] = useState('');
@@ -227,7 +273,8 @@ export default function CourseStudents() {
   });
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className={shellClass}>
+      <div className={layoutClass}>
       {/* Mobile sidebar overlay */}
       {sidebarOpen && (
         <div
@@ -242,9 +289,9 @@ export default function CourseStudents() {
     fixed md:static
     inset-y-0 left-0
     z-50
-    w-64
-    bg-white
-    border-r border-gray-200
+    w-64 lg:w-72
+    ${sidebarThemeClass}
+    border-r
     flex flex-col
     transform transition-transform duration-300 ease-in-out
     ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
@@ -252,75 +299,94 @@ export default function CourseStudents() {
   `}
       >
 
-        <div className="p-6 border-b border-gray-200">
+        <div className={`p-6 border-b ${sidebarHeaderBorder}`}>
           <div className="flex items-center space-x-2 cursor-pointer">
-            <img src={logo} alt="Spectropy Logo" className="h-10 w-auto md:h-10 lg:h-12 rounded-md" />
+            <img
+              src={brandLogo}
+              alt={`${brandName} Logo`}
+              className="h-10 w-auto md:h-10 lg:h-12 rounded-md"
+            />
           </div>
-          <h1 className="text-lg font-semibold">Admin Dashboard</h1>
+          {isGvjbClient && (
+            <p className="text-xs uppercase tracking-[0.3em] text-amber-700 mt-2">
+              GVB
+            </p>
+          )}
+          <h1 className="text-lg font-semibold">{dashboardTitle}</h1>
         </div>
 
-        <nav className="flex-1 p-4 space-y-1">
+        <nav className={`flex-1 p-4 ${isGvjbClient ? 'space-y-2' : 'space-y-1'}`}>
           <button
             onClick={() => { setActiveTab('home'); setSidebarOpen(false); }}
-            className={`w-full flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors ${activeTab === 'home'
-              ? 'bg-blue-50 text-blue-900 border-l-4 border-blue-900'
-              : 'text-gray-700 hover:bg-gray-100'
+            className={`w-full flex items-center px-4 py-3 text-sm font-medium ${navRadiusClass} transition-colors ${activeTab === 'home'
+              ? navActiveClass
+              : navInactiveClass
               }`}
           >
-            <RiHome2Line className="text-lg text-black mr-3" />
+            <RiHome2Line className={navIconClass} />
             Home
           </button>
 
           <button
             onClick={() => { setActiveTab('courses'); setSidebarOpen(false); }}
-            className={`w-full flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors ${activeTab === 'courses'
-              ? 'bg-blue-50 text-blue-900 border-l-4 border-blue-900'
-              : 'text-gray-700 hover:bg-gray-100'
+            className={`w-full flex items-center px-4 py-3 text-sm font-medium ${navRadiusClass} transition-colors ${activeTab === 'courses'
+              ? navActiveClass
+              : navInactiveClass
               }`}
           >
-            <BiBookOpen className="text-lg text-black mr-3" />
+            <BiBookOpen className={navIconClass} />
             Courses
           </button>
 
           <button
             onClick={() => { setActiveTab('users'); setSidebarOpen(false); }}
-            className={`w-full flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors ${activeTab === 'users'
-              ? 'bg-blue-50 text-blue-900 border-l-4 border-blue-900'
-              : 'text-gray-700 hover:bg-gray-100'
+            className={`w-full flex items-center px-4 py-3 text-sm font-medium ${navRadiusClass} transition-colors ${activeTab === 'users'
+              ? navActiveClass
+              : navInactiveClass
               }`}
           >
-            <PiUsersBold className="text-lg text-black mr-3" />
+            <PiUsersBold className={navIconClass} />
             Users
           </button>
 
           <button
             onClick={() => { setActiveTab('community'); setSidebarOpen(false); }}
-            className={`w-full flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors ${activeTab === 'community'
-              ? 'bg-blue-50 text-blue-900 border-l-4 border-blue-900'
-              : 'text-gray-700 hover:bg-gray-100'
+            className={`w-full flex items-center px-4 py-3 text-sm font-medium ${navRadiusClass} transition-colors ${activeTab === 'community'
+              ? navActiveClass
+              : navInactiveClass
               }`}
           >
-            <PiChatsCircleBold className="text-lg text-black mr-3" />
+            <PiChatsCircleBold className={navIconClass} />
             Community
           </button>
         </nav>
         {/* User Info */}
-        <div className="mb-3 flex items-center">
-          <div className="flex-shrink:0 h-12 w-12 rounded-full bg-blue-100 flex items-center justify-center ml-1">
-            <span className="text-blue-900 font-medium text-xl">
-              {userFullName?.charAt(0).toUpperCase() || 'U'}
-            </span>
-          </div>
-          <div className="ml-3">
-            <p className="text-m font-medium text-gray-900 truncate">{userFullName}</p>
-            <p className="text-xs text-gray-500 truncate">{userEmail}</p>
+        <div className={userInfoWrapperClass}>
+          <div className={userInfoInnerClass}>
+            <div className={avatarClass}>
+              <span className={avatarTextClass}>
+                {userFullName?.charAt(0).toUpperCase() || 'U'}
+              </span>
+            </div>
+            <div className="ml-3">
+              <p className="text-m font-medium text-gray-900 truncate">{userFullName}</p>
+              <p className="text-xs text-gray-500 truncate">{userEmail}</p>
+              {clientMeta && (
+                <p className="text-[11px] text-gray-500 truncate">{clientMeta}</p>
+              )}
+            </div>
           </div>
         </div>
 
-        <div className="p-4 border-t border-gray-200">
+        <div
+          className={`border-t ${isGvjbClient ? 'mt-auto border-amber-100 px-4 py-2' : 'border-gray-200 p-4'}`}
+        >
           <button
             onClick={handleBackToLogin}
-            className="w-full flex items-center justify-center px-4 py-2 text-sm text-blue-900 hover:text-blue-600"
+            className={`w-full flex items-center justify-center ${isGvjbClient
+              ? 'rounded-full border border-amber-200 px-3 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-50'
+              : 'px-4 py-2 text-sm text-blue-900 hover:text-blue-600'
+              }`}
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -339,11 +405,11 @@ export default function CourseStudents() {
       {/* Right Panel */}
       <div className="flex-1 overflow-y-auto">
         {/* Header */}
-        <div className="sticky top-0 z-40 p-6 border-b border-gray-200 bg-white">
+        <div className={headerClass}>
 
           <button
             onClick={() => setSidebarOpen(true)}
-            className="md:hidden mr-3 p-2 rounded-lg border border-gray-300"
+            className={`md:hidden mr-3 p-2 rounded-lg border ${secondaryBorderClass}`}
             aria-label="Open menu"
           >
             ☰
@@ -354,12 +420,12 @@ export default function CourseStudents() {
             <div>
               <h1 className="text-xl md:text-2xl font-bold">
                 {activeTab === 'courses' && 'Courses'}
-                {activeTab === 'home' && 'Welcome to the Admin Dashboard'}
+                {activeTab === 'home' && homeTitle}
                 {activeTab === 'users' && 'User Management'}
                 {activeTab === 'community' && 'Community'}
               </h1>
 
-              <p className="text-gray-600 mt-1 text-sm md:text-base">
+              <p className={`${isGvjbClient ? 'text-slate-600' : 'text-gray-600'} mt-1 text-sm md:text-base`}>
                 {activeTab === 'courses' && 'Set up your courses and share your knowledge.'}
                 {activeTab === 'home' && 'Key metrics at a glance'}
                 {activeTab === 'users' && 'Manage your users and their activities.'}
@@ -371,7 +437,7 @@ export default function CourseStudents() {
             {activeTab === 'courses' && (
               <button
                 onClick={() => setShowCreateForm(true)}
-                className="bg-blue-900 md:w-auto text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2"
+                className={`md:w-auto px-4 py-2 ${isGvjbClient ? 'rounded-full' : 'rounded-lg'} flex items-center gap-2 ${primaryButtonClass}`}
               >
                 Create Course
               </button>
@@ -391,7 +457,10 @@ export default function CourseStudents() {
                     placeholder="Search by Course Title"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full p-3 pl-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-900 focus:border-transparent"
+                    className={`w-full p-3 pl-10 border rounded-lg focus:outline-none focus:ring-2 ${isGvjbClient
+                      ? 'border-amber-200 focus:ring-amber-400 focus:border-amber-400'
+                      : 'border-gray-300 focus:ring-blue-900 focus:border-transparent'
+                      }`}
                   />
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
@@ -409,7 +478,7 @@ export default function CourseStudents() {
                   <div ref={filterRef} className="relative">
                     <button
                       onClick={() => setShowFilters((prev) => !prev)}
-                      className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-lg text-sm bg-white hover:bg-gray-50"
+                      className={`inline-flex items-center px-4 py-2 border rounded-lg text-sm bg-white ${secondaryBorderClass} ${isGvjbClient ? 'hover:bg-amber-50 text-amber-900' : 'hover:bg-gray-50'}`}
                     >
                       Filters
                       <svg
@@ -425,8 +494,8 @@ export default function CourseStudents() {
                     </button>
 
                     {showFilters && (
-                      <div className="absolute right-0 mt-2 w-56 bg-white border border-gray-200 shadow-lg rounded-lg p-3 z-50">
-                        <label className="text-xs font-semibold text-gray-600">Published Status</label>
+                      <div className={`absolute right-0 mt-2 w-56 bg-white border shadow-lg rounded-lg p-3 z-50 ${isGvjbClient ? 'border-amber-200' : 'border-gray-200'}`}>
+                        <label className={`text-xs font-semibold ${isGvjbClient ? 'text-slate-600' : 'text-gray-600'}`}>Published Status</label>
                         <select
                           value={statusFilter}
                           onChange={(e) => {
@@ -434,7 +503,7 @@ export default function CourseStudents() {
                             setStatusFilter(val);
                             setShowFilters(false); // close on select
                           }}
-                          className="w-full p-2 mt-1 border rounded text-sm"
+                          className={`w-full p-2 mt-1 border rounded text-sm ${isGvjbClient ? 'border-amber-200' : 'border-gray-300'}`}
                         >
                           <option value="all">All Courses</option>
                           <option value="published">Published</option>
@@ -448,8 +517,12 @@ export default function CourseStudents() {
                   <button
                     onClick={() => setViewMode('grid')}
                     className={`p-2 border rounded-lg ${viewMode === 'grid'
-                      ? 'bg-blue-900 text-white border-blue-900'
-                      : 'border-gray-300 hover:bg-gray-50'
+                      ? isGvjbClient
+                        ? 'bg-amber-400 text-slate-900 border-amber-400'
+                        : 'bg-blue-900 text-white border-blue-900'
+                      : isGvjbClient
+                        ? 'border-amber-200 hover:bg-amber-50'
+                        : 'border-gray-300 hover:bg-gray-50'
                       }`}
                     title="Grid view"
                   >
@@ -467,8 +540,12 @@ export default function CourseStudents() {
                   <button
                     onClick={() => setViewMode('list')}
                     className={`p-2 border rounded-lg ${viewMode === 'list'
-                      ? 'bg-blue-900 text-white border-blue-900'
-                      : 'border-gray-300 hover:bg-gray-50'
+                      ? isGvjbClient
+                        ? 'bg-amber-400 text-slate-900 border-amber-400'
+                        : 'bg-blue-900 text-white border-blue-900'
+                      : isGvjbClient
+                        ? 'border-amber-200 hover:bg-amber-50'
+                        : 'border-gray-300 hover:bg-gray-50'
                       }`}
                     title="List view"
                   >
@@ -482,12 +559,14 @@ export default function CourseStudents() {
               {/* Create Course Modal */}
               {showCreateForm && (
                 <div className="fixed inset-0 bg-black/40 flex justify-center items-center z-50">
-                  <div className="bg-white rounded-lg shadow-lg w-full max-w-md mx-auto p-6">
+                  <div
+                    className={`bg-white rounded-lg shadow-lg w-full max-w-md mx-auto p-6 ${isGvjbClient ? 'border border-amber-100' : ''}`}
+                  >
                     <div className="flex justify-between items-center mb-4">
                       <h2 className="text-lg font-semibold">Create New Course</h2>
                       <button
                         onClick={() => setShowCreateForm(false)}
-                        className="text-gray-500 hover:text-gray-700"
+                        className={isGvjbClient ? 'text-amber-700 hover:text-amber-800' : 'text-gray-500 hover:text-gray-700'}
                         aria-label="Close form"
                       >
                         <svg
@@ -509,7 +588,10 @@ export default function CourseStudents() {
                           type="text"
                           value={title}
                           onChange={(e) => setTitle(e.target.value)}
-                          className="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-900 focus:border-transparent"
+                          className={`w-full p-2 border rounded focus:outline-none focus:ring-2 ${isGvjbClient
+                            ? 'border-amber-200 focus:ring-amber-400 focus:border-amber-400'
+                            : 'border-gray-300 focus:ring-blue-900 focus:border-transparent'
+                            }`}
                           placeholder="Enter course title"
                           required
                           autoFocus
@@ -521,7 +603,10 @@ export default function CourseStudents() {
                         <textarea
                           value={description}
                           onChange={(e) => setDescription(e.target.value)}
-                          className="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-900 focus:border-transparent"
+                          className={`w-full p-2 border rounded focus:outline-none focus:ring-2 ${isGvjbClient
+                            ? 'border-amber-200 focus:ring-amber-400 focus:border-amber-400'
+                            : 'border-gray-300 focus:ring-blue-900 focus:border-transparent'
+                            }`}
                           placeholder="Optional course description"
                           rows={3}
                         />
@@ -529,11 +614,11 @@ export default function CourseStudents() {
 
                       <div className="flex items-center justify-between pt-2">
                         <div className="flex items-center">
-                          <span className="text-sm font-medium text-gray-700 mr-3">Publish Course</span>
+                          <span className={`text-sm font-medium mr-3 ${isGvjbClient ? 'text-amber-800' : 'text-gray-700'}`}>Publish Course</span>
                           <button
                             type="button"
                             onClick={() => setPublished(!published)}
-                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${published ? 'bg-green-500' : 'bg-gray-300'
+                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${published ? 'bg-green-500' : isGvjbClient ? 'bg-amber-200' : 'bg-gray-300'
                               }`}
                             aria-label="Toggle publish"
                           >
@@ -542,7 +627,7 @@ export default function CourseStudents() {
                                 }`}
                             />
                           </button>
-                          <span className="ml-2 text-sm text-gray-600">
+                          <span className={`ml-2 text-sm ${isGvjbClient ? 'text-amber-700' : 'text-gray-600'}`}>
                             {published ? 'Published' : 'Draft'}
                           </span>
                         </div>
@@ -550,7 +635,10 @@ export default function CourseStudents() {
                         <button
                           type="submit"
                           disabled={loading}
-                          className="bg-blue-900 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50 font-medium"
+                          className={`px-4 py-2 rounded disabled:opacity-50 font-medium ${isGvjbClient
+                            ? 'bg-amber-400 text-slate-900 hover:bg-amber-500'
+                            : 'bg-blue-900 text-white hover:bg-blue-700'
+                            }`}
                         >
                           {loading ? 'Creating...' : 'Create Course'}
                         </button>
@@ -983,6 +1071,7 @@ export default function CourseStudents() {
 
           {activeTab === 'community' && <Community />}
         </div>
+      </div>
       </div>
     </div>
   );

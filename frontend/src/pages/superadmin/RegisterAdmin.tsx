@@ -1,8 +1,9 @@
 // src/pages/superadmin/RegisterAdmin.tsx
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import api from '../../services/api';
+import spectropyLogo from '/logo.png';
 
 export default function RegisterAdmin() {
   const [formData, setFormData] = useState({
@@ -45,104 +46,174 @@ export default function RegisterAdmin() {
   };
 
   return (
-    <div className="p-6 max-w-md mx-auto">
-       <button
-        onClick={handleBackToLogin}
-        className="mb-4 text-sm text-gray-600 hover:text-gray-900 flex items-center"
-      >
-        ← Back to Login
-      </button>
-      
-      <h1 className="text-2xl font-bold mb-6">Register New User</h1>
-      
-      {error && <div className="bg-red-50 text-red-700 p-3 rounded mb-4">{error}</div>}
-      {success && <div className="bg-green-50 text-green-700 p-3 rounded mb-4">{success}</div>}
-
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium mb-1">Full Name</label>
-          <input
-            value={formData.full_name}
-            onChange={(e) => setFormData({...formData, full_name: e.target.value})}
-            className="w-full p-2 border rounded"
-            required
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium mb-1">Email</label>
-          <input
-            type="email"
-            value={formData.email}
-            onChange={(e) => setFormData({...formData, email: e.target.value})}
-            className="w-full p-2 border rounded"
-            required
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium mb-1">Role</label>
-          <select
-            value={formData.role}
-            onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-            className="w-full p-2 border rounded"
-          >
-            <option value="client_admin">Client Admin</option>
-            <option value="content_authorizer">Content Authorizer</option>
-            <option value="school_owner">School Owner</option>
-            <option value="teacher">Teacher</option>
-            <option value="student">Student</option>
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium mb-1">Client ID (optional)</label>
-          <input
-            type="number"
-            value={formData.client_id}
-            onChange={(e) => setFormData({ ...formData, client_id: e.target.value })}
-            className="w-full p-2 border rounded"
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium mb-1">User ID (optional)</label>
-          <input
-            type="text"
-            value={formData.user_id}
-            onChange={(e) => setFormData({ ...formData, user_id: e.target.value })}
-            className="w-full p-2 border rounded"
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium mb-1">Password</label>
-          <input
-            type="password"
-            value={formData.password}
-            onChange={(e) => setFormData({...formData, password: e.target.value})}
-            className="w-full p-2 border rounded"
-            required
-            minLength={6}
-          />
-        </div>
-
-        <div className="flex gap-3 pt-2">
+    <div className="min-h-screen bg-white text-slate-900">
+      <header className="border-b border-slate-200 bg-white">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
+          <Link to="/superadmin/dashboard" className="flex items-center gap-3">
+            <img
+              src={spectropyLogo}
+              alt="Spectropy"
+              className="h-10 w-auto object-contain"
+            />
+            <div className="leading-tight">
+              <div className="text-xs uppercase tracking-[0.3em] text-slate-500">
+                Spectropy
+              </div>
+              <div className="text-lg font-semibold">Super Admin Console</div>
+            </div>
+          </Link>
           <button
-            type="submit"
-            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+            onClick={handleBackToLogin}
+            className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
           >
-            Register User
-          </button>
-          <button
-            type="button"
-            onClick={() => navigate(-1)}
-            className="bg-gray-200 px-4 py-2 rounded hover:bg-gray-300"
-          >
-            Cancel
+            Back to Login
           </button>
         </div>
-      </form>
+      </header>
+
+      <main className="mx-auto grid max-w-6xl gap-8 px-6 py-12 lg:grid-cols-[1.1fr_0.9fr]">
+        <section className="rounded-3xl border border-slate-200 bg-[#05285e] p-8 text-white shadow-xl">
+          <div className="text-sm uppercase tracking-[0.4em] text-white/70">
+            User Provisioning
+          </div>
+          <h1 className="mt-3 text-3xl font-bold">Create New Accounts</h1>
+          <p className="mt-4 text-white/80">
+            Register platform users with precise role control. Use this console
+            for client admins, authorizers, and school-level staff.
+          </p>
+          <div className="mt-8 space-y-4 text-sm text-white/80">
+            <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
+              Secure access management for your LMS ecosystem.
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
+              Assign roles, tie users to clients, and issue credentials quickly.
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-3xl bg-white p-8 text-slate-900 shadow-2xl">
+            <div className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-500">
+              Register User
+            </div>
+          <h2 className="mt-2 text-2xl font-bold">Provision Account</h2>
+          <p className="mt-2 text-sm text-slate-500">
+            Fill in the details to create a new user profile.
+          </p>
+
+          {error && (
+            <div className="mt-5 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              {error}
+            </div>
+          )}
+          {success && (
+            <div className="mt-5 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
+              {success}
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Full Name</label>
+              <input
+                value={formData.full_name}
+                onChange={(e) =>
+                  setFormData({ ...formData, full_name: e.target.value })
+                }
+                className="w-full rounded-lg border border-slate-200 px-4 py-3 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">Email</label>
+              <input
+                type="email"
+                value={formData.email}
+                onChange={(e) =>
+                  setFormData({ ...formData, email: e.target.value })
+                }
+                className="w-full rounded-lg border border-slate-200 px-4 py-3 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">Role</label>
+              <select
+                value={formData.role}
+                onChange={(e) =>
+                  setFormData({ ...formData, role: e.target.value })
+                }
+                className="w-full rounded-lg border border-slate-200 px-4 py-3 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
+              >
+                <option value="client_admin">Client Admin</option>
+                <option value="content_authorizer">Content Authorizer</option>
+                <option value="school_owner">School Owner</option>
+                <option value="teacher">Teacher</option>
+                <option value="student">Student</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">
+                Client ID (optional)
+              </label>
+              <input
+                type="number"
+                value={formData.client_id}
+                onChange={(e) =>
+                  setFormData({ ...formData, client_id: e.target.value })
+                }
+                className="w-full rounded-lg border border-slate-200 px-4 py-3 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">
+                User ID (optional)
+              </label>
+              <input
+                type="text"
+                value={formData.user_id}
+                onChange={(e) =>
+                  setFormData({ ...formData, user_id: e.target.value })
+                }
+                className="w-full rounded-lg border border-slate-200 px-4 py-3 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">Password</label>
+              <input
+                type="password"
+                value={formData.password}
+                onChange={(e) =>
+                  setFormData({ ...formData, password: e.target.value })
+                }
+                className="w-full rounded-lg border border-slate-200 px-4 py-3 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                required
+                minLength={6}
+              />
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button
+                type="submit"
+                className="w-full rounded-lg bg-[#073b8a] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#16263b]"
+              >
+                Register User
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate(-1)}
+                className="w-full rounded-lg border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </section>
+      </main>
     </div>
   );
 }

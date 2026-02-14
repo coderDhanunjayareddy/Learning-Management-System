@@ -65,7 +65,6 @@ function AppRoutes() {
       {/* Public Routes */}
       <Route path="/" element={<LandingPage />} />
       <Route path="/login" element={<LoginForm />} />
-      <Route path="/login-form" element={<LoginForm />} />
       <Route path="/courses" element={<Courses />} />
 
 
@@ -123,7 +122,6 @@ function AppRoutes() {
               "super_admin",
               "client_admin",
               "school_owner",
-              "teacher",
             ]}
           >
             <TeacherDashboard />
@@ -140,7 +138,6 @@ function AppRoutes() {
               "super_admin",
               "client_admin",
               "school_owner",
-              "teacher",
             ]}
           >
             <TeacherDashboard />
@@ -155,7 +152,6 @@ function AppRoutes() {
               "super_admin",
               "client_admin",
               "school_owner",
-              "teacher",
             ]}
           >
             <CourseContentManager />
@@ -168,7 +164,7 @@ function AppRoutes() {
       <Route
         path="/student/dashboard"
         element={
-          <ProtectedRoute allowedRoles={["student"]}>
+          <ProtectedRoute allowedRoles={["student", "teacher"]}>
             <StudentDashboard />
           </ProtectedRoute>
         }
@@ -176,7 +172,7 @@ function AppRoutes() {
       <Route
         path="/student/course/:courseId"
         element={
-          <ProtectedRoute allowedRoles={['student']}>
+          <ProtectedRoute allowedRoles={['student', 'teacher']}>
             <StudentCourseView />
           </ProtectedRoute>
         }

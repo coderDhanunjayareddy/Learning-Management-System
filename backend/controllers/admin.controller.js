@@ -2,12 +2,19 @@ import pool from '../config/db.js';
 // In your backend (e.g., routes/admin/courses.js or .ts)
 
 export const getAllCourses = async (req, res) => {
+  const role = req.user?.role;
+  const clientId = req.user?.client_id;
+  const shouldScope = Boolean(clientId) && role !== 'super_admin';
+
   try {
-    const result = await pool.query(`
+    const query = `
       SELECT id, title, description, published, created_at
       FROM courses
+      ${shouldScope ? 'WHERE client_id = $1' : ''}
       ORDER BY created_at DESC
-    `);
+    `;
+    const params = shouldScope ? [clientId] : [];
+    const result = await pool.query(query, params);
     res.json(result.rows);
   } catch (err) {
     console.error('Failed to fetch courses:', err);
@@ -18,6 +25,10 @@ export const getAllCourses = async (req, res) => {
 export const createCourse = async (req, res) => {
   const { title, description, published = false } = req.body;
   const createdBy = req.user?.id; // assuming auth middleware attaches user
+  const role = req.user?.role;
+  const clientId = req.user?.client_id;
+  const shouldScope = Boolean(clientId) && role !== 'super_admin';
+  const courseClientId = shouldScope ? clientId : null;
 
   if (!title?.trim()) {
     return res.status(400).json({ error: 'Title is required' });
@@ -26,11 +37,11 @@ export const createCourse = async (req, res) => {
   try {
     const result = await pool.query(
       `
-        INSERT INTO courses (title, description, published, created_by)
-        VALUES ($1, $2, $3, $4)
-        RETURNING id, title, description, published, created_at
+        INSERT INTO courses (title, description, published, created_by, client_id)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING id, title, description, published, created_at, client_id
       `,
-      [title.trim(), description?.trim() || null, published, createdBy]
+      [title.trim(), description?.trim() || null, published, createdBy, courseClientId]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
@@ -44,8 +55,20 @@ export const getCourseContent = async (req, res) => {
   const { courseId } = req.params;
   const userId = req.user?.id; // assuming you have user info from auth middleware
   const role = req.user?.role; // e.g., 'student', 'admin', 'instructor'
+  const clientId = req.user?.client_id;
+  const shouldScope = Boolean(clientId) && role !== 'super_admin';
 
   try {
+    if (shouldScope) {
+      const courseCheck = await pool.query(
+        `SELECT 1 FROM courses WHERE id = $1 AND client_id = $2`,
+        [courseId, clientId]
+      );
+      if (courseCheck.rows.length === 0) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+    }
+
     let query;
     let params;
 
@@ -143,11 +166,19 @@ export const createContentItem = async (req, res) => {
 // PATCH /api/courses/:id/publish
 export const publishCourse = async (req, res) => {
   const { id } = req.params;
+  const role = req.user?.role;
+  const clientId = req.user?.client_id;
+  const shouldScope = Boolean(clientId) && role !== 'super_admin';
   try {
-    const result = await pool.query(
-      `UPDATE courses SET published = true WHERE id = $1 RETURNING *`,
-      [id]
-    );
+    const query = `
+      UPDATE courses
+      SET published = true
+      WHERE id = $1
+      ${shouldScope ? 'AND client_id = $2' : ''}
+      RETURNING *
+    `;
+    const params = shouldScope ? [id, clientId] : [id];
+    const result = await pool.query(query, params);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Course not found' });
@@ -163,12 +194,19 @@ export const publishCourse = async (req, res) => {
 // DELETE /admin/courses/:id
 export const deleteCourse = async (req, res) => {
   const { id } = req.params;
+  const role = req.user?.role;
+  const clientId = req.user?.client_id;
+  const shouldScope = Boolean(clientId) && role !== 'super_admin';
 
   try {
-    const result = await pool.query(
-      'DELETE FROM courses WHERE id = $1 RETURNING id',
-      [id]
-    );
+    const query = `
+      DELETE FROM courses
+      WHERE id = $1
+      ${shouldScope ? 'AND client_id = $2' : ''}
+      RETURNING id
+    `;
+    const params = shouldScope ? [id, clientId] : [id];
+    const result = await pool.query(query, params);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Course not found' });
@@ -189,6 +227,9 @@ export const deleteCourse = async (req, res) => {
 export const updateCourse = async (req, res) => {
   const { id } = req.params;
   const { title, description, published } = req.body;
+  const role = req.user?.role;
+  const clientId = req.user?.client_id;
+  const shouldScope = Boolean(clientId) && role !== 'super_admin';
 
   // Basic validation
   if (title !== undefined) {
@@ -198,8 +239,7 @@ export const updateCourse = async (req, res) => {
   }
 
   try {
-    const result = await pool.query(
-      `
+    const query = `
         UPDATE courses
         SET 
           title = COALESCE($1, title),
@@ -207,15 +247,19 @@ export const updateCourse = async (req, res) => {
           published = COALESCE($3, published),
           updated_at = NOW()
         WHERE id = $4
+        ${shouldScope ? 'AND client_id = $5' : ''}
         RETURNING id, title, description, published, created_at, updated_at
-      `,
-      [
-        title?.trim() || null,
-        description?.trim() || null,
-        published, // pass undefined to skip, or boolean to update
-        id
-      ]
-    );
+      `;
+    const params = [
+      title?.trim() || null,
+      description?.trim() || null,
+      published, // pass undefined to skip, or boolean to update
+      id
+    ];
+    if (shouldScope) {
+      params.push(clientId);
+    }
+    const result = await pool.query(query, params);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Course not found' });

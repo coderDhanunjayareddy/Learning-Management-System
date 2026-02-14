@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 import { Outlet } from 'react-router-dom';
-import logo from "/logo.png"; // adjust path if needed
+import gvjbLogo from "/gvjb.png";
 import CourseProgressBar from "../../components/CourseContent/CourseProgressBar";
 import { TbPlayerTrackPrevFilled } from "react-icons/tb";
 import { TbPlayerTrackNextFilled } from "react-icons/tb";
@@ -76,13 +76,37 @@ export default function StudentCourseView() {
 
   if (loading) {
     return (
-      <div className="flex h-screen bg-gray-50">
-        <div className="w-64 bg-white border-r p-4">
-          <Link to="/student/dashboard" className="text-blue-600 mb-4 inline-block">← Back</Link>
-          <p>Loading course content...</p>
-        </div>
-        <div className="flex-1 p-6 flex items-center justify-center">
-          <p>Loading...</p>
+      <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#fff7ed,_#ffffff_45%,_#fef9f3_100%)] text-slate-900">
+        <div className="flex min-h-screen flex-col lg:flex-row">
+          <aside className="w-full border-b border-amber-100 bg-white/90 backdrop-blur lg:w-72 lg:border-b-0 lg:border-r">
+            <div className="p-6 border-b border-amber-100">
+              <div className="flex items-center space-x-2 cursor-pointer">
+                <img
+                  src={gvjbLogo}
+                  alt="GVB Logo"
+                  className="h-10 w-auto md:h-10 lg:h-12 rounded-md"
+                />
+              </div>
+              <p className="text-xs uppercase tracking-[0.3em] text-amber-700 mt-2">
+                GVB
+              </p>
+              <h1 className="text-lg font-semibold">Course View</h1>
+            </div>
+            <div className="px-4 py-3 border-b border-amber-100">
+              <p className="text-sm text-slate-600">Loading course content...</p>
+            </div>
+            <div className="p-4 border-t border-amber-100">
+              <Link
+                to="/student/dashboard"
+                className="w-full flex items-center justify-center rounded-full border border-amber-200 px-3 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-50"
+              >
+                ← Back
+              </Link>
+            </div>
+          </aside>
+          <section className="flex-1 p-6 flex items-center justify-center">
+            <p className="text-slate-600">Loading...</p>
+          </section>
         </div>
       </div>
     );
@@ -90,13 +114,37 @@ export default function StudentCourseView() {
 
   if (error) {
     return (
-      <div className="flex h-screen bg-gray-50">
-        <div className="w-64 bg-white border-r p-4">
-          <Link to="/student/dashboard" className="text-blue-600 mb-4 inline-block">← Back</Link>
-          <p className="text-red-600">Error: {error}</p>
-        </div>
-        <div className="flex-1 p-6 flex items-center justify-center">
-          <p className="text-red-600">Error: {error}</p>
+      <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#fff7ed,_#ffffff_45%,_#fef9f3_100%)] text-slate-900">
+        <div className="flex min-h-screen flex-col lg:flex-row">
+          <aside className="w-full border-b border-amber-100 bg-white/90 backdrop-blur lg:w-72 lg:border-b-0 lg:border-r">
+            <div className="p-6 border-b border-amber-100">
+              <div className="flex items-center space-x-2 cursor-pointer">
+                <img
+                  src={gvjbLogo}
+                  alt="GVJB Logo"
+                  className="h-10 w-auto md:h-10 lg:h-12 rounded-md"
+                />
+              </div>
+              <p className="text-xs uppercase tracking-[0.3em] text-amber-700 mt-2">
+                GVB
+              </p>
+              <h1 className="text-lg font-semibold">Course View</h1>
+            </div>
+            <div className="px-4 py-3 border-b border-amber-100">
+              <p className="text-red-600">Error: {error}</p>
+            </div>
+            <div className="p-4 border-t border-amber-100">
+              <Link
+                to="/student/dashboard"
+                className="w-full flex items-center justify-center rounded-full border border-amber-200 px-3 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-50"
+              >
+                ← Back
+              </Link>
+            </div>
+          </aside>
+          <section className="flex-1 p-6 flex items-center justify-center">
+            <p className="text-red-600">Error: {error}</p>
+          </section>
         </div>
       </div>
     );
@@ -104,13 +152,37 @@ export default function StudentCourseView() {
 
   if (!course) {
     return (
-      <div className="flex h-screen bg-gray-50">
-        <div className="w-64 bg-white border-r p-4">
-          <Link to="/student/dashboard" className="text-blue-600 mb-4 inline-block">← Back</Link>
-          <p>Course not found.</p>
-        </div>
-        <div className="flex-1 p-6 flex items-center justify-center">
-          <p>Course not found.</p>
+      <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#fff7ed,_#ffffff_45%,_#fef9f3_100%)] text-slate-900">
+        <div className="flex min-h-screen flex-col lg:flex-row">
+          <aside className="w-full border-b border-amber-100 bg-white/90 backdrop-blur lg:w-72 lg:border-b-0 lg:border-r">
+            <div className="p-6 border-b border-amber-100">
+              <div className="flex items-center space-x-2 cursor-pointer">
+                <img
+                  src={gvjbLogo}
+                  alt="GVJB Logo"
+                  className="h-10 w-auto md:h-10 lg:h-12 rounded-md"
+                />
+              </div>
+              <p className="text-xs uppercase tracking-[0.3em] text-amber-700 mt-2">
+                GVB
+              </p>
+              <h1 className="text-lg font-semibold">Course View</h1>
+            </div>
+            <div className="px-4 py-3 border-b border-amber-100">
+              <p>Course not found.</p>
+            </div>
+            <div className="p-4 border-t border-amber-100">
+              <Link
+                to="/student/dashboard"
+                className="w-full flex items-center justify-center rounded-full border border-amber-200 px-3 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-50"
+              >
+                ← Back
+              </Link>
+            </div>
+          </aside>
+          <section className="flex-1 p-6 flex items-center justify-center">
+            <p>Course not found.</p>
+          </section>
         </div>
       </div>
     );
@@ -205,23 +277,27 @@ export default function StudentCourseView() {
   };
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#fff7ed,_#ffffff_45%,_#fef9f3_100%)] text-slate-900">
+      <div className="flex min-h-screen flex-col lg:flex-row">
       {/* LEFT BAR - Navigation & Progress */}
-      <div className="w-64 bg-white border-r border-gray-200 flex flex-col">
+      <div className="w-full border-b border-amber-100 bg-white/90 backdrop-blur flex flex-col lg:w-72 lg:border-b-0 lg:border-r">
         {/* Logo/Brand */}
-        <div className="p-6 border-b border-gray-200">
+        <div className="p-6 border-b border-amber-100">
           <div className="flex items-center space-x-2 cursor-pointer">
             <img
-              src={logo}
-              alt="Spectropy Logo"
+              src={gvjbLogo}
+              alt="GVJB Logo"
               className="h-10 w-auto md:h-10 lg:h-12 rounded-md"
             />
           </div>
+          <p className="text-xs uppercase tracking-[0.3em] text-amber-700 mt-2">
+            GVB
+          </p>
           <h1 className="text-lg font-semibold">Course View</h1>
         </div>
 
         {/* ✅ PROGRESS BAR — placed exactly like admin panel */}
-        <div className="px-4 pb-3 border-b border-gray-200">
+        <div className="px-4 pb-3 border-b border-amber-100">
           <CourseProgressBar completed={completedItems} total={totalItems} />
         </div>
 
@@ -231,7 +307,7 @@ export default function StudentCourseView() {
             <div key={chapter.id} className="mb-3">
               {/* Chapter Header (Toggle) */}
               <div
-                className="font-semibold text-lg mb-1.8 flex items-center cursor-pointer  p-1 rounded"
+                className="font-semibold text-lg mb-1.8 flex items-center cursor-pointer p-1 rounded hover:bg-amber-50"
                 onClick={() => toggleChapter(chapter.id)}
               >
                 <span className="mr-2">
@@ -246,7 +322,7 @@ export default function StudentCourseView() {
                   {chapter.content_items.map((item) => (
                     <div
                       key={item.id}
-                      className="font-semibold text-base mb-1.8 flex items-center gap-2 py-1 px-2 rounded hover:bg-gray-100 cursor-pointer"
+                      className="font-semibold text-base mb-1.8 flex items-center gap-2 py-1 px-2 rounded hover:bg-amber-50 cursor-pointer"
                       onClick={() => navigate(`content/${item.id}`)}
                     >
                       {/* ✅ Completion Tick */}
@@ -263,8 +339,8 @@ export default function StudentCourseView() {
           ))}
         </div>
 
-        <div className="p-4 border-t border-gray-200">
-          <Link to="/student/dashboard" className="w-full flex items-center justify-center px-4 py-2 text-sm text-blue-900 hover:text-blue-600">
+        <div className="p-4 border-t border-amber-100">
+          <Link to="/student/dashboard" className="w-full flex items-center justify-center rounded-full border border-amber-200 px-3 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-50">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               className="h-4 w-4 mr-2"
@@ -287,7 +363,7 @@ export default function StudentCourseView() {
       {/* RIGHT BAR - Content Viewer */}
       <div className="flex-1 overflow-y-auto">
         {/* Header */}
-        <div className="p-6 border-b border-gray-200">
+        <div className="p-6 border-b border-amber-100 bg-white/70 backdrop-blur">
           <div className="flex justify-between items-center">
             <div>
               {/* ✅ Dynamic title: Course — Chapter: Content */}
@@ -303,9 +379,9 @@ export default function StudentCourseView() {
               <button
                 onClick={goToPrevious}
                 disabled={currentIndex <= 0}
-                className={`px-4 py-2 text-sm rounded ${currentIndex <= 0
-                  ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                  : 'bg-gray-200 hover:bg-gray-300'
+                className={`px-4 py-2 text-sm rounded-full border ${currentIndex <= 0
+                  ? 'border-amber-100 bg-amber-50 text-amber-300 cursor-not-allowed'
+                  : 'border-amber-200 text-amber-900 hover:bg-amber-50'
                   }`}
               >
                 <div className="flex items-center">
@@ -316,9 +392,9 @@ export default function StudentCourseView() {
               <button
                 onClick={goToNext}
                 disabled={currentIndex >= allContentItems.length - 1}
-                className={`px-4 py-2 text-sm rounded ${currentIndex >= allContentItems.length - 1
-                  ? 'bg-indigo-300 text-white cursor-not-allowed'
-                  : 'bg-blue-900 text-white hover:bg-indigo-700'
+                className={`px-4 py-2 text-sm rounded-full ${currentIndex >= allContentItems.length - 1
+                  ? 'bg-amber-200 text-amber-700 cursor-not-allowed'
+                  : 'bg-amber-400 text-slate-900 hover:bg-amber-500'
                   }`}
               >
                 <div className="flex items-center">
@@ -331,10 +407,11 @@ export default function StudentCourseView() {
         </div>
 
         {/* Content Area */}
-        <div className="flex-1 overflow-auto bg-white h-full">
+        <div className="flex-1 overflow-auto bg-white/80 h-full">
           <Outlet />
         </div>
       </div>
+    </div>
     </div>
   );
 }
