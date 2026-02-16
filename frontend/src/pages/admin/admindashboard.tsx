@@ -32,6 +32,7 @@ export default function CourseStudents() {
   const userFullName = user?.full_name || 'Super Administrator';
   const userEmail = user?.email || 'super@lms.com';
   const isGvjbClient = user?.role === 'client_admin';
+  const isContentAuthorizer = user?.role === 'content_authorizer';
   const brandLogo = isGvjbClient ? gvjbLogo : spectropyLogo;
   const brandName = isGvjbClient ? 'GVB' : 'Spectropy';
   const dashboardTitle = isGvjbClient ? 'GVB Dashboard' : 'Admin Dashboard';
@@ -76,6 +77,7 @@ export default function CourseStudents() {
     ? 'bg-amber-400 text-slate-900 hover:bg-amber-500'
     : 'bg-blue-900 text-white hover:bg-blue-700';
   const secondaryBorderClass = isGvjbClient ? 'border-amber-200' : 'border-gray-300';
+  const courseBannerClass = isContentAuthorizer ? 'bg-sky-100' : 'bg-amber-50';
 
   const [activeTab, setActiveTab] = useState<'courses' | 'home' | 'users' | 'community'>('courses');
   const [title, setTitle] = useState('');
@@ -844,7 +846,7 @@ export default function CourseStudents() {
                             {/* ===================== */}
                             {/* 🔹 BANNER */}
                             {/* ===================== */}
-                            <div className="relative h-28 bg-amber-50 flex items-center justify-center overflow-hidden rounded-t-lg">
+                            <div className={`relative h-28 ${courseBannerClass} flex items-center justify-center overflow-hidden rounded-t-lg`}>
                               <img
                                 src={brandLogo}
                                 alt={`${brandName} Logo`}

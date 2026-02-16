@@ -4,7 +4,6 @@ import { useAuth, AuthProvider } from "./contexts/AuthContext";
 import { Toaster } from 'react-hot-toast';
 
 // Auth pages
-import LandingPage from './pages/auth/LandingPage'; // Contains inline login portal selection // Role selector (for E-Learning)
 import LoginForm from './pages/auth/LoginForm';
 import Courses from './pages/auth/courses';
 // Dashboard pages
@@ -63,7 +62,7 @@ function AppRoutes() {
   return (
     <Routes>
       {/* Public Routes */}
-      <Route path="/" element={<LandingPage />} />
+      <Route path="/" element={<LoginForm />} />
       <Route path="/login" element={<LoginForm />} />
       <Route path="/courses" element={<Courses />} />
 
@@ -186,7 +185,7 @@ function AppRoutes() {
       </Route>
 
       {/* Fallback */}
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
   );
 }
