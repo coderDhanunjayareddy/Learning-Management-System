@@ -1,4 +1,4 @@
-// backend/controllers/auth.controller.js
+﻿// backend/controllers/auth.controller.js
 import jwt from 'jsonwebtoken';
 import pool from '../config/db.js';
 import { hashPassword, comparePassword } from '../utils/hash.js';
@@ -37,7 +37,7 @@ const normalizeOptionalString = (value) => {
   return trimmed.length === 0 ? null : trimmed;
 };
 
-// ✅ Updated registration: allow role, but restrict to safe ones
+// âœ… Updated registration: allow role, but restrict to safe ones
 export const register = async (req, res) => {
   const { email, full_name, password } = req.body;
   const role = normalizeRole(req.body.role);
@@ -46,7 +46,7 @@ export const register = async (req, res) => {
     return res.status(400).json({ error: 'Missing required fields' });
   }
 
-  // 🔒 Only allow self-registration for these roles
+  // ðŸ”’ Only allow self-registration for these roles
   if (!SELF_REGISTER_ROLES.includes(role)) {
     return res.status(400).json({ error: 'This role cannot be registered publicly.' });
   }
@@ -69,7 +69,7 @@ export const register = async (req, res) => {
       [email, full_name, hashed, role, clientId, userId]
     );
 
-    const token = jwt.sign({ userId: result.rows[0].id }, JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ userId: result.rows[0].id, role: result.rows[0].role, clientId: result.rows[0].client_id }, JWT_SECRET, { expiresIn: '7d' });
     res.status(201).json({ token, user: result.rows[0] });
   } catch (err) {
     if (err.code === '23505') {
@@ -80,7 +80,7 @@ export const register = async (req, res) => {
   }
 };
 
-// ✅ Login (supports all roles)
+// âœ… Login (supports all roles)
 export const login = async (req, res) => {
 
   const start = Date.now(); // API start time
@@ -114,7 +114,7 @@ export const login = async (req, res) => {
 
     await pool.query('UPDATE users SET last_login_at = NOW() WHERE id = $1', [user.id]);
 
-    const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ userId: user.id, role: user.role, clientId: user.client_id }, JWT_SECRET, { expiresIn: '7d' });
     const dbEnd = Date.now();
 
 
@@ -145,7 +145,7 @@ export const login = async (req, res) => {
 
 
 
-// ✅ Super Admin registers admins (client_admin by default)
+// âœ… Super Admin registers admins (client_admin by default)
 export const registerAdmin = async (req, res) => {
   // Super Admin check is done in middleware (see Step 2)
   const { email, full_name, password } = req.body;
@@ -185,3 +185,4 @@ export const registerAdmin = async (req, res) => {
     res.status(500).json({ error: 'Admin registration failed' });
   }
 };
+

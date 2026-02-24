@@ -15,7 +15,7 @@ router.get('/me', authenticateToken, async (req, res) => {
         // req.user comes from authenticateToken middleware
         const { id, email, full_name, role, is_active, client_id, user_id } = req.user;
         res.json({ user: { id, email, full_name, role, is_active, client_id, user_id } });
-        console.log('Refreshed user data for:', { user: { id, email, full_name, role, is_active, client_id, user_id } });
+        //console.log('Refreshed user data for:', { user: { id, email, full_name, role, is_active, client_id, user_id } });
     } catch (error) {
         console.error('Error in /me:', error);
         res.status(500).json({ error: 'Server error' });

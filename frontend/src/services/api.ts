@@ -1,8 +1,10 @@
 // frontend/src/services/api.ts
 import axios from 'axios';
 
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
+
 const api = axios.create({
-  baseURL: `${import.meta.env.VITE_API_BASE_URL}/api` || 'http://localhost:5000/api',
+  baseURL: `${apiBaseUrl}/api`,
 });
 
 // Add auth token to requests
