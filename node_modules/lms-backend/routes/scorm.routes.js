@@ -8,12 +8,12 @@ import { authenticateToken } from '../middleware/auth.js';
 
 const router = express.Router();
 
-router.post("/commit", saveScormProgress);
+router.post("/commit", authenticateToken, saveScormProgress);
 // backend/routes/scorm.routes.js
-router.get("/progress/:userId/:contentId", getScormProgress);
+router.get("/progress/:userId/:contentId", authenticateToken, getScormProgress);
 
 router.get('/content/:id', authenticateToken,getStudentContentById);
 // Example: /api/scorm/serve/course-files/8/1762597630232/res/index.html
-router.get("/signed-url", getSignedContentUrl);
+router.get("/signed-url", authenticateToken, getSignedContentUrl);
 
 export default router;

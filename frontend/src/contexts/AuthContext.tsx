@@ -1,7 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 // src/contexts/AuthContext.tsx
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import axios from 'axios';
+import api, { applyToken } from '../services/api';
 
 type Role =
   | 'super_admin'
@@ -10,11 +10,6 @@ type Role =
   | 'school_owner'
   | 'teacher'
   | 'student';
-
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'https://localhost:5000';
-const apiaxis = axios.create({
-  baseURL: apiBaseUrl,
-});
 
 export interface User {
   id: number;
@@ -31,7 +26,7 @@ interface AuthContextType {
   token: string | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -42,28 +37,52 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (token) {
-      apiaxis.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-    } else {
-      delete apiaxis.defaults.headers.common['Authorization'];
-    }
-  }, [token]);
-
-  const logout = useCallback(() => {
-    localStorage.removeItem('token');
-    setToken(null);
-    setUser(null);
+    if (typeof window === 'undefined') return;
+    const handler = (event: Event) => {
+      const nextToken = (event as CustomEvent<string | null>).detail ?? null;
+      setToken((prev) => (prev === nextToken ? prev : nextToken));
+    };
+    window.addEventListener('auth-token', handler as EventListener);
+    return () => window.removeEventListener('auth-token', handler as EventListener);
   }, []);
+
+  const syncAuthCookie = useCallback((nextToken: string | null) => {
+    const maxAge = nextToken ? 60 * 60 * 24 * 7 : 0; // 7 days
+    const secure = window.location.protocol === 'https:' ? '; Secure' : '';
+    const sameSite = import.meta.env.VITE_AUTH_COOKIE_SAMESITE || 'Lax';
+    const cookieDomain = import.meta.env.VITE_AUTH_COOKIE_DOMAIN
+      ? `; Domain=${import.meta.env.VITE_AUTH_COOKIE_DOMAIN}`
+      : '';
+    document.cookie = `token=${nextToken || ''}; Path=/; Max-Age=${maxAge}; SameSite=${sameSite}${secure}${cookieDomain}`;
+  }, []);
+
+  useEffect(() => {
+    applyToken(token);
+    syncAuthCookie(token);
+  }, [token, syncAuthCookie]);
+
+  const logout = useCallback(async () => {
+    try {
+      await api.post('/auth/logout');
+    } catch (error) {
+      // ignore logout errors, clear local state anyway
+    } finally {
+      localStorage.removeItem('token');
+      setToken(null);
+      setUser(null);
+      syncAuthCookie(null);
+    }
+  }, [syncAuthCookie]);
 
   useEffect(() => {
     const fetchUser = async () => {
       if (!token) return setLoading(false);
       try {
-        const res = await apiaxis.get('/api/auth/me');
+        const res = await api.get('/auth/me');
         setUser(res.data.user);
       } catch (error) {
         console.error('Failed to load user:', error);
-        logout();
+        await logout();
       } finally {
         setLoading(false);
       }
@@ -72,7 +91,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [token, logout]);
 
   const login = async (email: string, password: string) => {
-    const res = await apiaxis.post('/api/auth/login', { email, password });
+    const res = await api.post('/auth/login', { email, password });
 
     const { token, user } = res.data;
 

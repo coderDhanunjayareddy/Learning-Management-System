@@ -1,0 +1,556 @@
+import supabase from "../config/supabaseClient.js";
+import { query as dbQuery, getClient } from "../repositories/db.repository.js";
+import multer from "multer";
+import path from "path";
+import { fileURLToPath } from "url";
+import * as fs from "fs";
+import AdmZip from "adm-zip";
+import { parseStringPromise } from "xml2js";
+import mime from "mime-types"; // ✅ Add this at the top with your imports
+import fsy from "fsy";
+import { url } from "inspector";
+import fetch from "node-fetch"; // add at top if not already
+
+
+// Fix __dirname for ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Temporary upload directory (local buffer before uploading to Supabase)
+const uploadDir = path.join(__dirname, "../../uploads/temp");
+
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+// Configure Multer
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, uploadDir),
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(null, `${file.fieldname}-${uniqueSuffix}${path.extname(file.originalname)}`);
+  },
+});
+
+// Allow only videos, pdfs, and zip (SCORM)
+const fileFilter = (req, file, cb) => {
+  const allowed = [
+    "video",
+    "audio",
+    "pdf",
+    "zip",
+    "application/zip",
+    "text/plain",
+    "text/html"
+  ];
+  const typeOk = allowed.some((t) => file.mimetype.includes(t));
+  typeOk ? cb(null, true) : cb(new Error("Invalid file type"));
+};
+
+export const upload = multer({ storage, fileFilter });
+
+const ensureContentAccessById = async (contentId, req) => {
+  const role = req.user?.role;
+  const clientId = req.user?.client_id;
+  if (role === "super_admin") return true;
+  if (!clientId) return false;
+
+  const result = await dbQuery(
+    `
+    SELECT 1
+    FROM content_items ci
+    JOIN courses c ON ci.course_id = c.id
+    WHERE ci.id = $1 AND c.client_id = $2
+    `,
+    [contentId, clientId]
+  );
+
+  return result.rows.length > 0;
+};
+
+const ensureContentAccessByPath = async (filePath, req) => {
+  const role = req.user?.role;
+  const clientId = req.user?.client_id;
+  if (role === "super_admin") return true;
+  if (!clientId) return false;
+
+  const normalizedPath = String(filePath || "").replace(/^\/+/, "");
+  if (!normalizedPath) return false;
+
+  const result = await dbQuery(
+    `
+    SELECT 1
+    FROM content_items ci
+    JOIN courses c ON ci.course_id = c.id
+    WHERE (ci.content_url = $1 OR $1 LIKE (regexp_replace(ci.content_url, '/[^/]+$', '') || '/%'))
+      AND c.client_id = $2
+    LIMIT 1
+    `,
+    [normalizedPath, clientId]
+  );
+
+  return result.rows.length > 0;
+};
+
+/**
+ * Upload content file (video/pdf/scorm) to Supabase Storage
+ * and store metadata in PostgreSQL
+ */
+export const uploadContentFile = async (req, res) => {
+  const { courseId } = req.params;
+  const { item_type, title, parent_id = null } = req.body;
+  const role = req.user?.role;
+  const clientId = req.user?.client_id;
+  const shouldScope = Boolean(clientId) && role !== "super_admin";
+
+  if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+
+  try {
+    if (shouldScope) {
+      const courseCheck = await dbQuery(
+        `SELECT 1 FROM courses WHERE id = $1 AND client_id = $2`,
+        [courseId, clientId]
+      );
+      if (courseCheck.rows.length === 0) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+    }
+
+    const filePath = req.file.path;
+    const bucket = process.env.SUPABASE_BUCKET || "courses";
+    let storagePath = "";
+    let launchFile = "";
+    let uploadFolder = "";
+
+    // ---------- SCORM ZIP Handling ----------
+    if (item_type === "scorm") {
+      // 1️⃣ Unzip SCORM package
+      const zip = new AdmZip(filePath);
+      const tempFolder = filePath.replace(".zip", "_unzipped");
+      zip.extractAllTo(tempFolder, true);
+
+      // 2️⃣ Parse imsmanifest.xml
+      const manifestPath = path.join(tempFolder, "imsmanifest.xml");
+      if (!fs.existsSync(manifestPath))
+        throw new Error("imsmanifest.xml not found");
+
+      const xmlData = fs.readFileSync(manifestPath, "utf8");
+      const parsedManifest = await parseStringPromise(xmlData);
+      launchFile = parsedManifest.manifest.resources[0].resource[0].$.href;
+
+      // 3️⃣ Upload all files to Supabase Storage (PRIVATE)
+      uploadFolder = `${courseId}/${Date.now()}`;
+      const uploadRecursively = async (dirPath, relativePath = "") => {
+        for (const entry of fs.readdirSync(dirPath, { withFileTypes: true })) {
+          const fullPath = path.join(dirPath, entry.name);
+          const relPath = relativePath ? `${relativePath}/${entry.name}` : entry.name;
+
+          if (entry.isDirectory()) {
+            await uploadRecursively(fullPath, relPath);
+          } else {
+            const buffer = fs.readFileSync(fullPath);
+            const contentType = mime.lookup(entry.name) || "application/octet-stream";
+
+            const { error } = await supabase.storage
+              .from(bucket)
+              .upload(`${uploadFolder}/${relPath}`, buffer, {
+                contentType,
+                upsert: true,
+              });
+
+            if (error) console.error(`❌ Upload failed for ${relPath}`, error);
+          }
+        }
+      };
+
+      await uploadRecursively(tempFolder);
+
+      // 4️⃣ Save base path (not public)
+      storagePath = `${uploadFolder}/${launchFile}`;
+
+      // Cleanup
+      fs.rmSync(tempFolder, { recursive: true, force: true });
+      fs.unlinkSync(filePath);
+    } else {
+      // ---------- Non-SCORM file ----------
+      const fileBuffer = fs.readFileSync(filePath);
+      const fileName = `${courseId}/${Date.now()}_${req.file.originalname}`;
+      const { error: uploadError } = await supabase.storage
+        .from(bucket)
+        .upload(fileName, fileBuffer, {
+          contentType: req.file.mimetype,
+          upsert: false,
+        });
+      if (uploadError) throw uploadError;
+
+      storagePath = fileName;
+      fs.unlinkSync(filePath);
+    }
+
+    // 5️⃣ Save in DB (private path only)
+    const result = await dbQuery(
+      `INSERT INTO content_items (course_id, parent_id, item_type, title, content_url)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING *`,
+      [courseId, parent_id, item_type, title?.trim() || req.file.originalname, storagePath]
+    );
+
+    return res.status(201).json({
+      success: true,
+      message: "File uploaded successfully",
+      file: result.rows[0],
+    });
+  } catch (err) {
+    console.error("❌ File upload + DB error:", err);
+    if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+    return res.status(500).json({ error: "Failed to upload and save content" });
+  }
+};
+
+
+
+export const updateContentFile = async (req, res) => {
+  const { courseId, itemId } = req.params;
+  const { title } = req.body;
+  const newFile = req.file; // Multer file
+  const bucket = process.env.SUPABASE_BUCKET || "courses";
+  const role = req.user?.role;
+  const clientId = req.user?.client_id;
+  const shouldScope = Boolean(clientId) && role !== "super_admin";
+
+  try {
+    if (shouldScope) {
+      const courseCheck = await dbQuery(
+        `SELECT 1 FROM courses WHERE id = $1 AND client_id = $2`,
+        [courseId, clientId]
+      );
+      if (courseCheck.rows.length === 0) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+    }
+
+    // 1️⃣ Fetch existing item
+    const existing = await dbQuery(
+      `SELECT * FROM content_items WHERE id = $1 AND course_id = $2`,
+      [itemId, courseId]
+    );
+
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ error: "Content item not found" });
+    }
+
+    const oldItem = existing.rows[0];
+    const oldStoragePath = oldItem.content_url;
+
+    let newStoragePath = oldStoragePath;
+    let newType = oldItem.item_type; // default old type
+    let launchFile = "";
+
+    // -------------------------------------------------
+    // 2️⃣ Detect new file type (critical fix)
+    // -------------------------------------------------
+    if (newFile) {
+      const mimeType = newFile.mimetype;
+
+      if (mimeType.includes("zip")) {
+        newType = "scorm";
+      }
+      else if (mimeType === "application/pdf") {
+        newType = "pdf";
+      }
+      else if (mimeType.startsWith("video/")) {
+        newType = "video";
+      }
+      else if (mimeType.startsWith("audio/")) {
+        newType = "audio";
+      }
+      else if (mimeType === "text/html") {
+        newType = "html";
+      }
+      else if (mimeType === "text/plain") {
+        newType = "text";
+      }
+      else {
+        throw new Error(`Unsupported file type: ${mimeType}`);
+      }
+    }
+
+
+    // -------------------------------------------------
+    // 3️⃣ IF NEW FILE UPLOADED → Process it
+    // -------------------------------------------------
+    if (newFile) {
+      const filePath = newFile.path;
+
+      // ============= SCORM HANDLING =============
+      if (newType === "scorm") {
+        const zip = new AdmZip(filePath);
+        const tempFolder = filePath.replace(".zip", `_unzipped_${Date.now()}`);
+        zip.extractAllTo(tempFolder, true);
+
+        const manifestPath = path.join(tempFolder, "imsmanifest.xml");
+        if (!fs.existsSync(manifestPath)) {
+          return res.status(400).json({ error: "Invalid SCORM package: imsmanifest.xml missing" });
+        }
+
+        const xmlData = fs.readFileSync(manifestPath, "utf8");
+        const parsedManifest = await parseStringPromise(xmlData);
+
+        launchFile = parsedManifest.manifest.resources[0].resource[0].$.href;
+
+        const uploadFolder = `${courseId}/${Date.now()}`;
+
+        // Recursively upload SCORM files
+        const uploadRecursively = async (dirPath, relativePath = "") => {
+          for (const entry of fs.readdirSync(dirPath, { withFileTypes: true })) {
+            const fullPath = path.join(dirPath, entry.name);
+            const relPath = relativePath ? `${relativePath}/${entry.name}` : entry.name;
+
+            if (entry.isDirectory()) {
+              await uploadRecursively(fullPath, relPath);
+            } else {
+              const buffer = fs.readFileSync(fullPath);
+              const contentType = mime.lookup(entry.name) || "application/octet-stream";
+
+              const { error } = await supabase.storage
+                .from(bucket)
+                .upload(`${uploadFolder}/${relPath}`, buffer, {
+                  upsert: true,
+                  contentType,
+                });
+
+              if (error) console.error("SCORM upload failed:", relPath, error);
+            }
+          }
+        };
+
+        await uploadRecursively(tempFolder);
+
+        newStoragePath = `${uploadFolder}/${launchFile}`;
+
+        // Cleanup
+        fs.rmSync(tempFolder, { recursive: true, force: true });
+        fs.unlinkSync(filePath);
+      }
+
+      // ============= NORMAL FILE (video/audio/pdf) =============
+      else {
+        const fileBuffer = fs.readFileSync(filePath);
+        const ext = path.extname(newFile.originalname);
+        const finalPath = `${courseId}/${itemId}_${Date.now()}${ext}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from(bucket)
+          .upload(finalPath, fileBuffer, {
+            upsert: true,
+            contentType: newFile.mimetype,
+          });
+
+        if (uploadError) {
+          console.error(uploadError);
+          throw uploadError;
+        }
+
+        newStoragePath = finalPath;
+
+        fs.unlinkSync(filePath);
+      }
+
+      // Remove old file from Supabase
+      if (oldStoragePath) {
+        await supabase.storage.from(bucket).remove([oldStoragePath]);
+      }
+    }
+
+    // -------------------------------------------------
+    // 4️⃣ Update DB (title, item_type, content_url)
+    // -------------------------------------------------
+    const updated = await dbQuery(
+      `
+      UPDATE content_items
+      SET title = $1,
+          item_type = $2,
+          content_url = $3
+      WHERE id = $4
+      RETURNING *
+      `,
+      [
+        title || oldItem.title,
+        newType,
+        newStoragePath,
+        itemId
+      ]
+    );
+
+    return res.json({
+      success: true,
+      message: "File updated successfully",
+      content_url: updated.rows[0].content_url,
+      item: updated.rows[0],
+    });
+
+  } catch (err) {
+    console.error("❌ Update file error:", err);
+    return res.status(500).json({
+      error: "Failed to update content item",
+    });
+  }
+};
+
+
+// backend/controllers/scorm.controller.js
+export const saveScormProgress = async (req, res) => {
+  const { userId, contentId, data, attemptNo = 1 } = req.body;
+  const requesterId = req.user?.id;
+  const requesterRole = req.user?.role;
+
+  const score = parseFloat(data["cmi.core.score.raw"] || 0);
+  const status = data["cmi.core.lesson_status"] || "incomplete";
+  const suspendData = data["cmi.suspend_data"] || null;
+  const totalTime = data["cmi.core.total_time"] || null;
+
+  try {
+    if (!requesterId) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+    if (requesterRole !== "super_admin" && requesterId !== userId) {
+      return res.status(403).json({ success: false, message: "Access denied" });
+    }
+    const hasAccess = await ensureContentAccessById(contentId, req);
+    if (!hasAccess) {
+      return res.status(403).json({ success: false, message: "Access denied" });
+    }
+
+    await dbQuery(
+      `
+      INSERT INTO scorm_attempts (
+        user_id, content_item_id, attempt_no, score_raw, completion_status, suspend_data, total_time, finished_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+      ON CONFLICT (user_id, content_item_id, attempt_no)
+      DO UPDATE
+        SET score_raw = EXCLUDED.score_raw,
+            completion_status = EXCLUDED.completion_status,
+            suspend_data = EXCLUDED.suspend_data,
+            total_time = EXCLUDED.total_time,
+            finished_at = NOW();
+      `,
+      [userId, contentId, attemptNo, score, status, suspendData, totalTime]
+    );
+
+    res.status(200).json({ success: true, message: "SCORM progress saved." });
+  } catch (err) {
+    console.error("❌ Error saving SCORM progress:", err);
+    res.status(500).json({ success: false, message: "Error saving SCORM progress" });
+  }
+};
+
+
+export const getScormProgress = async (req, res) => {
+  const { userId, contentId } = req.params;
+  const requesterId = req.user?.id;
+  const requesterRole = req.user?.role;
+
+  try {
+    if (!requesterId) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+    if (requesterRole !== "super_admin" && requesterId !== parseInt(userId, 10)) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+    const hasAccess = await ensureContentAccessById(contentId, req);
+    if (!hasAccess) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    const result = await dbQuery(
+      `SELECT suspend_data FROM scorm_attempts
+       WHERE user_id = $1 AND content_item_id = $2
+       ORDER BY attempt_no DESC LIMIT 1`,
+      [userId, contentId]
+    );
+
+    if (result.rows.length === 0)
+      return res.status(404).json({ message: "No progress found" });
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error("Error fetching SCORM progress:", err);
+    res.status(500).json({ message: "Error fetching progress" });
+  }
+};
+
+export const getSignedContentUrl = async (req, res) => {
+  try {
+    const { path } = req.query; // e.g. "8/1762597630232/res/index.html"
+    const filePath = String(path || "").replace(/^\/+/, "");
+    const bucket = process.env.SUPABASE_BUCKET || "courses";
+    console.log("Requesting signed URL for path:", filePath);
+    console.log("Using bucket:", bucket);
+    if (!filePath) {
+      return res.status(400).json({ error: "Missing file path" });
+    }
+    if (!req.user?.id) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const hasAccess = await ensureContentAccessByPath(filePath, req);
+    if (!hasAccess) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
+    // Generate a signed URL that lasts 1 hour
+    const { data, error } = await supabase.storage
+      .from(bucket)
+      .createSignedUrl(filePath, 60 * 60);
+
+    if (error || !data) {
+      console.error("Error creating signed URL:", error);
+      return res.status(500).json({ error: "Failed to generate signed URL" });
+    }
+    res.json({ url: data.signedUrl });
+  } catch (err) {
+    console.error("Server error generating signed URL:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+export const viewScormFile = async (req, res) => {
+  try {
+    const filePath = String(req.params[0] || "").replace(/^\/+/, "");
+    if (!filePath) return res.status(400).send("Missing file");
+    if (!req.user?.id) return res.status(401).send("Unauthorized");
+
+    const hasAccess = await ensureContentAccessByPath(filePath, req);
+    if (!hasAccess) return res.status(403).send("Access denied");
+
+    const { data, error } = await supabase
+      .storage
+      .from("course-files")
+      .download(filePath);
+
+    if (error) {
+      return res.status(404).send("File not found");
+    }
+
+    // ✅ Correct MIME type
+    const contentType = mime.lookup(filePath) || "application/octet-stream";
+    res.setHeader("Content-Type", contentType);
+
+    // ✅ SCORM CSP FIX (allows inline JS + eval)
+    res.setHeader(
+      "Content-Security-Policy",
+      "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:;"
+    );
+
+    // ✅ Return raw file contents
+    const buffer = Buffer.from(await data.arrayBuffer());
+    res.send(buffer);
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Server Error");
+  }
+};
+
+

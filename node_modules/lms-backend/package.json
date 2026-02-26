@@ -3,7 +3,9 @@
   "type": "module",
   "scripts": {
     "dev": "nodemon server.js",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "seed:permissions": "node scripts/seed-role-permissions.mjs",
+    "seed:curriculum": "node scripts/seed-curriculum.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.80.0",

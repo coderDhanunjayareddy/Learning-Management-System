@@ -8,11 +8,14 @@ import LoginForm from './pages/auth/LoginForm';
 import Courses from './pages/auth/courses';
 // Dashboard pages
 import SuperAdminDashboard from './pages/superadmin/RegisterAdmin';
+import PlatformDashboard from './pages/superadmin/PlatformDashboard';
 import AdminDashboard from './pages/admin/admindashboard';
+import OrgDashboard from './pages/admin/OrgDashboard';
 import CourseContent from './pages/admin/CourseContent';
 import EnrollUsers from "./pages/admin/EnrollUsers";
 import TeacherDashboard from './pages/teacher/Dashboard';
 import CourseContentManager from './pages/teacher/CourseContentManager';
+import TeacherBatches from './pages/teacher/TeacherBatches';
 import StudentDashboard from './pages/student/StudentDashboard';
 import StudentCourseView from './pages/student/studentcourseview';
 
@@ -76,6 +79,14 @@ function AppRoutes() {
         path="/superadmin/dashboard"
         element={
           <ProtectedRoute allowedRoles={["super_admin"]}>
+            <PlatformDashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/superadmin/register"
+        element={
+          <ProtectedRoute allowedRoles={["super_admin"]}>
             <SuperAdminDashboard />
           </ProtectedRoute>
         }
@@ -114,7 +125,7 @@ function AppRoutes() {
       />
       <Route path="/admin/courses/:courseId/enroll" element={<EnrollUsers />} />
       <Route
-        path="/teacher/dashboard"
+        path="/admin/org"
         element={
           <ProtectedRoute
             allowedRoles={[
@@ -123,11 +134,10 @@ function AppRoutes() {
               "school_owner",
             ]}
           >
-            <TeacherDashboard />
+            <OrgDashboard />
           </ProtectedRoute>
         }
       />
-
       {/* Teacher */}
       <Route
         path="/teacher/dashboard"
@@ -137,6 +147,7 @@ function AppRoutes() {
               "super_admin",
               "client_admin",
               "school_owner",
+              "teacher",
             ]}
           >
             <TeacherDashboard />
@@ -151,9 +162,18 @@ function AppRoutes() {
               "super_admin",
               "client_admin",
               "school_owner",
+              "teacher",
             ]}
           >
             <CourseContentManager />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/teacher/batches"
+        element={
+          <ProtectedRoute allowedRoles={["teacher"]}>
+            <TeacherBatches />
           </ProtectedRoute>
         }
       />

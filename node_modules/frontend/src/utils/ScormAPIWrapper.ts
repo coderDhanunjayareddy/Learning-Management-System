@@ -48,6 +48,8 @@ class ScormAPI {
             baseUrl ||
             import.meta.env.VITE_API_BASE_URL ||
             "http://localhost:5000";
+        const token = localStorage.getItem("token");
+        const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
 
         return axios
             .post(`${resolvedBaseUrl}/api/scorm/commit`, {
@@ -55,7 +57,7 @@ class ScormAPI {
                 contentId: this.contentId,
                 data: this.data,
                 attemptNo: 1,
-            })
+            }, { headers })
             .then(() => {
                 console.log("✅ SCORM data committed successfully");
                 return "true";

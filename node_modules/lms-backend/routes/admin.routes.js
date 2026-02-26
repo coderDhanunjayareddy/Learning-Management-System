@@ -7,8 +7,8 @@ import { deleteContentItem, renameContentItem } from "../controllers/content.con
 
 const router = Router();
 
-// Public SCORM viewer
-router.get("/view/*", viewScormFile);
+// Authenticated SCORM viewer
+router.get("/view/*", authenticateToken, viewScormFile);
 
 // Auth + RBAC chain for admin routes
 router.use(

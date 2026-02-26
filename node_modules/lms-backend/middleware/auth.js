@@ -117,6 +117,7 @@ export const loadPermissions = async (req, res, next) => {
 export const checkPermission = (permission) => {
   return (req, res, next) => {
     if (!permission) return res.status(500).json({ error: 'Permission not configured' });
+    if (req.user?.role === 'super_admin') return next();
 
     const permissions = req.permissions;
     if (!permissions) return res.status(500).json({ error: 'Permissions not loaded' });
