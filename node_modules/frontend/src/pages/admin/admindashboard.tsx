@@ -32,7 +32,7 @@ export default function CourseStudents() {
   // 👇 Add these lines
   const userFullName = user?.full_name || 'Super Administrator';
   const userEmail = user?.email || 'super@lms.com';
-  const isGvjbClient = user?.role === 'client_admin';
+  const isGvjbClient = Boolean(user?.client_id);
   const isContentAuthorizer = user?.role === 'content_authorizer';
   const brandLogo = isGvjbClient ? gvjbLogo : spectropyLogo;
   const brandName = isGvjbClient ? 'GVB' : 'Spectropy';

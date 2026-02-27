@@ -2,14 +2,7 @@
 // src/contexts/AuthContext.tsx
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import api, { applyToken } from '../services/api';
-
-type Role =
-  | 'super_admin'
-  | 'content_authorizer'
-  | 'client_admin'
-  | 'school_owner'
-  | 'teacher'
-  | 'student';
+import type { Role } from '../core/domain/auth';
 
 export interface User {
   id: number;

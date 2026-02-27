@@ -1,9 +1,9 @@
 // src/pages/teacher/Dashboard.tsx
 import { useState, useEffect, useCallback } from 'react';
-import { Link, useNavigate } from 'react-router-dom'; // ✅ Added useNavigate
-import { useAuth } from '../../contexts/AuthContext';
+import { Link } from 'react-router-dom';
 import api from '../../services/api';
 import axios from 'axios';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface Course {
   id: number;
@@ -14,11 +14,11 @@ interface Course {
 }
 
 export default function TeacherDashboard() {
+  const { user } = useAuth();
+  const isClientTenant = Boolean(user?.client_id);
   const [courses, setCourses] = useState<Course[]>([]);
   const [isCreating, setIsCreating] = useState(false);
   const [newCourse, setNewCourse] = useState({ title: '', description: '' });
-  const { logout } = useAuth(); 
-  const navigate = useNavigate(); // ✅ Initialize navigate
 
   const fetchCourses = useCallback(async () => {
     try {
@@ -52,27 +52,17 @@ export default function TeacherDashboard() {
     }
   };
 
-  // ✅ Handle back to login
-  const handleBackToLogin = async () => {
-  await logout(); // ✅ Clear auth state (token, user, etc.)
-  navigate('/login', { replace: true }); // prevent back navigation to dashboard
-};
-
   return (
-    <div className="p-6 max-w-6xl mx-auto">
-      {/* Back Button at the top (or bottom — see note below) */}
-      <button
-        onClick={handleBackToLogin}
-        className="mb-4 text-sm text-gray-600 hover:text-gray-900 flex items-center"
-      >
-        ← Back to Login
-      </button>
-
-      <div className="flex justify-between items-center mb-6">
+    <div className="max-w-6xl mx-auto">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-6">
         <h1 className="text-2xl font-bold">My Courses</h1>
         <button
           onClick={() => setIsCreating(!isCreating)}
-          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+          className={`px-4 py-2 rounded font-semibold ${
+            isClientTenant
+              ? 'bg-amber-400 text-slate-900 hover:bg-amber-500'
+              : 'bg-blue-600 text-white hover:bg-blue-700'
+          }`}
         >
           {isCreating ? 'Cancel' : 'Create New Course'}
         </button>

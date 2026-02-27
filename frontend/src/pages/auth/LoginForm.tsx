@@ -28,6 +28,8 @@ export default function LoginForm() {
         navigate('/admin/dashboard');
         break;
       case 'teacher':
+        navigate('/teacher');
+        break;
       case 'student':
         navigate('/student/dashboard');
         break;

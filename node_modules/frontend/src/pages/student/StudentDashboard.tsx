@@ -5,7 +5,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import api from '../../services/api';
 import axios from 'axios';
-import logo from "/gvjb.png"; // adjust path if needed
+import spectropyLogo from "/logo.png";
+import gvjbLogo from "/gvjb.png";
 
 interface EnrolledCourse {
   id: number;
@@ -22,12 +23,13 @@ export default function StudentDashboard() {
   const { logout } = useAuth();
   
   const { user } = useAuth();
-    
-    // 👇 Add these lines
-  const userFullName = user?.full_name || 'Super Administrator';
-  const userEmail = user?.email || 'super@lms.com';
-  const dashboardTitle =
-    user?.role === 'teacher' ? 'Teacher Dashboard' : 'Student Dashboard';
+
+  const isClientTenant = Boolean(user?.client_id);
+  const brandLogo = isClientTenant ? gvjbLogo : spectropyLogo;
+  const brandName = isClientTenant ? 'GVB' : 'Spectropy';
+  const userFullName = user?.full_name || 'Student';
+  const userEmail = user?.email || '';
+  const dashboardTitle = 'Student Dashboard';
 
   useEffect(() => {
     const fetchEnrolledCourses = async () => {
@@ -54,20 +56,34 @@ export default function StudentDashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#fff7ed,_#ffffff_45%,_#fef9f3_100%)] text-slate-900">
+    <div
+      className={
+        isClientTenant
+          ? 'min-h-screen bg-[radial-gradient(circle_at_top,_#fff7ed,_#ffffff_45%,_#fef9f3_100%)] text-slate-900'
+          : 'min-h-screen bg-[radial-gradient(circle_at_top,_#e6f0ff,_#f7faff_45%,_#ffffff_100%)] text-slate-900'
+      }
+    >
       <div className="flex min-h-screen flex-col lg:flex-row">
         {/* Left Sidebar */}
-        <aside className="flex w-full flex-col border-b border-amber-100 bg-white/90 backdrop-blur lg:w-72 lg:border-b-0 lg:border-r">
-          <div className="p-6 border-b border-amber-100">
+        <aside
+          className={`flex w-full flex-col border-b lg:w-72 lg:border-b-0 lg:border-r ${
+            isClientTenant ? 'border-amber-100 bg-white/90 backdrop-blur' : 'border-blue-100 bg-white'
+          }`}
+        >
+          <div className={`p-6 border-b ${isClientTenant ? 'border-amber-100' : 'border-blue-100'}`}>
             <div className="flex items-center space-x-3">
               <img
-                src={logo}
-                alt="GVJB Logo"
+                src={brandLogo}
+                alt={`${brandName} Logo`}
                 className="h-11 w-auto rounded-md object-contain"
               />
               <div>
-                <p className="text-xs uppercase tracking-[0.3em] text-amber-700">
-                  GVB
+                <p
+                  className={`text-xs uppercase tracking-[0.3em] ${
+                    isClientTenant ? 'text-amber-700' : 'text-blue-600'
+                  }`}
+                >
+                  {brandName}
                 </p>
                 <h1 className="text-lg font-semibold">{dashboardTitle}</h1>
               </div>
@@ -79,8 +95,12 @@ export default function StudentDashboard() {
               onClick={() => setActiveTab('courses')}
               className={`w-full flex items-center px-4 py-3 text-sm font-medium rounded-2xl transition-colors ${
                 activeTab === 'courses'
-                  ? 'bg-amber-100 text-amber-900 border-l-4 border-amber-600'
-                  : 'text-slate-700 hover:bg-amber-50'
+                  ? isClientTenant
+                    ? 'bg-amber-100 text-amber-900 border-l-4 border-amber-600'
+                    : 'bg-blue-100 text-blue-900 border-l-4 border-blue-700'
+                  : isClientTenant
+                    ? 'text-slate-700 hover:bg-amber-50'
+                    : 'text-slate-700 hover:bg-blue-50'
               }`}
             >
               <svg
@@ -103,9 +123,17 @@ export default function StudentDashboard() {
 
           {/* User Info */}
           <div className="px-4 pb-4">
-            <div className="flex items-center rounded-2xl border border-amber-100 bg-amber-50 p-3">
-              <div className="h-12 w-12 rounded-full bg-amber-200 flex items-center justify-center">
-                <span className="text-amber-900 font-semibold text-xl">
+            <div
+              className={`flex items-center rounded-2xl border p-3 ${
+                isClientTenant ? 'border-amber-100 bg-amber-50' : 'border-blue-100 bg-blue-50'
+              }`}
+            >
+              <div
+                className={`h-12 w-12 rounded-full flex items-center justify-center ${
+                  isClientTenant ? 'bg-amber-200' : 'bg-blue-200'
+                }`}
+              >
+                <span className={`font-semibold text-xl ${isClientTenant ? 'text-amber-900' : 'text-blue-900'}`}>
                   {userFullName?.charAt(0).toUpperCase() || 'U'}
                 </span>
               </div>
@@ -118,10 +146,14 @@ export default function StudentDashboard() {
             </div>
           </div>
 
-          <footer className="mt-auto border-t border-amber-100 px-4 py-2">
+          <footer className={`mt-auto border-t px-4 py-2 ${isClientTenant ? 'border-amber-100' : 'border-blue-100'}`}>
             <button
               onClick={handleBackToLogin}
-              className="w-full flex items-center justify-center rounded-full border border-amber-200 px-3 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-50"
+              className={`w-full flex items-center justify-center rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                isClientTenant
+                  ? 'border-amber-200 text-amber-700 hover:bg-amber-50'
+                  : 'border-blue-200 text-blue-700 hover:bg-blue-50'
+              }`}
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -144,13 +176,17 @@ export default function StudentDashboard() {
 
         {/* Right Panel */}
         <section className="flex-1 overflow-y-auto">
-          <div className="border-b border-amber-100 bg-white/70 px-6 py-6 backdrop-blur">
+          <div
+            className={`border-b px-6 py-6 backdrop-blur ${
+              isClientTenant ? 'border-amber-100 bg-white/70' : 'border-blue-100 bg-white'
+            }`}
+          >
             <h1 className="text-2xl font-bold">
               {activeTab === 'courses' && 'Active Courses'}
             </h1>
             <p className="text-slate-600 mt-1">
               {activeTab === 'courses' &&
-                'Continue your learning with GVJB course modules.'}
+                `Continue your learning with ${brandName} course modules.`}
             </p>
           </div>
 
@@ -162,9 +198,15 @@ export default function StudentDashboard() {
                     {[1, 2, 3].map((i) => (
                       <div
                         key={i}
-                        className="border border-amber-100 rounded-2xl p-4 animate-pulse bg-white"
+                        className={`border rounded-2xl p-4 animate-pulse bg-white ${
+                          isClientTenant ? 'border-amber-100' : 'border-blue-100'
+                        }`}
                       >
-                        <div className="h-28 bg-amber-100/70 rounded-xl mb-4"></div>
+                        <div
+                          className={`h-28 rounded-xl mb-4 ${
+                            isClientTenant ? 'bg-amber-100/70' : 'bg-blue-100/70'
+                          }`}
+                        ></div>
                         <div className="h-4 bg-slate-200 rounded w-3/4 mb-2"></div>
                         <div className="h-3 bg-slate-200 rounded w-1/2 mb-4"></div>
                         <div className="h-4 bg-slate-200 rounded w-full mb-2"></div>
@@ -183,12 +225,18 @@ export default function StudentDashboard() {
                     {courses.map((course) => (
                       <div
                         key={course.id}
-                        className="border border-amber-100 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition bg-white"
+                        className={`border rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition bg-white ${
+                          isClientTenant ? 'border-amber-100' : 'border-blue-100'
+                        }`}
                       >
-                        <div className="bg-amber-50 h-28 flex items-center justify-center">
+                        <div
+                          className={`h-28 flex items-center justify-center ${
+                            isClientTenant ? 'bg-amber-50' : 'bg-blue-50'
+                          }`}
+                        >
                           <img
-                            src={logo}
-                            alt="GVJB"
+                            src={brandLogo}
+                            alt={brandName}
                             className="h-10 w-auto opacity-70"
                           />
                         </div>
@@ -202,7 +250,11 @@ export default function StudentDashboard() {
 
                           <Link
                             to={`/student/course/${course.id}`}
-                            className="mt-4 w-full text-center bg-amber-400 text-slate-900 text-xs px-3 py-2 rounded-full hover:bg-amber-500 font-semibold block"
+                            className={`mt-4 w-full text-center text-xs px-3 py-2 rounded-full font-semibold block ${
+                              isClientTenant
+                                ? 'bg-amber-400 text-slate-900 hover:bg-amber-500'
+                                : 'bg-blue-600 text-white hover:bg-blue-700'
+                            }`}
                           >
                             View Course
                           </Link>
