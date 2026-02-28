@@ -1,0 +1,98 @@
+{
+  "subjects": [
+    {
+      "code": "PHY",
+      "name": "Physics",
+      "description": "JEE/NEET Physics curriculum",
+      "display_order": 1,
+      "chapters": [
+        { "chapter_number": 1, "name": "Units and Dimensions" },
+        { "chapter_number": 2, "name": "Kinematics" },
+        { "chapter_number": 3, "name": "Laws of Motion" },
+        { "chapter_number": 4, "name": "Work, Energy and Power" },
+        { "chapter_number": 5, "name": "Rotational Motion" },
+        { "chapter_number": 6, "name": "Gravitation" },
+        { "chapter_number": 7, "name": "Thermal Properties of Matter" },
+        { "chapter_number": 8, "name": "Thermodynamics" },
+        { "chapter_number": 9, "name": "Oscillations and Waves" },
+        { "chapter_number": 10, "name": "Electrostatics" },
+        { "chapter_number": 11, "name": "Current Electricity" },
+        { "chapter_number": 12, "name": "Magnetism and EMI" },
+        { "chapter_number": 13, "name": "Optics" },
+        { "chapter_number": 14, "name": "Modern Physics" }
+      ]
+    },
+    {
+      "code": "CHE",
+      "name": "Chemistry",
+      "description": "JEE/NEET Chemistry curriculum",
+      "display_order": 2,
+      "chapters": [
+        { "chapter_number": 1, "name": "Some Basic Concepts of Chemistry" },
+        { "chapter_number": 2, "name": "Atomic Structure" },
+        { "chapter_number": 3, "name": "Chemical Bonding and Molecular Structure" },
+        { "chapter_number": 4, "name": "States of Matter" },
+        { "chapter_number": 5, "name": "Thermodynamics" },
+        { "chapter_number": 6, "name": "Chemical Equilibrium" },
+        { "chapter_number": 7, "name": "Redox Reactions" },
+        { "chapter_number": 8, "name": "Solutions" },
+        { "chapter_number": 9, "name": "Electrochemistry" },
+        { "chapter_number": 10, "name": "Chemical Kinetics" },
+        { "chapter_number": 11, "name": "Surface Chemistry" },
+        { "chapter_number": 12, "name": "Organic Chemistry Basics" },
+        { "chapter_number": 13, "name": "Hydrocarbons" },
+        { "chapter_number": 14, "name": "Haloalkanes and Haloarenes" },
+        { "chapter_number": 15, "name": "Alcohols, Phenols and Ethers" },
+        { "chapter_number": 16, "name": "Aldehydes, Ketones and Carboxylic Acids" },
+        { "chapter_number": 17, "name": "Amines" },
+        { "chapter_number": 18, "name": "Biomolecules and Polymers" },
+        { "chapter_number": 19, "name": "Coordination Compounds" }
+      ]
+    },
+    {
+      "code": "MAT",
+      "name": "Mathematics",
+      "description": "JEE Mathematics curriculum",
+      "display_order": 3,
+      "chapters": [
+        { "chapter_number": 1, "name": "Sets, Relations and Functions" },
+        { "chapter_number": 2, "name": "Trigonometry" },
+        { "chapter_number": 3, "name": "Complex Numbers" },
+        { "chapter_number": 4, "name": "Quadratic Equations" },
+        { "chapter_number": 5, "name": "Sequences and Series" },
+        { "chapter_number": 6, "name": "Permutations and Combinations" },
+        { "chapter_number": 7, "name": "Binomial Theorem" },
+        { "chapter_number": 8, "name": "Probability" },
+        { "chapter_number": 9, "name": "Matrices and Determinants" },
+        { "chapter_number": 10, "name": "Vector Algebra" },
+        { "chapter_number": 11, "name": "Three Dimensional Geometry" },
+        { "chapter_number": 12, "name": "Limits, Continuity and Differentiability" },
+        { "chapter_number": 13, "name": "Applications of Derivatives" },
+        { "chapter_number": 14, "name": "Integration" },
+        { "chapter_number": 15, "name": "Differential Equations" },
+        { "chapter_number": 16, "name": "Coordinate Geometry (Lines and Circles)" },
+        { "chapter_number": 17, "name": "Conic Sections" }
+      ]
+    },
+    {
+      "code": "BIO",
+      "name": "Biology",
+      "description": "NEET Biology curriculum",
+      "display_order": 4,
+      "chapters": [
+        { "chapter_number": 1, "name": "The Living World" },
+        { "chapter_number": 2, "name": "Biological Classification" },
+        { "chapter_number": 3, "name": "Cell: The Unit of Life" },
+        { "chapter_number": 4, "name": "Cell Cycle and Division" },
+        { "chapter_number": 5, "name": "Plant Physiology" },
+        { "chapter_number": 6, "name": "Human Physiology" },
+        { "chapter_number": 7, "name": "Reproduction in Organisms" },
+        { "chapter_number": 8, "name": "Genetics and Evolution" },
+        { "chapter_number": 9, "name": "Biotechnology" },
+        { "chapter_number": 10, "name": "Human Health and Disease" },
+        { "chapter_number": 11, "name": "Ecology and Environment" },
+        { "chapter_number": 12, "name": "Microbes in Human Welfare" }
+      ]
+    }
+  ]
+}

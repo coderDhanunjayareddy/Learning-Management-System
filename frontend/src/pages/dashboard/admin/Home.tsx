@@ -1,0 +1,230 @@
+﻿// src/pages/admin/DashboardHome.tsx
+import { useEffect, useState } from 'react';
+import api from '@/lib/api';
+import { Bar } from 'react-chartjs-2';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend,
+} from 'chart.js';
+import type { TooltipItem } from 'chart.js';
+
+ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
+
+// ===== Metric Card Component =====
+function MetricCard({
+  title,
+  subtitle,
+  value
+}: {
+  title: string;
+  subtitle: string;
+  value: string | number;
+}) {
+  return (
+    <div className="bg-white p-5 rounded-lg shadow text-center">
+      <h3 className="text-gray-800 font-semibold text-sm md:text-base">{title}</h3>
+      {subtitle && <p className="text-gray-500 text-xs mt-1">{subtitle}</p>}
+      <p className="text-2xl font-bold mt-2 text-gray-800">{value}</p>
+    </div>
+  );
+}
+
+// ===== Daily Bar Chart Component =====
+interface DailyBarChartProps {
+  title: string;
+  labels: string[];
+  data: number[]; // âœ… CORRECT: 'data' is the property name
+  unit?: string;
+}
+
+function DailyBarChart({
+  title,
+  labels,
+  data, // âœ… CORRECT
+  unit = 'count'
+}: DailyBarChartProps) {
+  const chartData = {
+    labels,
+    datasets: [
+      {
+        label: unit === 'hrs' ? 'Hours' : 'Count',
+        data, // âœ… CORRECT
+        backgroundColor: '#3b82f6',
+        borderRadius: 2,
+        borderSkipped: false,
+      },
+    ],
+  };
+
+  const options = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: (context: TooltipItem<'bar'>) =>
+            unit === 'hrs'
+              ? `${context.raw} hrs`
+              : `${context.raw} ${unit}`,
+        },
+      },
+    },
+    scales: {
+      y: {
+        beginAtZero: true,
+        ticks: {
+          stepSize: unit === 'hrs' ? undefined : 1,
+          precision: unit === 'hrs' ? 1 : 0,
+        },
+      },
+    },
+  };
+
+  return (
+    <div className="bg-white p-4 rounded-lg shadow">
+      <h3 className="text-lg font-medium mb-3">{title}</h3>
+      <div className="h-64">
+        <Bar data={chartData} options={options} />
+      </div>
+    </div>
+  );
+}
+
+// ===== Main Dashboard Component =====
+interface Metrics {
+  newSignups: number;
+  newEnrollments: number;
+  activeUsers: number;
+  totalLearningHours: number;
+}
+
+export default function DashboardHome() {
+  const [metrics, setMetrics] = useState<Metrics>({
+    newSignups: 0,
+    newEnrollments: 0,
+    activeUsers: 0,
+    totalLearningHours: 0,
+  });
+
+  const [dailySignups, setDailySignups] = useState<{ labels: string[]; data: number[] }>({
+    labels: [],
+    data: [],
+  });
+  const [dailyEnrollments, setDailyEnrollments] = useState<{ labels: string[]; data: number[] }>({
+    labels: [],
+    data: [],
+  });
+  const [dailyLogins, setDailyLogins] = useState<{ labels: string[]; data: number[] }>({
+    labels: [],
+    data: [],
+  });
+  const [dailyLearningTime, setDailyLearningTime] = useState<{ labels: string[]; data: number[] }>({
+    labels: [],
+    data: [],
+  });
+
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      try {
+        // âœ… Make sure this matches your backend route
+        const res = await api.get('users/stats');
+        const data = res.data;
+
+        setMetrics(data.metrics);
+
+        setDailySignups({
+          labels: data.chartData.labels,
+          data: data.chartData.signups,
+        });
+        setDailyEnrollments({
+          labels: data.chartData.labels,
+          data: data.chartData.enrollments,
+        });
+        setDailyLogins({
+          labels: data.chartData.labels,
+          data: data.chartData.logins,
+        });
+        setDailyLearningTime({
+          labels: data.chartData.labels,
+          data: data.chartData.learningTime,
+        });
+      } catch (err) {
+        console.error('Failed to load dashboard data', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDashboardData();
+  }, []);
+
+  if (loading) {
+    return <div className="text-center py-10 text-gray-600">Loading dashboard...</div>;
+  }
+
+  return (
+    <div className="py-1 px-1">
+      {/* Metric Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto mb-10">
+        <MetricCard
+          title="New Signups"
+          subtitle="How many new student accounts were created in the last 7 days"
+          value={metrics.newSignups}
+        />
+        <MetricCard
+          title="New Enrollments"
+          subtitle="Number of course enrollments in the last 7 days"
+          value={metrics.newEnrollments}
+        />
+        <MetricCard
+          title="Active Users"
+          subtitle="Users who logged in during the last 30 days"
+          value={metrics.activeUsers}
+        />
+        <MetricCard
+          title="Learning Time"
+          subtitle="Total time spent by all students on content"
+          value={`${metrics.totalLearningHours} hrs`}
+        />
+      </div>
+
+      {/* Charts */}
+      <div className="space-y-8 max-w-6xl mx-auto">
+        <DailyBarChart
+          title="New Signups â€“ Last 7 Days"
+          labels={dailySignups.labels}
+          data={dailySignups.data}
+          unit="signups"
+        />
+        <DailyBarChart
+          title="New Enrollments â€“ Last 7 Days"
+          labels={dailyEnrollments.labels}
+          data={dailyEnrollments.data}
+          unit="enrollments"
+        />
+        <DailyBarChart
+          title="Daily Logins â€“ Last 7 Days"
+          labels={dailyLogins.labels}
+          data={dailyLogins.data}
+          unit="logins"
+        />
+        <DailyBarChart
+          title="Daily Learning Time â€“ Last 7 Days"
+          labels={dailyLearningTime.labels}
+          data={dailyLearningTime.data}
+          unit="hrs"
+        />
+      </div>
+    </div>
+  );
+}
+
+

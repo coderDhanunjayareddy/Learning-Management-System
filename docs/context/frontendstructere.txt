@@ -1,0 +1,37 @@
+src/
+├── app/                    # Application setup
+│   ├── providers/          # AuthProvider, ThemeProvider, ToastProvider
+│   ├── routes/             # AppRoutes, ProtectedRoute
+│   └── store/              # Global state (if using Redux/Zustand)
+│
+├── assets/                 # Static assets (images, fonts, global css)
+│
+├── components/             # Shared "Dumb" UI Components
+│   ├── ui/                 # Generic: Button, Input, Modal, Spinner
+│   └── layout/             # Layouts: DashboardLayout, AuthLayout, Sidebar
+│
+├── features/               # The Core Business Logic (The most important change)
+│   ├── auth/               # Login, Register, ForgotPassword
+│   │   ├── components/     # LoginForm
+│   │   └── hooks/          # useAuth (moved from contexts if specific)
+│   │
+│   ├── courses/            # Everything related to Courses
+│   │   ├── components/
+│   │   │   ├── editor/     # CourseContentManager, LeftPanel (The "Manager" view)
+│   │   │   ├── player/     # ContentViewer, ScormPlayer (The "Student" view)
+│   │   │   └── list/       # AdminCourseManager (The list view)
+│   │   └── hooks/          # useCourseData
+│   │
+│   ├── tenants/            # Multi-tenancy logic
+│   │   └── hooks/          # useTenant (Logic extracted from StudentDashboard)
+│   │
+│   └── users/              # Profile, User Management
+│
+├── hooks/                  # Global hooks (useDebounce, useOnClickOutside)
+├── lib/                    # Third-party lib configs (axios, utils)
+├── pages/                  # Route Pages (These compose features together)
+│   ├── auth/               # LoginPage
+│   ├── dashboard/          # StudentDashboard, TeacherDashboard, AdminDashboard
+│   └── course/             # CourseEditorPage, CoursePlayerPage
+│
+└── types/                  # Global TypeScript definitions

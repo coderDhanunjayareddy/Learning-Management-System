@@ -13,8 +13,8 @@ This doc lists the **current** routes, what they do, and which tables they read/
 - `/api/scorm` -> `backend/routes/scorm.routes.js`
 - `/api/course` -> `backend/routes/course.routes.js`
 - `/api/users` -> `backend/routes/user.routes.js`
-- `/api/community` -> `backend/routes/community.routes.js`
-- `/api/upload` -> `backend/routes/upload.routes.js`
+- `/api/platform` -> `backend/routes/platform.routes.js`
+- `/api/org` -> `backend/routes/org.routes.js`
 
 ## Auth Routes (`/api/auth`)
 - `POST /register`
@@ -150,29 +150,120 @@ Routes in `backend/routes/scorm.routes.js`
 
 ## Users Routes (`/api/users`)
 Routes in `backend/routes/user.routes.js`
-- `GET /` (public)
+- `GET /` (auth required)
   - Controller: `getAllUsers` in `backend/controllers/user.controller.js`
   - Tables: `users` (SELECT)
-- `GET /stats` (public)
+- `GET /stats` (auth required)
   - Controller: `getDashboardStats`
   - Tables: `users` (SELECT), `enrollments` (SELECT), `student_attempts` (SELECT)
-
-## Community Routes (`/api/community`)
-Routes in `backend/routes/community.routes.js`
 - `POST /` (auth required)
-  - Controller: `createCommunityContent` in `backend/controllers/community.controller.js`
-  - Tables: `community_content` (INSERT)
-- `GET /content` (public)
-  - Controller: `getCommunityContent`
-  - Tables: `community_content` (SELECT)
+  - Controller: `createUser` in `backend/controllers/hierarchy.controller.js`
+  - Tables: `users` (INSERT), `school_memberships` (optional)
+- `PATCH /:id` (auth required)
+  - Controller: `updateUser`
+  - Tables: `users` (UPDATE)
+- `DELETE /:id` (auth required)
+  - Controller: `deactivateUser`
+  - Tables: `users` (UPDATE)
 
-## Upload Routes (`/api/upload`)
-Routes in `backend/routes/upload.routes.js`
-- `POST /media` (auth required, file upload)
-  - Inline handler in `backend/routes/upload.routes.js`
-  - Action: uploads file to Supabase Storage and returns public URL
-  - Tables: none
-  - Storage: Supabase bucket `community-media`
+## Platform Routes (`/api/platform`)
+Routes in `backend/routes/platform.routes.js`
+- `GET /clients`
+  - Controller: `listClients` in `backend/controllers/platform.controller.js`
+  - Tables: `clients` (SELECT)
+- `POST /clients`
+  - Controller: `createClient`
+  - Tables: `clients` (INSERT)
+- `PATCH /clients/:id`
+  - Controller: `updateClient`
+  - Tables: `clients` (UPDATE)
+- `DELETE /clients/:id`
+  - Controller: `deactivateClient`
+  - Tables: `clients` (UPDATE)
+- `GET /content-packs`
+  - Controller: `listContentPacks`
+  - Tables: `content_packs` (SELECT)
+- `POST /content-packs`
+  - Controller: `createContentPack`
+  - Tables: `content_packs` (INSERT)
+- `PATCH /content-packs/:id`
+  - Controller: `updateContentPack`
+  - Tables: `content_packs` (UPDATE)
+- `DELETE /content-packs/:id`
+  - Controller: `deactivateContentPack`
+  - Tables: `content_packs` (UPDATE)
+- `POST /content-packs/:id/items`
+  - Controller: `addContentPackItems`
+  - Tables: `content_pack_items` (INSERT)
+- `DELETE /content-packs/:id/items/:contentId`
+  - Controller: `removeContentPackItem`
+  - Tables: `content_pack_items` (DELETE)
+- `GET /entitlements`
+  - Controller: `listEntitlements`
+  - Tables: `content_entitlements` (SELECT)
+- `POST /entitlements`
+  - Controller: `createEntitlement`
+  - Tables: `content_entitlements` (INSERT)
+- `PATCH /entitlements/:id`
+  - Controller: `updateEntitlement`
+  - Tables: `content_entitlements` (UPDATE)
+- `DELETE /entitlements/:id`
+  - Controller: `revokeEntitlement`
+  - Tables: `content_entitlements` (UPDATE)
+
+## Organization Routes (`/api/org`)
+Routes in `backend/routes/org.routes.js`
+- `GET /schools`
+  - Controller: `listSchools` in `backend/controllers/hierarchy.controller.js`
+  - Tables: `schools` (SELECT)
+- `POST /schools`
+  - Controller: `createSchool`
+  - Tables: `schools` (INSERT)
+- `PATCH /schools/:id`
+  - Controller: `updateSchool`
+  - Tables: `schools` (UPDATE)
+- `DELETE /schools/:id`
+  - Controller: `deactivateSchool`
+  - Tables: `schools` (UPDATE)
+- `GET /schools/:schoolId/memberships`
+  - Controller: `listSchoolMemberships`
+  - Tables: `school_memberships`, `users` (SELECT)
+- `POST /schools/:schoolId/memberships`
+  - Controller: `addSchoolMembership`
+  - Tables: `school_memberships` (INSERT/UPDATE)
+- `DELETE /schools/:schoolId/memberships/:userId`
+  - Controller: `removeSchoolMembership`
+  - Tables: `school_memberships` (DELETE)
+- `GET /batches`
+  - Controller: `listBatches`
+  - Tables: `batches` (SELECT)
+- `POST /batches`
+  - Controller: `createBatch`
+  - Tables: `batches` (INSERT)
+- `PATCH /batches/:id`
+  - Controller: `updateBatch`
+  - Tables: `batches` (UPDATE)
+- `DELETE /batches/:id`
+  - Controller: `deactivateBatch`
+  - Tables: `batches` (UPDATE)
+- `GET /batches/:batchId/members`
+  - Controller: `listBatchMembers`
+  - Tables: `batch_members`, `users` (SELECT)
+- `POST /batches/:batchId/members`
+  - Controller: `addBatchMember`
+  - Tables: `batch_members` (INSERT/UPDATE)
+- `DELETE /batches/:batchId/members/:userId`
+  - Controller: `removeBatchMember`
+  - Tables: `batch_members` (DELETE)
+- `GET /role-permissions`
+  - Controller: `listRolePermissions`
+  - Tables: `role_permissions` (SELECT)
+- `POST /role-permissions`
+  - Controller: `upsertRolePermission`
+  - Tables: `role_permissions` (INSERT/UPDATE)
+- `DELETE /role-permissions/:id`
+  - Controller: `deleteRolePermission`
+  - Tables: `role_permissions` (DELETE)
 
 ## Static Files
 - `GET /uploads/*`

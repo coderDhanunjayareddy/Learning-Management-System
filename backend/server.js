@@ -15,8 +15,11 @@ import { viewScormFile } from './controllers/scorm.controller.js';
 import EnrollmentRouter from './routes/enrollment.routes.js';
 import CourseRouter from './routes/course.routes.js';
 import userRoutes from './routes/user.routes.js';
-import communityRoutes from './routes/community.routes.js';
-import uploadRoutes from './routes/upload.routes.js';
+import platformRoutes from './routes/platform.routes.js';
+import orgRoutes from './routes/org.routes.js';
+import curriculumRoutes from './routes/curriculum.routes.js';
+import { authenticateToken } from './middleware/auth.js';
+import supabase from './config/supabaseClient.js';
 
 
 dotenv.config();
@@ -27,12 +30,59 @@ const PORT = process.env.PORT || 5000;
 // ✅ MUST come BEFORE any other helmet middleware
 
 app.use(helmet());
-app.use(cors());
+const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5100,http://localhost:5173')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true); // allow non-browser tools
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      return callback(new Error(`CORS blocked for origin: ${origin}`));
+    },
+    credentials: true,
+  })
+);
 app.use(express.json());
+
+app.get('/health', async (req, res) => {
+  const startedAt = Date.now();
+  try {
+    const { error } = await supabase
+      .from('users')
+      .select('id', { head: true, count: 'exact' })
+      .limit(1);
+
+    if (error) {
+      return res.status(503).json({
+        status: 'degraded',
+        supabase: 'down',
+        error: error.message,
+        responseTimeMs: Date.now() - startedAt
+      });
+    }
+
+    return res.json({
+      status: 'ok',
+      supabase: 'ok',
+      responseTimeMs: Date.now() - startedAt
+    });
+  } catch (err) {
+    return res.status(503).json({
+      status: 'degraded',
+      supabase: 'down',
+      error: err instanceof Error ? err.message : 'Unknown error',
+      responseTimeMs: Date.now() - startedAt
+    });
+  }
+});
 
 app.use('/api/scorm', scormRoutes); // Serve SCORM uploads
 app.get(
   "/api/scorm/*",
+  authenticateToken,
   helmet({ frameguard: false }),             // <- disables X-Frame-Options here
   (req, res, next) => {                      // <- extra hardening: kill any pre-set header
     res.setHeader("X-Frame-Options", "ALLOWALL");
@@ -61,10 +111,11 @@ app.use('/api/admin', EnrollmentRouter);
 app.use('/api/course', CourseRouter);
 
 app.use('/api/users', userRoutes);
+app.use('/api/platform', platformRoutes);
+app.use('/api/org', orgRoutes);
+app.use('/api', curriculumRoutes);
 
-app.use('/api/community', communityRoutes);
 
-app.use('/api/upload', uploadRoutes);
 
 app.get('/', (req, res) => res.json({ status: 'OK' }));
 
