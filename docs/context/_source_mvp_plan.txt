@@ -1,0 +1,587 @@
+
+--- page 1 ---
+ 
+SPECTROPY LMS  
+MVP Implementation Plan  
+ 
+Question Bank + Exam Engine  
+ 
+A Senior Developer's Implementation Roadmap  
+ 
+Version 1.0  
+February 2026  
+  
+
+--- page 2 ---
+Executive Summary  
+MVP Objective  
+Build a functional Question Bank and Exam Engine that demonstrates the core value 
+proposition of SPECTROPY LMS. The MVP must support the 3 -tier content ownership model 
+(Platform, Tenant, School) while delivering a usable product for early adopters.  
+What We  Are Building  
+• Question Bank: Create, manage, search questions with 3 -tier ownership  
+• Exam Engine: Create exams, conduct tests, auto -grade, show results  
+• Foundation: Multi -tenant auth, role -based access, basic UI  
+What We Are NOT Building (MVP)  
+• Courses module (Phase 2)  
+• Advanced analytics and reporting (Phase 2)  
+• Mobile app (Phase 2)  
+• Proctoring features (Phase 2)  
+• Bulk import/export (Phase 2)  
+• Content entitlement system (simplified for MVP)  
+Timeline Overview  
+Phase  Focus  Duration  Outcome  
+Phase 0  Foundation Setup  1 week  Project structure, DB, Auth  
+Phase 1  Question Bank Core  4 Days CRUD, Search, 3 -tier ownership  
+Phase 2  Exam Engine Core  5 Days Create, Take, Grade exams  
+Phase 3  Integration + Polish  2 Days Bug fixes, UI polish, Testing  
+Total MVP Complete  12 Days Deployable product  
+  
+
+--- page 3 ---
+Senior Developer's Analysis  
+Critical Thinking: What Makes This MVP Work  
+1. Dependency Chain Analysis  
+Before building Question Bank and Exam Engine, we need foundational pieces. Here's the 
+dependency chain:  
+ 
+Layer 0 - Infrastructure (Must Have First):  
+• Database setup (PostgreSQL via Supabase)  
+• Project structure (Node.js + Express + TypeScript)  
+• Authentication system (JWT)  
+• Basic multi -tenancy middleware  
+ 
+Layer 1 - User Management (Must Have):  
+• Users table with role field  
+• Tenants table (minimal)  
+• Schools table (minimal)  
+• Login/logout functionality  
+ 
+Layer 2 - Curriculum Structure (Must Have for Questions):  
+• Subjects table  
+• Chapters table  
+• Topics table (optional for MVP, can be NULL)  
+ 
+Layer 3 - Question Bank (Core MVP):  
+• Questions table with 3 -tier ownership  
+• Question CRUD APIs  
+• Search and filter  
+ 
+Layer 4 - Exam Engine (Core MVP):  
+• Exams table  
+• Exam sections  
+• Exam attempts and responses  
+• Auto-grading  
+2. MVP Scope Decisions  
+DECISION: Start with 4 question types only: MCQ Single, MCQ Multiple, Numerical, True/False. 
+Add others post -MVP.  
+DECISION: Implement only auto -gradable questions in MVP. Manual grading (subjective) 
+comes in Phase 2.  
+
+--- page 4 ---
+DECISION: Skip entitlement system complexity. In MVP, all content is tenant -owned or school -
+owned. Platform content licensing comes later.  
+DECISION: Single exam pattern for MVP: Custom pattern with configurable sections. 
+JEE/NEET patterns are presets on top of this.  
+DECISION: No real -time features in MVP . Auto -save via HTTP POST every 30 seconds, not 
+WebSocket.  
+3. Risk Mitigation  
+Risk 1: Scope Creep  
+• Mitigation: Strict MVP feature list. Everything else goes to 'Phase 2' backlog.  
+Risk 2: 3 -Tier Ownership Complexity  
+• Mitigation: Implement ownership check as a  single utility function used everywhere.  
+Risk 3: Exam Engine Edge Cases  
+• Mitigation: Start with happy path. Handle edge cases (browser close, timeout) iteratively.  
+  
+
+--- page 5 ---
+MVP Feature Specification  
+1. Authentication and User Management  
+1.1 MVP Scope  
+Feature  MVP Status  Notes  
+Email/Password Login  YES Basic JWT authentication  
+Role-based Access  YES 6 roles as defined  
+Tenant Context  YES Middleware injects tenant_id  
+School Context  YES Middleware injects school_id for school users  
+User Registration  ADMIN ONLY  No self -registration in MVP  
+Password Reset  NO Phase 2  
+OAuth/SSO  NO Phase 2  
+User Profile Edit  MINIMAL  Name only  
+1.2 MVP Roles and Permissions  
+For MVP, we implement 4 roles (defer Content Authorizer complexity):  
+Role MVP Scope  Question Bank  Exam Engine  
+Superadmin  Full access  All CRUD  All CRUD  
+Client Admin  Own tenant  Tenant QB CRUD  Tenant exams  
+School Owner  Own school  School QB CRUD  School exams  
+Teacher  Own school  Create draft, view approved  Create + grade batch exams  
+Student  Own batch  No access  Take exams, view own results  
+MVP Simplification: Content Authorizer role is merged with Superadmin for MVP. Separate 
+role comes in Phase 2 when we add platform content and entitlements.  
+2. Question Bank - MVP Features  
+2.1 Question Types (MVP)  
+Type  MVP Auto -
+Gradable  Description  
+MCQ Single  YES YES Single correct answer from 4 options  
+MCQ Multiple  YES YES Multiple correct answers  
+Numerical  YES YES Numeric answer with tolerance  
+True/False  YES YES Binary choice  
+Fill in Blank  NO Partial  Phase 2  
+Match the Following  NO YES Phase 2  
+Assertion -Reason  NO YES Phase 2  
+
+--- page 6 ---
+Subjective  NO NO Phase 2 (needs manual grading)  
+2.2 Question Attributes (MVP)  
+Attribute  MVP Required  Notes  
+Question Text (HTML)  YES YES Rich text with basic formatting  
+Question Text (LaTeX)  YES NO Optional math notation  
+Options (for MCQ)  YES YES Array of option objects  
+Correct Answer  YES YES Stored securely  
+Solution  YES NO Shown after exam  
+Subject  YES YES FK to subjects  
+Chapter  YES YES FK to chapters  
+Topic  YES NO FK to topics (optional)  
+Difficulty  YES YES easy, medium, hard  
+Marks (positive)  YES YES Points for correct  
+Marks (negative)  YES YES Negative marking  
+Exam Tags  YES NO JEE, NEET, Board tags  
+Bloom's Level  NO NO Phase 2  
+Images  BASIC  NO URL reference only in MVP  
+2.3 Question Workflow (MVP)  
+Simplified workflow for MVP:  
+• Teacher creates question -> Status: DRAFT  
+• School Owner approves -> Status: APPROVED  
+• Only APPROVED questions can be added to exams  
+• REJECTED status sends back to teacher with  comments  
+MVP Simplification: Full review workflow with Content Authorizer is Phase 2. In MVP, School 
+Owner is the approver for school questions.  
+2.4 Question Search and Filter (MVP)  
+Filter  MVP Implementation  
+By Subject  YES Direct FK filter  
+By Chapter  YES Direct FK filter  
+By Topic  YES Direct FK filter  
+By Difficulty  YES ENUM filter  
+By Question Type  YES ENUM filter  
+By Status  YES ENUM filter  
+By Exam Tags  YES Array contains (GIN index)  
+Full-text Search  YES PostgreSQL tsvector  
+
+--- page 7 ---
+By Created By  YES For teachers to see own questions  
+Combined Filters  YES AND logic  
+  
+
+--- page 8 ---
+3. Exam Engine - MVP Features  
+3.1 Exam Configuration (MVP)  
+Feature  MVP Notes  
+Exam Title + Description  YES Basic metadata  
+Total Duration  YES In minutes  
+Start/End Window  YES When exam is available  
+Multiple Sections  YES Each section has own config  
+Questions per Section  YES Manual selection from QB  
+Marks per Question  YES Configurable per section  
+Negative Marking  YES Configurable per section  
+Shuffle Questions  YES Per exam setting  
+Shuffle Options  YES Per exam setting  
+Show Results Immediately  YES Toggle  
+Max Attempts  YES Default 1  
+Section -wise Timing  NO Phase 2 (JEE Advanced style)  
+Optional Sections  NO Phase 2  
+Question Pools/Random  NO Phase 2  
+3.2 Exam Taking Experience (MVP)  
+Feature  MVP Notes  
+Question Navigation  YES Palette showing all questions  
+Mark for Review  YES Flag questions  
+Question Status Colors  YES Answered, Not Answered, Marked, Not Visited  
+Timer Display  YES Countdown timer  
+Auto-save Responses  YES Every 30 seconds via HTTP  
+Manual Save Button  YES User -triggered save  
+Submit Confirmation  YES Are you sure dialog  
+Auto-submit on Timeout  YES When timer expires  
+Section Navigation  YES For multi -section exams  
+Calculator  NO Phase 2  
+Notepad  NO Phase 2  
+Proctoring  NO Phase 2  
+Full-screen Mode  NO Phase 2  
+3.3 Auto -Grading Rules (MVP)  
+Question Type  Grading Logic  Partial Marking  
+
+--- page 9 ---
+MCQ Single  Exact match = +marks, Wrong = -negative  No 
+MCQ Multiple  All correct = +marks, Any wrong = -negative  NO in MVP (Phase 2)  
+Numerical  Value within tolerance = +marks  No 
+True/False  Exact match = +marks, Wrong = -negative  No 
+MVP Simplification: MCQ Multiple partial marking (e.g., +3 for 3/4 correct) is Phase 2. MVP 
+uses all -or-nothing.  
+3.4 Results Display (MVP)  
+Feature  MVP Who Can See  
+Total Score  YES Student (own), Teacher (batch), Admin (all)  
+Section -wise Score  YES Same as above  
+Question -wise Result  YES Correct/Wrong/Unattempted per question  
+Correct Answers  YES After exam deadline or immediate (config)  
+Solutions  YES After exam deadline or immediate (config)  
+Time per Question  NO Phase 2  
+Rank  NO Phase 2  
+Percentile  NO Phase 2  
+Comparative Analytics  NO Phase 2  
+  
+
+--- page 10 ---
+Database Schema (MVP)  
+MVP Tables Overview  
+Category  Tables  MVP Status  
+Core tenants, schools, users  Required  
+Curriculum  subjects, chapters, topics  Required  
+Question Bank  questions  Required  
+Exam Engine  exams, exam_sections, exam_questions, 
+exam_attempts, exam_responses  Required  
+Supporting  batches (classes)  Required  
+Deferred  entitlements, question_reviews, audit_log, 
+analytics_*  Phase 2  
+Key Table Structures  
+Users Table (MVP)  
+Column  Type  Notes  
+user_id  UUID PK  Primary key  
+tenant_id  UUID FK NULL  NULL for superadmin  
+school_id  UUID FK NULL  NULL for tenant -level users  
+email  VARCHAR 
+UNIQUE  Login identifier  
+password_hash  VARCHAR  Bcrypt hashed  
+first_name  VARCHAR  Required  
+last_name  VARCHAR  Optional  
+role ENUM  superadmin, client_admin, school_owner, teacher, 
+student  
+is_active  BOOLEAN  Soft delete flag  
+created_at  TIMESTAMP  Auto-generated  
+Questions Table (MVP)  
+Column  Type  Notes  
+question_id  UUID PK  Primary key  
+tenant_id  UUID FK NULL  NULL = platform (not used in MVP)  
+school_id  UUID FK NULL  NULL = tenant -level, UUID = school -level 
+question_type  ENUM  mcq_single, mcq_multiple, numerical, true_false  
+question_text  JSONB  {html, latex, images[]}  
+options  JSONB  [{id, text, is_correct}] for MCQ  
+
+--- page 11 ---
+correct_answer  JSONB  Type -specific format  
+solution  JSONB  {html, latex}  
+subject_id  UUID FK  Required  
+chapter_id  UUID FK  Required  
+topic_id  UUID FK NULL  Optional  
+difficulty_level  ENUM  easy, medium, hard  
+exam_tags  TEXT[]  JEE, NEET, Board, etc.  
+marks_positive  DECIMAL  Default 4  
+marks_negative  DECIMAL  Default 0 or 1  
+status  ENUM  draft, approved, rejected, archived  
+created_by  UUID FK  Teacher/Admin who created  
+approved_by  UUID FK NULL  Who approved  
+created_at  TIMESTAMP  Auto-generated  
+Exams Table (MVP)  
+Column  Type  Notes  
+exam_id  UUID PK  Primary key  
+tenant_id  UUID FK  Required  
+school_id  UUID FK NULL  NULL = tenant exam, UUID = school exam  
+title VARCHAR  Exam name  
+description  TEXT  Optional  
+total_duration_minutes  INTEGER  Total time  
+start_datetime  TIMESTAMP  When exam opens  
+end_datetime  TIMESTAMP  When exam closes  
+shuffle_questions  BOOLEAN  Default false  
+shuffle_options  BOOLEAN  Default false  
+show_result_immediately  BOOLEAN  Default true  
+max_attempts  INTEGER  Default 1  
+status  ENUM  draft, published, active, completed  
+created_by  UUID FK  Creator  
+created_at  TIMESTAMP  Auto-generated  
+Exam Attempts Table (MVP)  
+Column  Type  Notes  
+attempt_id  UUID PK  Primary key  
+exam_id  UUID FK  Which exam  
+student_id  UUID FK  Who is attempting  
+
+--- page 12 ---
+attempt_number  INTEGER  1, 2, 3... based on max_attempts  
+started_at  TIMESTAMP  When student started  
+submitted_at  TIMESTAMP NULL  When submitted (NULL if in progress)  
+auto_submitted  BOOLEAN  True if timeout triggered submit  
+total_score  DECIMAL NULL  Calculated after grading  
+total_correct  INTEGER NULL  Count of correct  
+total_wrong  INTEGER NULL  Count of wrong  
+total_unattempted  INTEGER NULL  Count of skipped  
+status  ENUM  in_progress, submitted, graded  
+UNIQUE  (exam_id, student_id, 
+attempt_number)  Constraint  
+Exam Responses Table (MVP)  
+Column  Type  Notes  
+response_id  UUID PK  Primary key  
+attempt_id  UUID FK  Which attempt  
+question_id  UUID FK  Which question  
+section_id  UUID FK  Which section  
+student_answer  JSONB NULL  Student's response  
+is_correct  BOOLEAN NULL  Grading result  
+marks_awarded  DECIMAL NULL  Points given  
+is_marked_for_review  BOOLEAN  Review flag  
+is_attempted  BOOLEAN  Has student answered  
+answered_at  TIMESTAMP NULL  When answered  
+UNIQUE  (attempt_id, question_id)  One response per question  
+  
+
+--- page 13 ---
+API Endpoints (MVP)  
+Authentication APIs  
+Method  Endpoint  Description  Auth 
+POST  /api/auth/login  Login with email/password  Public  
+POST  /api/auth/logout  Invalidate token  Required  
+GET /api/auth/me  Get current user profile  Required  
+Question Bank APIs  
+Method  Endpoint  Description  Roles  
+GET /api/questions  List/search questions (filtered by 
+scope)  Admin, Teacher  
+GET /api/questions/:id  Get single question  Admin, Teacher  
+POST  /api/questions  Create question  Admin, Teacher  
+PUT /api/questions/:id  Update question  Admin, Creator  
+DELETE  /api/questions/:id  Soft delete question  Admin  
+POST  /api/questions/:id/approve  Approve question  School Owner+  
+POST  /api/questions/:id/reject  Reject with feedback  School Owner+  
+Exam Management APIs  
+Method  Endpoint  Description  Roles  
+GET /api/exams  List exams (scoped)  All authenticated  
+GET /api/exams/:id  Get exam details  All authenticated  
+POST  /api/exams  Create exam  Admin, Teacher  
+PUT /api/exams/:id  Update exam (draft only)  Creator, Admin  
+DELETE  /api/exams/:id  Delete exam  Admin  
+POST  /api/exams/:id/publish  Publish exam  Creator, Admin  
+POST  /api/exams/:id/sections  Add section  Creator, Admin  
+POST  /api/exams/:id/sections/:sid/questions  Add questions to section  Creator, Admin  
+Exam Taking APIs (Student)  
+Method  Endpoint  Description  Roles  
+GET /api/student/exams  List available exams  Student  
+POST  /api/student/exams/:id/start  Start exam attempt  Student  
+GET /api/student/attempts/:aid  Get current attempt state  Student  
+POST  /api/student/attempts/:aid/save  Save responses (auto/manual)  Student  
+
+--- page 14 ---
+POST  /api/student/attempts/:aid/submit  Submit exam  Student  
+GET /api/student/attempts/:aid/result  Get result (if allowed)  Student  
+Results APIs  
+Method  Endpoint  Description  Roles  
+GET /api/exams/:id/results  Get all results for exam  Admin, Teacher  
+GET /api/exams/:id/results/:aid  Get specific attempt result  Admin, Teacher, 
+Student (own)  
+  
+
+--- page 15 ---
+Implementation Phases  
+Phase 0: Foundation (Week 1)  
+Goal: Project setup and core infrastructure  
+Tasks  
+• Initialize monorepo structure (apps/api, apps/web, packages/shared)  
+• Set up PostgreSQL database via Supabase  
+• Configure TypeScript, ESLint, Prettier  
+• Implement JWT authentication  
+• Create base middleware (auth, tenant, error handler)  
+• Set up database migrations system  
+• Create seed data script  
+Deliverables  
+• Working login/logout  
+• Protected API routes  
+• Database with users, tenants, schools tables  
+• Seed data: 1 tenant, 2 schools, sample users for each role  
+Phase 1: Question Bank ( Days  2-4) 
+Goal: Complete question bank with 3 -tier ownership  
+Week 2: Core Question CRUD  
+• Create curriculum tables (subjects, chapters, topics)  
+• Create questions table with ownership fields  
+• Implement question CRUD APIs  
+• Add ownership validation middleware  
+• Seed sample subjects, chapters, topics  
+Week 3: Search, Filter, Workflow  
+• Implement search with PostgreSQL full -text 
+• Add all filter options  
+• Implement question status workflow (draft -> approved)  
+• Add approval/rejection endpoints  
+Week 4: Question Bank UI  
+• Question list page with filters  
+• Question create/edit form  
+• Question preview  
+• Approval workflow UI  
+• LaTeX rendering integration (KaTeX)  
+
+--- page 16 ---
+Phase 1 Deliverables  
+• Fully functional question bank API  
+• Question bank UI for teachers and admins  
+• Working search and filters  
+• Question approval workflow  
+Phase 2: Exam Engine ( Days  5-7) 
+Goal: Complete exam creation, taking, and grading  
+Week 5: Exam Creation  
+• Create exam tables (e xams, sections, exam_questions)  
+• Implement exam CRUD APIs  
+• Build exam creation UI  
+• Section management  
+• Question selection from bank  
+Week 6: Exam Taking  
+• Create attempt and response tables  
+• Implement start exam flow  
+• Build exam taking interface  
+• Question palette na vigation  
+• Auto-save every 30 seconds  
+• Submit flow with confirmation  
+Week 7: Grading and Results  
+• Implement auto -grading service  
+• Handle timeout and auto -submit  
+• Build results display UI  
+• Score calculation  
+• Show correct answers and solutions  
+Phase 2 Deliverables  
+• Fully functional exam creation  
+• Working exam taking experience  
+• Auto-grading for all MVP question types  
+• Results display  
+Phase 3: Integration and Polish ( Days  8-9) 
+Goal: Bug fixes, testing, deployment r eadiness  
+Week 8: Testing and Bug Fixes  
+• End-to-end testing of all flows  
+• Fix critical bugs  
+
+--- page 17 ---
+• Performance testing  
+• Security review  
+• Role permission testing  
+Week 9: Polish and Deploy  
+• UI/UX improvements  
+• Error handling improvements  
+• Loading states and feedback  
+• Documentation  
+• Deployment to staging  
+• User acceptance testing  
+Phase 3 Deliverables  
+• Production -ready MVP  
+• Deployed staging environment  
+• Basic documentation  
+  
+
+--- page 18 ---
+Technical Decisions for MVP  
+Stack Decisions  
+Layer  Technology  Rationale  
+Database  PostgreSQL (Supabase)  Managed service, built -in auth, storage, realtime if 
+needed later  
+Backend  Node.js + Express + 
+TypeScript  Fast development, good ecosystem  
+Frontend  React + Tailwind CSS  Component -based, rapid UI development  
+Math Rendering  KaTeX  Fast client -side LaTeX rendering  
+Auth JWT (access + refresh)  Stateless, scalable  
+API Style  REST  Simple, well -understood, sufficient for MVP  
+File Storage  Supabase Storage  Integrated with database  
+Architecture Decisions  
+ADR -001: 3 -Tier Ownership from Day 1  
+Decision: Implement tenant_id + school_id on questions table from the start, even though MVP 
+might not use all tiers.  
+Rationale: Retrofitting ownership later is painful. The cost of two nullable columns is minimal.  
+ADR -002: No WebSocket for MVP  
+Decision: Use HTTP POST for auto -save (every 30 seconds) instead of WebSocket.  
+Rationale: Simpler infrastructure, easier debugging, sufficient for MVP scale.  
+ADR -003: Simplified Grading  
+Decision: All -or-nothing grading for MCQ Multiple. No partial marking in MVP.  
+Rationale: Partial marking logic is complex. Validate core flow first.  
+ADR -004: No Separate Entitlement System  
+Decision: Skip platform content and entitlements in MVP. All content is tenant/school owned.  
+Rationale: Entitlement system adds significant complexity. MVP proves core value without it.  
+ADR -005: PostgreSQL Full -Text Search  
+Decision: Use PostgreSQL tsvector + GIN index for question search instead of Elasticsearch.  
+Rationale: One less service to manage. PostgreSQL FTS is sufficient for MVP scale (100K 
+questions).  
+  
+
+--- page 19 ---
+MVP Success Criteria  
+Functional Requirements  
+Requiremen t Acceptance Criteria  Priority  
+User can login  JWT token issued, role identified  P0 
+Teacher can create question  Question saved with correct ownership  P0 
+Questions respect ownership  School questions not visible to other 
+schools  P0 
+Admin can approve question  Status changes, question becomes usable  P0 
+User can search questions  Filters work, full -text search works  P0 
+Teacher can create exam  Exam saved with sections and questions  P0 
+Student can take exam  Timer works, can navigate, can answer  P0 
+Auto-save works  Responses saved every 30 seconds  P0 
+Student can submit exam  Attempt marked submitted  P0 
+Auto-grading works  Score calculated correctly  P0 
+Student sees result  Score, correct/wrong shown  P0 
+Timeout auto -submits  Exam submitted when time expires  P1 
+Non-Functional Requirements  
+Requirement  Target  Priority  
+API Response Time  < 500ms p95  P0 
+Concurrent Users  100 simultaneous exam takers  P0 
+Question Load Time  < 2 seconds for question list (50 items)  P0 
+Exam Save Reliability  No lost responses on submit  P0 
+Mobile Responsive  Exam taking works on tablet  P1 
+Browser Support  Chrome, Firefox, Safari, Edge (latest)  P1 
+MVP Definition of Done  
+• All P0 requirements pass acceptance criteria  
+• No critical or high -severity bugs  
+• Basic error handling for common failures  
+• Deployed to staging environment  
+• Tested with 5 concurrent users taking exam  
+• Admin can create tenant, school, users  
+• End-to-end flow works: Create question -> Create exam -> Take exam -> See result  
+  
+
+--- page 20 ---
+Post -MVP Roadmap  
+Phase 2 Features (After MVP)  
+Feature  Description  Estimated Effort  
+Additional Question 
+Types  Fill blank, Match, Assertion -Reason, Subjective  2 Days 
+Manual Grading  Subjective answer grading queue  1 week  
+Partial Marking  MCQ Multiple partial credit  3 days  
+Analytics Dashboard  Exam stats, question analysis  2 Days 
+Proctoring Flags  Tab switch, focus loss detection  1 week  
+Bulk Import  CSV/Excel question import  1 week  
+Content Authorizer Role  Separate platform content management  1 week  
+Entitlement System  Platform content licensing  2 Days 
+Courses Module  Learning paths with content + assessments  4 Days 
+Mobile App  React Native app  6 Days 
+Technical Debt to Address  
+• Add comprehensive test coverage (unit + integration)  
+• Implement proper error codes and messages  
+• Add request validation with Zod schemas  
+• Set up CI/CD pipeline  
+• Add monitoring and alerting  
+• Performance optimization for larger datasets  
+  
+
+--- page 21 ---
+Appendix: Quick Referenc e 
+A. Question JSONB Formats  
+Question Text Format:  
+{ html: '<p>What is 2+2?</p>', latex: null, images: [] }  
+ 
+MCQ Options Format:  
+[{ id: 'A', text: { html: '3' }, is_correct: false }, { id: 'B', text: { html: '4' }, is_correct: true }, ...]  
+ 
+Correct Answer Formats:  
+MCQ Single: { answer: 'B' }  
+MCQ Multiple: { answers: ['A', 'C'] }  
+Numerical: { value: 42, tolerance: 0.01 }  
+True/False: { answer: true }  
+B. Exam Status Flow  
+DRAFT -> PUBLISHED -> ACTIVE -> COMPLETED  
+• DRAFT: Exam being configured, not visible to students  
+• PUBLISHED: Exam ready, visible but not yet started  
+• ACTIVE: Current time within start -end window  
+• COMPLETED: End time passed  
+C. Attempt Status Flow  
+IN_PROGRESS -> SUBMITTED -> GRADED  
+• IN_PROGRESS: Student is taking the exam  
+• SUBMITTED: Student submitted or timeout occurred  
+• GRADED: Auto -grading completed, score calculated  
+  
+
+--- page 22 ---
+End of MVP Document  
+SPECTROPY LMS MVP v1.0 - Question Bank + Exam Engine  

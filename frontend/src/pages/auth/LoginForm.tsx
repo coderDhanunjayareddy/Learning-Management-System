@@ -34,14 +34,21 @@ export default function LoginForm() {
     const roleRedirects: Record<string, string> = {
       super_admin: '/superadmin/dashboard',
       client_admin: '/admin/dashboard',
-      content_authorizer: '/admin/dashboard',
-      school_owner: '/admin/dashboard',
-      teacher: '/student/dashboard',
+      content_authorizer: '/content-authorizer/dashboard',
+      school_owner: '/school-owner/dashboard',
+      teacher: '/teacher/dashboard',
       student: '/student/dashboard',
     };
 
     navigate(roleRedirects[user.role] || '/login');
   }, [user, navigate]);
+
+  const resolveIdentifierType = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) return 'email';
+    const looksLikeEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
+    return looksLikeEmail ? 'email' : 'user_id';
+  };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -50,7 +57,8 @@ export default function LoginForm() {
 
     try {
       if (isLogin) {
-        await login(email, password);
+        const identifierType = resolveIdentifierType(email);
+        await login(email.trim(), password, identifierType);
       } else {
         if (password !== confirmPassword) {
           setError('Passwords do not match');
@@ -168,15 +176,24 @@ export default function LoginForm() {
                 )}
 
                 <div className="space-y-1">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-400 ml-1">Email</label>
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-400 ml-1">
+                    {isLogin ? 'Email or User ID' : 'Email'}
+                  </label>
                   <input
-                    type="email"
-                    placeholder="name@institution.com"
+                    type={isLogin ? 'text' : 'email'}
+                    placeholder={
+                      isLogin ? 'Email or User ID' : 'name@institution.com'
+                    }
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
                     className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-blue-400 focus:outline-none focus:ring-4 focus:ring-blue-50 transition-all"
                   />
+                  {isLogin && (
+                    <p className="text-[11px] text-slate-400">
+                      We will detect whether you entered an email or user ID.
+                    </p>
+                  )}
                 </div>
 
                 {!isLogin && (

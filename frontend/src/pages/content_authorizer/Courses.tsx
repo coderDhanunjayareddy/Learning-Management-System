@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import SidebarNav from "../../components/layout/SidebarNav";
@@ -7,51 +7,49 @@ import { getDashboardTheme } from "../../components/layout/dashboardTheme";
 import { RiHome2Line } from "react-icons/ri";
 import { BiBookOpen } from "react-icons/bi";
 import { PiUsersBold, PiChatsCircleBold } from "react-icons/pi";
-import CourseContentManager from "../../components/CourseContent/CourseContentManager";
+import AdminCourseManager from "../../components/courses/AdminCourseManager";
 
-export default function CourseContent() {
-  const { courseId } = useParams<{ courseId: string }>();
+export default function ContentAuthorizerCourses() {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  const isGvjbClient = user?.role === "client_admin";
-  const theme = getDashboardTheme(isGvjbClient);
-  const userFullName = user?.full_name || "Administrator";
-  const userEmail = user?.email || "admin@lms.com";
+  const theme = getDashboardTheme(false);
+  const userFullName = user?.full_name || "Content Authorizer";
+  const userEmail = user?.email || "authorizer@spectropy.com";
 
   const navItems = [
     {
-      key: "home",
-      label: "Home",
+      key: "dashboard",
+      label: "Dashboard",
       icon: <RiHome2Line />,
       active: false,
-      onClick: () => navigate("/admin/dashboard"),
+      onClick: () => navigate("/content-authorizer/dashboard"),
     },
     {
       key: "courses",
       label: "Courses",
       icon: <BiBookOpen />,
       active: true,
-      onClick: () => navigate("/admin/dashboard"),
+      onClick: () => navigate("/content-authorizer/courses"),
     },
     {
       key: "users",
       label: "Users",
       icon: <PiUsersBold />,
       active: false,
-      onClick: () => navigate("/admin/dashboard"),
+      onClick: () => {},
     },
     {
       key: "community",
       label: "Community",
       icon: <PiChatsCircleBold />,
       active: false,
-      onClick: () => navigate("/admin/dashboard"),
+      onClick: () => {},
     },
   ];
 
-  const handleBackToLogin = async () => {
+  const handleLogout = async () => {
     await logout();
     navigate("/login", { replace: true });
   };
@@ -65,14 +63,13 @@ export default function CourseContent() {
       contentClassName="p-0"
       sidebar={
         <SidebarNav
-          brandLogo={isGvjbClient ? "/gvjb.png" : "/logo.png"}
-          brandName={isGvjbClient ? "GVB" : "Spectropy"}
-          title={isGvjbClient ? "GVB Dashboard" : "Admin Dashboard"}
-          brandTag={isGvjbClient ? "GVB" : undefined}
+          brandLogo="/logo.png"
+          brandName="Spectropy"
+          title="Content Authorizer"
           navItems={navItems}
           userInfo={{ name: userFullName, email: userEmail }}
-          onProfileClick={() => navigate("/admin/profile")}
-          onLogout={handleBackToLogin}
+          onProfileClick={() => navigate("/content-authorizer/profile")}
+          onLogout={handleLogout}
           sidebarOpen={sidebarOpen}
           onClose={() => setSidebarOpen(false)}
           theme={theme}
@@ -89,31 +86,31 @@ export default function CourseContent() {
           </button>
           <div className="flex flex-col gap-4 md:flex-row md:justify-between md:items-center">
             <div>
-              <h1 className="text-xl md:text-2xl font-bold">Course Content</h1>
-              <p
-                className={`${
-                  isGvjbClient ? "text-slate-600" : "text-gray-600"
-                } mt-1 text-sm md:text-base`}
-              >
-                Manage course chapters and content items.
+              <h1 className="text-xl md:text-2xl font-bold">Courses</h1>
+              <p className="mt-1 text-sm md:text-base text-gray-600">
+                Review and prepare platform-ready course structures.
               </p>
             </div>
-            <button
-              onClick={() => navigate("/admin/dashboard")}
-              className={`px-4 py-2 text-sm font-semibold rounded-lg border ${theme.secondaryBorderClass} hover:bg-white/70`}
-            >
-              Back to Courses
-            </button>
           </div>
         </div>
       }
     >
-      <CourseContentManager
-        courseId={courseId}
-        apiPrefix="/admin"
-        isGvjbClient={isGvjbClient}
-        onBack={() => navigate("/admin/dashboard")}
-      />
+      <div className="p-6">
+        <AdminCourseManager
+          mode="admin"
+          role={user?.role}
+          theme={theme}
+          brandLogo="/logo.png"
+          brandName="Spectropy"
+          courseBannerClass="bg-sky-100"
+          listTitle="All Courses"
+          emptyMessage="No courses found."
+          onManageContent={(courseId) =>
+            navigate(`/content-authorizer/courses/${courseId}/content`)
+          }
+          onEnroll={(courseId) => navigate(`/admin/courses/${courseId}/enroll`)}
+        />
+      </div>
     </DashboardLayout>
   );
 }

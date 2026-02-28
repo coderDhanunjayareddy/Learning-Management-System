@@ -1,5 +1,4 @@
-import React, { useState } from "react";
-import { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import {
     DragDropContext,
     Droppable,
@@ -10,7 +9,6 @@ import {
 import { BsThreeDotsVertical } from "react-icons/bs";
 import { FiChevronDown, FiChevronRight } from "react-icons/fi";
 import { MdAdd } from "react-icons/md";
-import { useNavigate } from "react-router-dom";
 import { AiOutlineArrowLeft } from "react-icons/ai";
 import CourseProgressBar from "../CourseContent/CourseProgressBar";
 import api from "../../services/api";
@@ -47,6 +45,7 @@ interface Chapter {
 }
 
 interface Props {
+    courseId: string | number;
     chapters: Chapter[];
     allItems: CourseItem[];
     onSelectItem: (item: CourseItem) => void;
@@ -57,9 +56,14 @@ interface Props {
     onUpdateFile: (item: CourseItem) => void;
     selectedItemId?: number;
     isGvjbClient?: boolean;
+    apiPrefix?: string;
+    readOnly?: boolean;
+    onBack?: () => void;
+    panelTitle?: string;
 }
 
 const LeftPanel: React.FC<Props> = ({
+    courseId,
     chapters,
     allItems,
     onSelectItem,
@@ -70,14 +74,19 @@ const LeftPanel: React.FC<Props> = ({
     onUpdateFile,
     selectedItemId,
     isGvjbClient = false,
+    apiPrefix = "/admin",
+    readOnly = false,
+    onBack,
+    panelTitle = "Course Content",
 }) => {
     const [expanded, setExpanded] = useState<number | null>(null);
     const [openMenu, setOpenMenu] = useState<number | null>(null);
     const [openItemMenu, setOpenItemMenu] = useState<number | null>(null);
     const totalItems = allItems.length;
     const completedItems = allItems.filter(i => i.completion_status === "completed").length;
-    const navigate = useNavigate();
-    //const navigate = useNavigate();
+    const canEdit = !readOnly;
+    const normalizedPrefix = apiPrefix.startsWith("/") ? apiPrefix : `/${apiPrefix}`;
+    const resolvedCourseId = typeof courseId === "string" ? courseId : String(courseId);
 
     const toggleExpand = (chapterId: number) => {
         setExpanded(expanded === chapterId ? null : chapterId);
@@ -99,13 +108,15 @@ const LeftPanel: React.FC<Props> = ({
 
 
     const deleteChapter = async (chapterId: number) => {
+        if (!canEdit) return;
         if (!window.confirm("Are you sure? This will delete the entire chapter and its items.")) return;
 
         try {
-            // 🔍 get courseId from any item belonging to that chapter
-            const courseId = allItems[0]?.course_id;
-
-            await api.delete(`/admin/courses/${courseId}/content/${chapterId}`);
+            if (!resolvedCourseId) {
+                alert("Course ID missing. Delete aborted.");
+                return;
+            }
+            await api.delete(`${normalizedPrefix}/courses/${resolvedCourseId}/content/${chapterId}`);
 
             const updated = chapters.filter(ch => ch.id !== chapterId);
             onReorderChapters(updated);
@@ -119,17 +130,16 @@ const LeftPanel: React.FC<Props> = ({
 
 
     const deleteItem = async (itemId: number, chapterId: number) => {
+        if (!canEdit) return;
         if (!window.confirm("Delete this item?")) return;
 
         try {
-            const courseId = allItems.find(i => i.id === itemId)?.course_id;
-
-            if (!courseId) {
+            if (!resolvedCourseId) {
                 alert("Course ID missing. Delete aborted.");
                 return;
             }
 
-            await api.delete(`/admin/courses/${courseId}/content/${itemId}`);
+            await api.delete(`${normalizedPrefix}/courses/${resolvedCourseId}/content/${itemId}`);
 
             const updatedChapters = chapters.map(ch =>
                 ch.id === chapterId
@@ -147,8 +157,9 @@ const LeftPanel: React.FC<Props> = ({
 
     // ✨ Rename Chapter
     const renameChapter = async (chapterId: number, newName: string) => {
-        const courseId = allItems[0]?.course_id;
-        await api.put(`/admin/courses/${courseId}/content/${chapterId}/rename`, {
+        if (!canEdit) return;
+        if (!resolvedCourseId) return;
+        await api.put(`${normalizedPrefix}/courses/${resolvedCourseId}/content/${chapterId}/rename`, {
             title: newName,
         });
 
@@ -162,9 +173,9 @@ const LeftPanel: React.FC<Props> = ({
 
     // ✨ Rename Item
     const renameItem = async (itemId: number, chapterId: number, newName: string) => {
-        const courseId = allItems.find(i => i.id === itemId)?.course_id;
-
-        await api.put(`/admin/courses/${courseId}/content/${itemId}/rename`, {
+        if (!canEdit) return;
+        if (!resolvedCourseId) return;
+        await api.put(`${normalizedPrefix}/courses/${resolvedCourseId}/content/${itemId}/rename`, {
             title: newName,
         });
 
@@ -204,6 +215,7 @@ const LeftPanel: React.FC<Props> = ({
     };
 
     const onDragEnd = (result: DropResult) => {
+        if (!canEdit) return;
         const { source, destination, type } = result;
         if (!destination) return;
 
@@ -237,17 +249,21 @@ const LeftPanel: React.FC<Props> = ({
         >
 
             {/* Header WITHOUT Add Chapter button */}
-            <div className={` py-2 border-b shrink-0 flex justify-between items-center flex-col ${isGvjbClient ? "border-amber-100" : "border-gray-200"}`}>
+            <div className={`shrink-0 flex flex-col ${isGvjbClient ? "border-amber-100" : "border-gray-200"}`}>
                 {/* LEFT SIDE — BACK */}
-                <div className={`px-4 py-3 border-b shrink-0 flex justify-between items-center w-full ${isGvjbClient ? "border-amber-100" : "border-gray-200"}`}>
-                    <button
-                        onClick={() => navigate("/admin/dashboard")}
-                        className={`text-lg ${isGvjbClient ? "hover:text-amber-700" : "hover:text-lightmain"}`}
-                    >
-                        <AiOutlineArrowLeft />
-                    </button>
+                <div className={`px-4 py-3 border-b flex justify-between items-center w-full ${isGvjbClient ? "border-amber-100" : "border-gray-200"}`}>
+                    {onBack ? (
+                        <button
+                            onClick={onBack}
+                            className={`text-lg ${isGvjbClient ? "hover:text-amber-700" : "hover:text-lightmain"}`}
+                        >
+                            <AiOutlineArrowLeft />
+                        </button>
+                    ) : (
+                        <div className="w-5" />
+                    )}
 
-                    <h1 className="text-lg font-semibold">Course Content</h1>
+                    <h1 className="text-lg font-semibold">{panelTitle}</h1>
                 </div>
                 {/* Progress Bar*/}
                 <div className="w-full pt-4 px-4"><CourseProgressBar completed={completedItems} total={totalItems}
@@ -294,49 +310,51 @@ const LeftPanel: React.FC<Props> = ({
 
 
 
-                                                <div
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        setOpenMenu(openMenu === chapter.id ? null : chapter.id);
-                                                    }}
-                                                    className="relative"
-                                                >
-                                                    <BsThreeDotsVertical className="text-gray-600 hover:text-black cursor-pointer" />
+                                                {canEdit && (
+                                                    <div
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setOpenMenu(openMenu === chapter.id ? null : chapter.id);
+                                                        }}
+                                                        className="relative"
+                                                    >
+                                                        <BsThreeDotsVertical className="text-gray-600 hover:text-black cursor-pointer" />
 
-                                                    {openMenu === chapter.id && (
-                                                        <div className={`absolute right-0 top-6 bg-white border shadow-md rounded-md w-40 z-20 ${isGvjbClient ? "border-amber-200" : "border-gray-200"}`}>
+                                                        {openMenu === chapter.id && (
+                                                            <div className={`absolute right-0 top-6 bg-white border shadow-md rounded-md w-40 z-20 ${isGvjbClient ? "border-amber-200" : "border-gray-200"}`}>
 
-                                                            {/* Rename */}
-                                                            <button
-                                                                className={`block w-full px-3 py-2 text-left text-sm ${isGvjbClient ? "hover:bg-amber-50" : "hover:bg-gray-100"}`}
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    setOpenMenu(null);
+                                                                {/* Rename */}
+                                                                <button
+                                                                    className={`block w-full px-3 py-2 text-left text-sm ${isGvjbClient ? "hover:bg-amber-50" : "hover:bg-gray-100"}`}
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setOpenMenu(null);
 
-                                                                    const newName = prompt("Enter new chapter name:", chapter.title);
-                                                                    if (newName && newName.trim()) {
-                                                                        renameChapter(chapter.id, newName.trim());
-                                                                    }
-                                                                }}
-                                                            >
-                                                                ✏ Rename
-                                                            </button>
+                                                                        const newName = prompt("Enter new chapter name:", chapter.title);
+                                                                        if (newName && newName.trim()) {
+                                                                            renameChapter(chapter.id, newName.trim());
+                                                                        }
+                                                                    }}
+                                                                >
+                                                                    ✏ Rename
+                                                                </button>
 
-                                                            {/* Delete */}
-                                                            <button
-                                                                className={`block w-full px-3 py-2 text-left text-sm text-red-600 ${isGvjbClient ? "hover:bg-amber-50" : "hover:bg-gray-100"}`}
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    setOpenMenu(null);
-                                                                    deleteChapter(chapter.id);
-                                                                }}
-                                                            >
-                                                                🗑 Delete
-                                                            </button>
-                                                        </div>
-                                                    )}
+                                                                {/* Delete */}
+                                                                <button
+                                                                    className={`block w-full px-3 py-2 text-left text-sm text-red-600 ${isGvjbClient ? "hover:bg-amber-50" : "hover:bg-gray-100"}`}
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setOpenMenu(null);
+                                                                        deleteChapter(chapter.id);
+                                                                    }}
+                                                                >
+                                                                    🗑 Delete
+                                                                </button>
+                                                            </div>
+                                                        )}
 
-                                                </div>
+                                                    </div>
+                                                )}
                                             </div>
 
                                             {/* Items List */}
@@ -381,19 +399,21 @@ const LeftPanel: React.FC<Props> = ({
                                                                                 </span>
                                                                             </div>
 
-                                                                            <div
-                                                                                onClick={(e) => {
-                                                                                    e.stopPropagation();
-                                                                                    setOpenItemMenu(
-                                                                                        openItemMenu === item.id ? null : item.id
-                                                                                    );
-                                                                                }}
-                                                                                className="opacity-0 group-hover:opacity-100 transition"
-                                                                            >
-                                                                                <BsThreeDotsVertical className="text-gray-500 hover:text-black cursor-pointer" />
-                                                                            </div>
+                                                                            {canEdit && (
+                                                                                <div
+                                                                                    onClick={(e) => {
+                                                                                        e.stopPropagation();
+                                                                                        setOpenItemMenu(
+                                                                                            openItemMenu === item.id ? null : item.id
+                                                                                        );
+                                                                                    }}
+                                                                                    className="opacity-0 group-hover:opacity-100 transition"
+                                                                                >
+                                                                                    <BsThreeDotsVertical className="text-gray-500 hover:text-black cursor-pointer" />
+                                                                                </div>
+                                                                            )}
 
-                                                                            {openItemMenu === item.id && (
+                                                                            {canEdit && openItemMenu === item.id && (
                                                                                 <div className={`absolute right-2 top-10 w-40 bg-white shadow-md border rounded-md z-50 ${isGvjbClient ? "border-amber-200" : "border-gray-200"}`}>
 
                                                                                     {/* Rename */}
@@ -448,12 +468,14 @@ const LeftPanel: React.FC<Props> = ({
 
                                                             {dropProvided.placeholder}
 
-                                                            <button
-                                                                onClick={() => onAddItem(chapter.id)}
-                                                                className={`text-sm mt-2 hover:underline ${isGvjbClient ? "text-amber-700" : "text-blue-600"}`}
-                                                            >
-                                                                + Add Topic
-                                                            </button>
+                                                            {canEdit && (
+                                                                <button
+                                                                    onClick={() => onAddItem(chapter.id)}
+                                                                    className={`text-sm mt-2 hover:underline ${isGvjbClient ? "text-amber-700" : "text-blue-600"}`}
+                                                                >
+                                                                    + Add Topic
+                                                                </button>
+                                                            )}
                                                         </div>
                                                     )}
                                                 </Droppable>
@@ -470,15 +492,17 @@ const LeftPanel: React.FC<Props> = ({
             </DragDropContext>
 
             {/* Bottom Add Chapter button */}
-            <div className={`p-3 border-t shrink-0 ${isGvjbClient ? "border-amber-100" : "border-gray-200"}`}>
-                <button
-                    onClick={onAddChapter}
-                    className={`flex items-center gap-1 px-3 py-2 rounded-md w-full justify-center ${isGvjbClient ? "bg-amber-400 text-slate-900 hover:bg-amber-500" : "bg-maincolor hover:bg-lightmain text-white"}`}
-                >
-                    <MdAdd className="text-lg" />
-                    Add Chapter
-                </button>
-            </div>
+            {canEdit && (
+                <div className={`p-3 border-t shrink-0 ${isGvjbClient ? "border-amber-100" : "border-gray-200"}`}>
+                    <button
+                        onClick={onAddChapter}
+                        className={`flex items-center gap-1 px-3 py-2 rounded-md w-full justify-center ${isGvjbClient ? "bg-amber-400 text-slate-900 hover:bg-amber-500" : "bg-maincolor hover:bg-lightmain text-white"}`}
+                    >
+                        <MdAdd className="text-lg" />
+                        Add Chapter
+                    </button>
+                </div>
+            )}
 
         </div>
 

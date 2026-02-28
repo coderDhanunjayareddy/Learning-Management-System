@@ -1,0 +1,1162 @@
+
+--- page 1 ---
+SPECTROPY LMS - Complete Data Model  MVP1 Implementation Guide  
+Page 1 of 25  |  SPECTROPY LMS v2.0   
+SPECTROPY LMS  
+Complete Data Model Documentation  
+Existing Tables + Question Bank + Exam Engine  
+ 
+Version  2.0 (Complete MVP1)  
+Date February 2026  
+Existing Tables  17 tables  
+New Tables  8 tables (QB + Exam)  
+Total Tables  25 tables  
+Target Audience  Fresher Developers  
+ 
+A Step -by-Step Learning Guide for L&D Developers  
+  
+
+--- page 2 ---
+SPECTROPY LMS - Complete Data Model  MVP1 Implementation Guide  
+Page 2 of 25  |  SPECTROPY LMS v2.0  Table of Contents  
+Table of Contents  ................................ ................................ ................................ .............................  2 
+1. Welcome, Future Developer!  ................................ ................................ ................................ ........  4 
+1.1 Understanding This Document  ................................ ................................ ................................  4 
+1.2 How to Use This D ocument ................................ ................................ ................................ ..... 4 
+2. Database Fundamentals for Freshers  ................................ ................................ ...........................  4 
+2.1 What is a Table?  ................................ ................................ ................................ .....................  4 
+2.2 Key Concepts  ................................ ................................ ................................ .........................  4 
+Primary Key (PK) ................................ ................................ ................................ .......................  4 
+Foreign Key (FK)  ................................ ................................ ................................ .......................  5 
+SERIAL vs INTEGER  ................................ ................................ ................................ ................  5 
+JSONB - Flexible Data Storage  ................................ ................................ ................................ . 5 
+Indexes - Making Queries Fast  ................................ ................................ ................................ .. 5 
+3. System Architecture  ................................ ................................ ................................ .....................  5 
+3.1 The Multi -Tenant Model  ................................ ................................ ................................ ..........  5 
+3.2 The 6 -Role Permission System  ................................ ................................ ...............................  6 
+3.3 Table Categories Overview  ................................ ................................ ................................ ..... 6 
+4. Existing Tables (Already in Database)  ................................ ................................ ..........................  6 
+4.1 clients  ................................ ................................ ................................ ................................ ..... 7 
+4.2 schools  ................................ ................................ ................................ ................................ ... 7 
+4.3 users  ................................ ................................ ................................ ................................ ....... 7 
+4.4 school_memberships  ................................ ................................ ................................ ..............  8 
+4.5 b atches  ................................ ................................ ................................ ................................ ... 8 
+4.6 batch_members  ................................ ................................ ................................ ......................  9 
+4.7 courses  ................................ ................................ ................................ ................................ ... 9 
+4.8 content_items  ................................ ................................ ................................ .........................  9 
+4.9 Other Existing Tables (Summary) ................................ ................................ ........................... 10 
+5. New Tables: Curriculum Structure  ................................ ................................ ............................... 10 
+5.1 subjects  ................................ ................................ ................................ ................................ .10 
+5.2 chapters  ................................ ................................ ................................ ................................ .11 
+5.3 topics  ................................ ................................ ................................ ................................ .....11 
+6. New Tables: Question Bank & Exam Engine  ................................ ................................ ............... 12 
+6.1 questio ns ................................ ................................ ................................ ............................... 12 
+Basic Identification Fields  ................................ ................................ ................................ ......... 12 
+Content Fields  ................................ ................................ ................................ .......................... 12 
+Curriculum & Classification Fields  ................................ ................................ ............................ 13 
+Workflow & Audit Fields ................................ ................................ ................................ ............ 13 
+
+--- page 3 ---
+SPECTROPY LMS - Complete Data Model  MVP1 Implementation Guide  
+Page 3 of 25  |  SPECTROPY LMS v2.0  6.2 JSONB Data Formats  ................................ ................................ ................................ ............ 14 
+question_text Format  ................................ ................................ ................................ ................ 14 
+options Format (MCQ only)  ................................ ................................ ................................ ......15 
+correct_answer Formats  ................................ ................................ ................................ ........... 15 
+6.3 exams  ................................ ................................ ................................ ................................ ....15 
+6.4 exam_sections  ................................ ................................ ................................ ....................... 16 
+6.5 exam_questions  ................................ ................................ ................................ ..................... 16 
+6.6 exam_attempts  ................................ ................................ ................................ ...................... 17 
+6.7 exam_responses ................................ ................................ ................................ .................... 18 
+student_answer JSONB Formats  ................................ ................................ ............................. 18 
+7. Implementation Guide  ................................ ................................ ................................ ................. 19 
+7.1 Table Creation Order  ................................ ................................ ................................ ............. 19 
+7.2 Auto -Grading Logic  ................................ ................................ ................................ ................ 19 
+7.3 Ownership Check Utility  ................................ ................................ ................................ ......... 20 
+7.4 Common Pitfalls to Avoid  ................................ ................................ ................................ .......20 
+8. Visual Reference  ................................ ................................ ................................ ......................... 21 
+8.1 Complete Table Relationship Diagram  ................................ ................................ ................... 21 
+8.2 Exam Flow Diagram  ................................ ................................ ................................ ............... 21 
+8.3 Question Workflow  ................................ ................................ ................................ ................. 22 
+9. Appendix  ................................ ................................ ................................ ................................ .....22 
+A. Complete SQL Script (All New Tables)  ................................ ................................ .................... 22 
+ 
+  
+
+--- page 4 ---
+SPECTROPY LMS - Complete Data Model  MVP1 Implementation Guide  
+Page 4 of 25  |  SPECTROPY LMS v2.0  1. Welcome, Future Developer!  
+Congratulations on joining the SPECTROPY LMS development team! This document will be your 
+guide as you learn and build this Learning Management System. We have written everything 
+assuming you are starting fresh, so do not worry if database concepts feel ne w. 
+ 
+What You Will Build  
+SPECTROPY LMS is a complete online learning platform for Indian coaching institutes. It helps teachers 
+create question banks, conduct online exams, manage students, and track progress. Think of it as a digital 
+version of your coachi ng center's entire operation!  
+1.1 Understanding This Document  
+This document contains:  
+• 17 EXISTING tables - already created in the database (shown in blue headers)  
+• 8 NEW tables - you will create these for Question Bank and Exam Engine (shown in green 
+headers)  
+• Complete SQL scripts ready to copy and execute  
+• Detailed explanations of every column and relationship  
+• Real -world examples and developer tips  
+1.2 How to Use Thi s Document  
+1. Read Section 2 first to understand basic database concepts  
+2. Study Section 3 to understand the overall architecture  
+3. Review existing tables in Section 4 (already in database)  
+4. Create new tables from Section 5 and 6 (your main task)  
+5. Follow implementa tion guide in Section 7  
+2. Database Fundamentals for Freshers  
+Before we dive into tables, let us understand some fundamental concepts. Do not skip this section - 
+it will make everything else easier!  
+2.1 What is a Table?  
+A table is like an Excel spreadsh eet. It has rows (records) and columns (fields). Each row represents 
+one item (like one student or one question), and each column represents one piece of information 
+about that item (like name or email).  
+ 
+Example  
+The 'users' table has columns like email, f ull_name, role. Each row is one user. So if your coaching center 
+has 500 students and 20 teachers, you will have 520 rows in the users table.  
+2.2 Key Concepts  
+Primary Key (PK)  
+
+--- page 5 ---
+SPECTROPY LMS - Complete Data Model  MVP1 Implementation Guide  
+Page 5 of 25  |  SPECTROPY LMS v2.0  Every table needs a unique identifier for each row. This is called the Primary Key. In most of our 
+tables, we use 'id' as the primary key. PostgreSQL automatically generates unique numbers (1, 2, 
+3...) for new rows.  
+-- Example: When you insert a new user  
+INSERT INTO users (email, full_name, role) VALUES ('john@example.com', 'John', 'student');  
+-- PostgreSQL automatically assigns id = 1 (or next available number)  
+Foreign Key (FK)  
+A Foreign Key creates a link between two tables. It says 'this column references another table'. For 
+example, a question belongs to a subject, so questions table has subject_id which references 
+subjects table.  
+-- The subject_id in questions must exist in s ubjects table  
+-- This query will FAIL if subject_id 999 does not exist in subjects  
+INSERT INTO questions (subject_id, ...) VALUES (999, ...);  -- ERROR!  
+  
+-- This query will SUCCEED if subject_id 1 exists in subjects  
+INSERT INTO questions (subject_id, ...)  VALUES (1, ...);    -- OK! 
+SERIAL vs INTEGER  
+SERIAL is a special type that auto -increments. You do not need to provide a value - PostgreSQL 
+generates it. INTEGER is a regular number where you must provide the value.  
+JSONB - Flexible Data Storage  
+JSONB stores structured data when the format might vary. For example, MCQ questions have 4 
+options, but numerical questions have none. JSONB lets us store different structures in the same 
+column.  
+-- MCQ question options stored as JSONB  
+{ 
+  "options": [  
+    {"id": "A", "text": "Option 1", "is_correct": false},  
+    {"id": "B", "text": "Option 2", "is_correct": true}  
+  ] 
+} 
+  
+-- Numerical question has no options, different structure  
+{ 
+  "value": 42,  
+  "tolerance": 0.01  
+} 
+Indexes - Making Queries Fast  
+An index is like a book's index - it helps find data quickly without scanning every row. We create 
+indexes on columns that are frequently searched or filtered.  
+-- Without index: PostgreSQL scans ALL rows to find matching email  
+SELECT * FROM users WHERE email = 'john@example.com';  -- SLOW on large tables  
+  
+-- With index on email: PostgreSQL jumps directly to matching rows  
+CREATE INDEX idx_users_email ON users(email);  -- Now the query is FAST!  
+3. System Architecture  
+3.1 The Multi -Tenant Model  
+
+--- page 6 ---
+SPECTROPY LMS - Complete Data Model  MVP1 Implementation Guide  
+Page 6 of 25  |  SPECTROPY LMS v2.0  SPECTROPY LMS serves multiple coaching institutes (clients) from one system. Each client's data 
+is completely isolated - Narayana cannot see FIITJEE's questions. This is called multi -tenancy.  
+Level  Example  Who Manages  Data Scope  
+Platform  SPECTROPY  Super Admin  All clients, system settings  
+Client  Narayana Institute  Client Admin  All their schools, users  
+School  Narayana Jubilee Hills  School Owner  Their batches, teachers  
+Batch  JEE 2026 Morning  Teacher  Their students only  
+3.2 The 6 -Role Permission System  
+Every user has exactly ONE role. The role determines what they can see and do:  
+Role Level  Can Do  
+super_admin  Platform  Everything - manage all clients, users, content, settings  
+content_authorizer  Platform  Create and manage platform -level content packs  
+client_admin  Client  Manage their schools, users, courses, view all client data  
+school_owner  School  Manage their school's batches, teachers, approve questions  
+teacher  Batch  Create questions (draft), create e xams, grade students  
+student  Batch  Take exams, view own results, access courses  
+3.3 Table Categories Overview  
+All 25 tables are organized into these categories:  
+Category  Tables  Status  Count  
+Core Foundation  clients, schools, users, school_memberships  EXISTING  4 
+Organization  batches, batch_members  EXISTING  2 
+LMS Courses  courses, content_items, enrollments, 
+student_attempts, certificates  EXISTING  5 
+Content Licensing  content_packs, content_pack_items, 
+content_entitlements  EXISTING  3 
+Audit & Security  audit_logs, role_permissions  EXISTING  2 
+Community  community_content  EXISTING  1 
+Curriculum  subjects, chapters, topics  NEW  3 
+Question Bank  questions  NEW  1 
+Exam Engine  exams, exam_sections, exam_questions, 
+exam_attempts, exam_responses  NEW  5 
+4. Existing Tables (Already in Database)  
+These 17 tables are already created and running in production. Study them to understand the 
+current system before adding new tables.  
+ 
+Important  
+
+--- page 7 ---
+SPECTROPY LMS - Complete Data Model  MVP1 Implementation Guide  
+Page 7 of 25  |  SPECTROPY LMS v2.0  DO NOT modify these existing tables without approval. They have live data. You can add new columns if 
+needed, bu t never delete or rename existing columns.  
+4.1 clients  
+Purpose: The root table. Stores each coaching institute/organization using the platform.  
+Column  Type  Constraints  Description  
+id SERIAL  PRIMARY KEY  Auto -increment unique ID  
+name  VARCHAR(255)  NOT NULL  Organization name  
+slug VARCHAR(100)  UNIQUE, NOT NULL  URL-safe identifier  
+timezone  VARCHAR(50)  DEFAULT 
+'Asia/Kolkata'  Timezone for dates  
+settings  JSONB  DEFAULT '{}'  Branding, feature flags  
+is_active  BOOLEAN  DEFAULT TRUE  Soft delete flag  
+created_at  TIMESTAMPTZ  DEFAULT NOW()  Creation timestamp  
+updated_at  TIMESTAMPTZ  DEFAULT NOW()  Auto -updated on change  
+ 
+Trigger: trg_clients_updated automatically updates updated_at on any change.  
+4.2 schools  
+Purpose: Stores schools/campuses/branches within a client. One client can have many schools.  
+Column  Type  Constraints  Description  
+id SERIAL  PRIMARY KEY  Auto -increment unique ID  
+client_id  INTEGER  FK -> clients, NOT 
+NULL  Parent organization  
+school_code  VARCHAR(50)  UNIQUE per client  Short code (MAIN, NORTH)  
+name  VARCHAR(255)  NOT NULL  Full school name  
+board  VARCHAR(50)  NULL  CBSE/ICSE/State  
+affiliation_no  VARCHAR(100)  NULL  Board affiliation number  
+city, state, pincode  VARCHAR  NULL  Address fields  
+phone, email  VARCHAR  NULL  Contact info  
+status  VARCHAR(20)  DEFAULT 'active'  active/inactive  
+ 
+Constraint: UNIQUE(client_id, school_code) - school codes unique within each client  
+Indexes: idx_schools_client, idx_schools_status  
+4.3 users  
+Purpose: All user accounts - admins, teachers, students. The role column determines permissions.  
+
+--- page 8 ---
+SPECTROPY LMS - Complete Data Model  MVP1 Implementation Guide  
+Page 8 of 25  |  SPECTROPY LMS v2.0  Column  Type  Constraints  Description  
+id SERIAL  PRIMARY KEY  Auto -increment unique ID  
+email  CITEXT  UNIQUE, NOT NULL  Login email (case -insensitive)  
+full_name  TEXT  NOT NULL, length > 0  User's full name  
+password_hash  TEXT  NOT NULL  Bcrypt hashed password  
+role VARCHAR(30)  NOT NULL, CHECK  One of 6 roles  
+client_id  INTEGER  FK -> clients, NULL  NULL for platform users  
+user_id  VARCHAR(100)  NULL  External user ID  
+is_active  BOOLEAN  DEFAULT TRUE  Soft delete flag  
+last_login_at  TIMESTAMPTZ  NULL  Last successful login  
+ 
+Role CHECK: super_admin, content_authorizer, client_admin, school_owner, teacher, student  
+Constraint: UNIQUE(client_id, user_id) - external user_id unique within client  
+ 
+Security Note  
+NEVER store plain text passwords! The password_hash column stores bcrypt hashed passwords. When 
+authenticating, hash the input password and compare hashes.  
+4.4 school_memberships  
+Purpose: Links users to schools. One user can belong to multiple schools (e .g., a teacher at two 
+campuses).  
+Column  Type  Constraints  Description  
+id SERIAL  PRIMARY KEY  Auto -increment unique ID  
+school_id  INTEGER  FK -> schools, NOT 
+NULL  Which school  
+user_id  INTEGER  FK -> users, NOT NULL  Which user  
+role_scope  VARCHAR(30)  NOT NULL, CHECK  school_owner/teacher/student/admin  
+is_primary  BOOLEAN  DEFAULT FALSE  Primary school for user  
+status  VARCHAR(20)  DEFAULT 'active'  active/inactive  
+Constraint: UNIQUE(school_id, user_id) - one membership per user per school  
+4.5 batches  
+Purpose: Classes/groups within a school. JEE Morning Batch, NEET 2026, Class 10A, etc.  
+Column  Type  Constraints  Description  
+id SERIAL  PRIMARY KEY  Auto -increment unique ID  
+client_id  INTEGER  FK -> clients, NOT NULL  Parent client (denormalized)  
+school_id  INTEGER  FK -> schools, NOT 
+NULL  Parent school  
+
+--- page 9 ---
+SPECTROPY LMS - Complete Data Model  MVP1 Implementation Guide  
+Page 9 of 25  |  SPECTROPY LMS v2.0  name  VARCHAR(255)  NOT NULL  Batch name  
+code VARCHAR(50)  NULL  Short code (optional)  
+metadata  JSONB  DEFAULT '{}'  {timing, grade, year}  
+is_active  BOOLEAN  DEFAULT TRUE  Soft delete flag  
+4.6 batch_members  
+Purpose: Links users (teachers/students) to batches. Junction table for many -to-many.  
+Column  Type  Constraints  Description  
+id SERIAL  PRIMARY KEY  Auto -increment unique ID  
+batch_id  INTEGER  FK -> batches, ON DELETE 
+CASCADE  Which batch  
+user_id  INTEGER  FK -> users, ON DELETE 
+CASCADE  Which user  
+is_primary  BOOLEAN  DEFAULT FALSE  Primary teacher for batch  
+joined_at  TIMESTAMPTZ  DEFAULT NOW()  When user joined  
+Constraint: UNIQUE(batch_id, user_id)  
+4.7 courses  
+Purpose: Video courses with content. Part of the LMS module (not Question Bank/Exam).  
+Column  Type  Constraints  Description  
+id SERIAL  PRIMARY KEY  Auto -increment unique ID  
+title TEXT  NOT NULL, length > 0  Course title  
+description  TEXT  NULL  Course description  
+client_id  INTEGER  FK -> clients  Owner client  
+school_id  INTEGER  FK -> schools, NULL  NULL = client -level 
+created_by  INTEGER  FK -> users  Course creator  
+published  BOOLEAN  DEFAULT FALSE  Is course live?  
+4.8 content_items  
+Purpose: Content within courses - videos, PDFs, folders, SCORM packages.  
+Column  Type  Constraints  Description  
+id SERIAL  PRIMARY KEY  Auto -increment unique ID  
+course_id  INTEGER  FK -> courses, NOT 
+NULL  Parent course  
+parent_id  INTEGER  FK -> content_items (self)  Parent folder (for nesting)  
+item_type  VARCHAR(20)  CHECK  folder/video/pdf/scorm/etc  
+title TEXT  NOT NULL  Content title  
+content_url  TEXT  NULL  File URL or embed link  
+order_index  INTEGER  DEFAULT 0  Sort order  
+
+--- page 10 ---
+SPECTROPY LMS - Complete Data Model  MVP1 Implementation Guide  
+Page 10 of 25  |  SPECTROPY LMS v2.0  metadata  JSONB  DEFAULT '{}'  {duration, size, etc}  
+item_type CHECK: folder, video, text, pdf, scorm, audio, html, link  
+4.9 Other Existing Tables (Summary)  
+These tables exist but are less critical for MVP1. Study them as needed:  
+Table  Purpose  
+enrollments  Links users to courses (who is enrolled in which course)  
+student_attempts  Tracks SCORM progress, scores, completion for course content  
+certificates  Issued certificates for course completion  
+content_packs  Bundles of content for licensing to clients  
+content_pack_items  Links content items to packs (junction table)  
+content_entit lements  Time -bound content licenses for clients  
+audit_logs  Tracks all important actions for compliance and debugging  
+role_permissions  Configurable permissions per role per client  
+community_content  User -generated community posts with media  
+5. New Tables: Curriculum Structure  
+Your Task  
+These 3 tables need to be CREATED. They define the academic structure that questions will reference. 
+Create them BEFORE creating the questions table.  
+5.1 subjects  
+Purpose: Stores subjects like Physics, Chemistry, Mathematics, Biology. Every question must 
+belong to a subject.  
+Column  Type  Constraints  Description  
+id SERIAL  PRIMARY KEY  Auto -increment unique ID  
+client_id  INTEGER  FK -> clients, NULL  NULL = platform -level subject  
+name  VARCHAR(100)  NOT NULL  Subject name (Physics)  
+code VARCHAR(20)  NOT NULL  Short code (PHY, CHE, MAT)  
+description  TEXT  NULL  Subject description  
+display_order  INTEGER  DEFAULT 0  Sort order in UI  
+is_active  BOOLEAN  DEFAULT TRUE  Soft delete flag  
+created_at  TIMESTAMPTZ  DEFAULT NOW()  Creation timestamp  
+ 
+-- SQL to create subjects table  
+CREATE TABLE subjects (  
+    id SERIAL PRIMARY KEY,  
+    client_id INTEGER REFERENCES clients(id) ON DELETE CASCADE,  
+    name VARCHAR(100) NOT NULL,  
+    code VARCHAR(20) NOT NULL,  
+    description TEXT,  
+
+--- page 11 ---
+SPECTROPY LMS - Complete Data Model  MVP1 Implementation Guide  
+Page 11 of 25  |  SPECTROPY LMS v2.0      display_order INTEGER DEFAULT 0,  
+    is_active BOOLEAN DEFAULT TRUE,  
+    created_at TIMESTAMPTZ DEFAULT  NOW()  
+); 
+  
+-- Indexes  
+CREATE INDEX idx_subjects_client ON subjects(client_id);  
+CREATE INDEX idx_subjects_active ON subjects(is_active);  
+  
+-- Constraint: code unique within client (or platform if client_id is NULL)  
+CREATE UNIQUE INDEX idx_subjects_code_unique  
+ON subjects(COALESCE(client_id, 0), code);  
+5.2 chapters  
+Purpose: Stores chapters within subjects. Each chapter belongs to exactly on e subject.  
+Column  Type  Constraints  Description  
+id SERIAL  PRIMARY KEY  Auto -increment unique ID  
+subject_id  INTEGER  FK -> subjects, NOT 
+NULL  Parent subject  
+name  VARCHAR(200)  NOT NULL  Chapter name  
+chapter_number  INTEGER  NOT NULL  Order within subject (1, 2, 3...)  
+description  TEXT  NULL  Chapter description  
+is_active  BOOLEAN  DEFAULT TRUE  Soft delete flag  
+created_at  TIMESTAMPTZ  DEFAULT NOW()  Creation timestamp  
+ 
+-- SQL to create chapters table  
+CREATE TABLE chapters (  
+    id SERIAL PRIMARY KEY,  
+    subject_id INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,  
+    name VARCHAR(200) NOT NULL,  
+    chapter_number INTEGER NOT NULL,  
+    description TEXT,  
+    is_active BOOLEAN DEFAULT TRUE,  
+    created_at TIMESTAMPTZ DEFAULT NOW()  
+); 
+  
+-- Indexes  
+CREATE INDEX idx_chapters_subject ON chapters(subject_id);  
+CREATE UNIQUE INDEX idx_chapters_number ON chapters(subject_id, chapter_number);  
+5.3 topics  
+Purpose: Stores topics within chapters. Topics are optional but useful for granular filtering.  
+Column  Type  Constraints  Description  
+id SERIAL  PRIMARY KEY  Auto -increment unique ID  
+chapter_id  INTEGER  FK -> chapters, NOT 
+NULL  Parent chapter  
+name  VARCHAR(200)  NOT NULL  Topic name  
+
+--- page 12 ---
+SPECTROPY LMS - Complete Data Model  MVP1 Implementation Guide  
+Page 12 of 25  |  SPECTROPY LMS v2.0  topic_number  INTEGER  NOT NULL  Order within chapter  
+is_active  BOOLEAN  DEFAULT TRUE  Soft delete flag  
+created_at  TIMESTAMPTZ  DEFAULT NOW()  Creation timestamp  
+ 
+-- SQL to create topics table  
+CREATE TABLE topics (  
+    id SERIAL PRIMARY KEY,  
+    chapter_id INTEGER NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,  
+    name VARCHAR(200) NOT NULL,  
+    topic_number INTEGER NOT NULL,  
+    is_active BOOLEAN DEFAULT TRUE,  
+    created_at TIMESTAMPTZ DEFAULT NOW()  
+); 
+  
+-- Indexes  
+CREATE INDEX idx_topics_chapter ON topics(chapter_id);  
+CREATE UNIQUE INDEX idx_topics_number ON topics(chapter_id, topic_number);  
+ 
+Example Hierarchy  
+Subject: Phys ics (id=1) → Chapter: Mechanics (id=1, subject_id=1, chapter_number=1) → Topic: Newton's 
+Laws (id=1, chapter_id=1, topic_number=1). When creating a question, select Physics, then Mechanics, 
+then optionally Newton's Laws.  
+6. New Tables: Question Bank & Exam Engine  
+Core MVP1 Tables  
+These 6 tables are the heart of MVP1. The questions table stores all questions, and the 5 exam tables 
+handle exam creation, taking, and grading.  
+6.1 questions  
+Purpose: The central table storing all questions. Supports 4 question types with 3 -tier ownership.  
+Basic Identification Fields  
+Column  Type  Constraints  Description  
+id SERIAL  PRIMARY KEY  Auto -increment unique ID  
+client_id  INTEGER  FK -> clients, 
+NULL  NULL = platform question  
+school_id  INTEGER  FK -> schools, 
+NULL  NULL = client -level question  
+question_type  VARCHAR(20)  NOT NULL, 
+CHECK  mcq_single/mcq_multiple/numerical/true_false  
+Content Fields  
+Column  Type  Constraints  Description  
+question_text  JSONB  NOT NULL  {html, latex, images[]}  
+options  JSONB  NULL  [{id, text, is_correct}] for MCQ  
+
+--- page 13 ---
+SPECTROPY LMS - Complete Data Model  MVP1 Implementation Guide  
+Page 13 of 25  |  SPECTROPY LMS v2.0  correct_answer  JSONB  NOT NULL  Answer in type -specific format  
+solution  JSONB  NULL  {html, latex} - explanation  
+solution_video_url  TEXT  NULL  Video solution link  
+Curriculum & Classification Fields  
+Column  Type  Constraints  Description  
+subject_id  INTEGER  FK -> subjects, NOT 
+NULL  Required: which subject  
+chapter_id  INTEGER  FK -> chapters, NOT 
+NULL  Required: which chapter  
+topic_id  INTEGER  FK -> topics, NULL  Optional: which topic  
+difficulty_level  VARCHAR(20)  NOT NULL, DEFAULT 
+'medium'  easy/medium/hard  
+exam_tags  TEXT[]  DEFAULT '{}'  ['JEE', 'NEET', 'Board']  
+marks_positive  DECIMAL(5,2)  DEFAULT 4  Points for correct answer  
+marks_negative  DECIMAL(5,2)  DEFAULT 0  Points deducted for wrong  
+ 
+Workflow & Audit Fields  
+Column  Type  Constraints  Description  
+status  VARCHAR(20)  DEFAULT 'draft'  draft/approved/rejected/archived  
+created_by  INTEGER  FK -> users, NOT NULL  Teacher who created  
+approved_by  INTEGER  FK -> users, NULL  Who approved (NULL if 
+pending)  
+approved_at  TIMESTAMPTZ  NULL  When approved  
+rejection_reason  TEXT  NULL  Feedback if rejected  
+created_at  TIMESTAMPTZ  DEFAULT NOW()  Creation timestamp  
+updated_at  TIMESTAMPTZ  DEFAULT NOW()  Last update timestamp  
+ 
+Complete SQL for questions table:  
+-- Create questions table  
+CREATE TABLE questions (  
+    id SERIAL PRIMARY KEY,  
+    client_id INTEGER REFERENCES clients(id) ON DELETE CASCADE,  
+    school_id INTEGER REFERENCES schools(id) ON DELETE CASCADE,  
+     
+    -- Question type  
+    question_type VARCHAR(20) NOT NULL CHECK (  
+        question_type IN ('mcq_single', 'mcq_multiple', 'numerical', 'true_false')  
+    ), 
+     
+    -- Content  
+    question_text JSONB NOT NULL,  
+    options JSONB,  
+    correct_answer JSONB NOT NULL,  
+    solution JSONB,  
+
+--- page 14 ---
+SPECTROPY LMS - Complete Data Model  MVP1 Implementation Guide  
+Page 14 of 25  |  SPECTROPY LMS v2.0      solution_video_url TEXT,  
+     
+    -- Curriculum  
+    subject_id INTEGER NOT NULL REFERENCES subjects(id),  
+    chapter_id INTEGER NOT NULL REFERENCES chapters(id),  
+    topic_id INTEGER REFERENCES topics(id),  
+     
+    -- Classification  
+    difficulty_level VARCHAR(20) NOT NULL DEFAULT 'medium' C HECK (  
+        difficulty_level IN ('easy', 'medium', 'hard')  
+    ), 
+    exam_tags TEXT[] DEFAULT '{}',  
+    marks_positive DECIMAL(5,2) DEFAULT 4,  
+    marks_negative DECIMAL(5,2) DEFAULT 0,  
+     
+    -- Workflow  
+    status VARCHAR(20) DEFAULT 'draft' CHECK (  
+        status IN ('draft', 'approved', 'rejected', 'archived')  
+    ), 
+    created_by INTEGER NOT NULL REFERENCES users(id),  
+    approved_by INTEGER REFERENCES users(id),  
+    approved_at TIMESTAMPTZ,  
+    rejection_reason TEXT,  
+     
+    -- Timestamps  
+    created_at TIMESTAMPTZ DEFAULT NOW(),  
+    updated_at TIMESTAMPTZ DEFAULT NOW()  
+); 
+  
+-- Essential indexes for performance  
+CREATE INDEX idx_questions_client ON questions(client_id);  
+CREATE INDEX idx_questions_scho ol ON questions(school_id);  
+CREATE INDEX idx_questions_subject ON questions(subject_id);  
+CREATE INDEX idx_questions_chapter ON questions(chapter_id);  
+CREATE INDEX idx_questions_status ON questions(status);  
+CREATE INDEX idx_questions_difficulty ON questions(difficulty_level);  
+CREATE INDEX idx_questions_type ON questions(question_type);  
+CREATE INDEX idx_questions_created_by ON questions(created_by);  
+  
+-- GIN index for array search (exam_tags)  
+CREATE INDEX idx_questions_exam_tags ON questions USING GIN(exam_tags);  
+  
+-- Full-text search (optional but recommended)  
+ALTER TABLE questions ADD COLUMN search_vector tsvector;  
+CREATE INDEX idx_questions_fts ON qu estions USING GIN(search_vector);  
+  
+-- Trigger to update updated_at  
+CREATE TRIGGER trg_questions_updated BEFORE UPDATE ON questions  
+FOR EACH ROW EXECUTE FUNCTION update_timestamp();  
+6.2 JSONB Data Formats  
+These are the exact JSON structures for question data:  
+question_text Format  
+{ 
+    "html": "<p>What is the acceleration due to gravity?</p>",  
+    "latex": "g = ? \\text{ m/s}^2",  
+    "images": [  
+        {"url": "https://storage.../image.png", "alt": "Diagram"}  
+
+--- page 15 ---
+SPECTROPY LMS - Complete Data Model  MVP1 Implementation Guide  
+Page 15 of 25  |  SPECTROPY LMS v2.0      ] 
+} 
+options Format (MCQ only)  
+[ 
+    {"id": "A", "text": {"html": "9.8 m/s²"}, "is_correct": true},  
+    {"id": "B", "text": {"html": "10.8 m/s²"}, "is_correct": false},  
+    {"id": "C", " text": {"html": "8.8 m/s²"}, "is_correct": false},  
+    {"id": "D", "text": {"html": "11.8 m/s²"}, "is_correct": false}  
+] 
+correct_answer Formats  
+// MCQ Single  
+{"answer": "A"}  
+  
+// MCQ Multiple  
+{"answers": ["A", "C"]}  
+  
+// Numerical  
+{"value": 9.8, "tolerance": 0.01}  
+  
+// True/False  
+{"answer": true}  
+6.3 exams  
+Purpose: Stores exam metadata and configuration. One exam can have multiple sections.  
+Column  Type  Constraints  Description  
+id SERIAL  PRIMARY KEY  Auto -increment unique ID  
+client_id  INTEGER  FK -> clients, NOT 
+NULL  Owner client  
+school_id  INTEGER  FK -> schools, NULL  NULL = client -wide exam  
+title VARCHAR(255)  NOT NULL  Exam title  
+description  TEXT  NULL  Exam description/instructions  
+total_duration_minutes  INTEGER  NOT NULL  Total time in minutes  
+start_datetime  TIMESTAMPTZ  NOT NULL  When exam becomes available  
+end_datetime  TIMESTAMPTZ  NOT NULL  When exam closes  
+shuffle_questions  BOOLEAN  DEFAULT FALSE  Randomize question order  
+shuffle_options  BOOLEAN  DEFAULT FALSE  Randomize MCQ options  
+show_result_immediately  BOOLEAN  DEFAULT TRUE  Show result after submit  
+max_attempts  INTEGER  DEFAULT 1  Max number of attempts  
+status  VARCHAR(20)  DEFAULT 'draft'  draft/published/active/completed  
+created_by  INTEGER  FK -> users, NOT 
+NULL  Who created the exam  
+created_at  TIMESTAMPTZ  DEFAULT NOW()  Creation timestamp  
+ 
+-- Create exams table  
+
+--- page 16 ---
+SPECTROPY LMS - Complete Data Model  MVP1 Implementation Guide  
+Page 16 of 25  |  SPECTROPY LMS v2.0  CREATE TABLE exams (  
+    id SERIAL PRIMARY KEY,  
+    client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,  
+    school_id INTEGER REFERENCES schools(id) ON DELETE CASCADE,  
+    title VARCHAR(255) NOT NULL,  
+    description TEXT,  
+    total_duration_minutes INTEGER NOT NULL,  
+    start_datetime TIMESTAMPTZ NOT NULL,  
+    end_datetime TIMESTAMPTZ NOT NULL,  
+    shuffle_questions BOOLEAN DEFAULT FALSE,  
+    shuffle_options BOOLEAN DEFAULT FALSE,  
+    show_result_immediately BOOLEAN DEFAULT  TRUE,  
+    max_attempts INTEGER DEFAULT 1,  
+    status VARCHAR(20) DEFAULT 'draft' CHECK (  
+        status IN ('draft', 'published', 'active', 'completed')  
+    ), 
+    created_by INTEGER NOT NULL REFERENCES users(id),  
+    created_at TIMESTAMPTZ DEFAULT NOW(),  
+    updated_at TIMESTAMPTZ DEFAULT NOW()  
+); 
+  
+CREATE INDEX idx_exams_client ON exams(client_id);  
+CREATE INDEX idx_exams_school ON exams(school_id);  
+CREATE INDEX idx_exams_status ON exams(status);  
+CREATE INDEX idx_exams_dates ON exams(start_datetime, end_d atetime);  
+6.4 exam_sections  
+Purpose: Divides an exam into sections (Physics, Chemistry, Math for JEE -style exams).  
+Column  Type  Constraints  Description  
+id SERIAL  PRIMARY KEY  Auto -increment unique ID  
+exam_id  INTEGER  FK -> exams, ON 
+DELETE CASCADE  Parent exam  
+title VARCHAR(100)  NOT NULL  Section title  
+order_index  INTEGER  NOT NULL  Section order (1, 2, 3...)  
+instructions  TEXT  NULL  Section -specific instructions  
+marks_per_question  DECIMAL(5,2)  DEFAULT 4  Default marks for section  
+negative_marks  DECIMAL(5,2)  DEFAULT 1  Default negative marks  
+ 
+CREATE TABLE exam_sections (  
+    id SERIAL PRIMARY KEY,  
+    exam_id INTEGER NOT NULL REFERENCES exams(id) ON DELETE CASCADE,  
+    title VARCHAR(100) NOT NULL,  
+    order_index INTEGER NOT NULL,  
+    instructions TEXT,  
+    marks_per_question DECIMAL(5,2) DEFAULT 4,  
+    negative_marks DECIMAL(5,2) DEFAULT 1  
+); 
+  
+CREATE INDEX idx_exam_sections_exam ON exam_sections(exam_id);  
+CREATE UNIQUE INDEX idx_exam_sections_order ON exam_sections(exam_id, order_index);  
+6.5 exam_questions  
+Purpose: Links questions to exam sections. Junction table with ordering.  
+
+--- page 17 ---
+SPECTROPY LMS - Complete Data Model  MVP1 Implementation Guide  
+Page 17 of 25  |  SPECTROPY LMS v2.0  Column  Type  Constraints  Description  
+id SERIAL  PRIMARY KEY  Auto -increment unique ID  
+section_id  INTEGER  FK -> exam_sections, 
+CASCADE  Which section  
+question_id  INTEGER  FK -> questions, NOT NULL  Which question  
+order_index  INTEGER  NOT NULL  Question order in section  
+marks_override  DECIMAL(5,2)  NULL  Override section default  
+negative_override  DECIMAL(5,2)  NULL  Override section default  
+ 
+CREATE TABLE exam_questions (  
+    id SERIAL PRIMARY KEY,  
+    section_id INTEGER NOT NULL REFERENCES exam_sections(id) ON DELETE CASCADE,  
+    question_id INTEGER NOT NULL REFERENCES questions(id),  
+    order_index INTEGER NOT NULL,  
+    marks_override DECIMAL(5,2),  
+    negative_override DECIMAL(5,2),  
+    UNIQUE(section_id, question_id)  
+); 
+  
+CREATE INDEX idx_exam_questions_section ON exam_questions(section_id);  
+CREATE INDEX idx_exam_questions_question ON exam_questions(question_id);  
+6.6 exam_attempts  
+Purpose: Records each student's exam attempt. Tracks timing and overall scores.  
+Column  Type  Constraints  Description  
+id SERIAL  PRIMARY KEY  Auto -increment unique ID  
+exam_id  INTEGER  FK -> exams, NOT NULL  Which exam  
+student_id  INTEGER  FK -> users, NOT NULL  Which student  
+attempt_number  INTEGER  NOT NULL, DEFAULT 1  1st, 2nd, 3rd attempt  
+started_at  TIMESTAMPTZ  NOT NULL, DEFAULT 
+NOW()  When student started  
+submitted_at  TIMESTAMPTZ  NULL  NULL = still in progress  
+auto_submitted  BOOLEAN  DEFAULT FALSE  TRUE if timeout occurred  
+total_score  DECIMAL(10,2)  NULL  Calculated after grading  
+total_correct  INTEGER  NULL  Count of correct answers  
+total_wrong  INTEGER  NULL  Count of wrong answers  
+total_unattempted  INTEGER  NULL  Count of skipped  
+status  VARCHAR(20)  DEFAULT 'in_progress'  in_progress/submitted/graded  
+ 
+CREATE TABLE exam_attempts (  
+    id SERIAL PRIMARY KEY,  
+    exam_id INTEGER NOT NULL REFERENCES exams(id),  
+    student_id INTEGER NOT NULL REFERENCES users(id),  
+
+--- page 18 ---
+SPECTROPY LMS - Complete Data Model  MVP1 Implementation Guide  
+Page 18 of 25  |  SPECTROPY LMS v2.0      attempt_number INTEGER NOT NULL DEFAULT 1,  
+    started_at TI MESTAMPTZ NOT NULL DEFAULT NOW(),  
+    submitted_at TIMESTAMPTZ,  
+    auto_submitted BOOLEAN DEFAULT FALSE,  
+    total_score DECIMAL(10,2),  
+    total_correct INTEGER,  
+    total_wrong INTEGER,  
+    total_unattempted INTEGER,  
+    status VARCHAR(20) DEFAULT 'in_progress' CHECK (  
+        status IN ('in_progress', 'submitted', 'graded')  
+    ), 
+    UNIQUE(exam_id, student_id, attempt_number)  
+); 
+  
+CREATE INDEX idx_exam_attempts_exam ON exam_attempts(exam_id);  
+CREATE INDEX idx_exam_a ttempts_student ON exam_attempts(student_id);  
+CREATE INDEX idx_exam_attempts_status ON exam_attempts(status);  
+6.7 exam_responses  
+Purpose: Stores each answer given by a student. One row per question per attempt.  
+Column  Type  Constraints  Description  
+id SERIAL  PRIMARY KEY  Auto -increment unique ID  
+attempt_id  INTEGER  FK -> exam_attempts, 
+CASCADE  Which attempt  
+question_id  INTEGER  FK -> questions, NOT NULL  Which question  
+section_id  INTEGER  FK -> exam_sections, NOT 
+NULL  Which section  
+student_answer  JSONB  NULL  Student's response  
+is_correct  BOOLEAN  NULL  Grading result  
+marks_awarded  DECIMAL(5,2)  NULL  Points given/deducted  
+is_marked_for_review  BOOLEAN  DEFAULT FALSE  Student flagged question  
+is_attempted  BOOLEAN  DEFAULT FALSE  Has student answered  
+answered_at  TIMESTAMPTZ  NULL  When answered  
+ 
+CREATE TABLE exam_responses (  
+    id SERIAL PRIMARY KEY,  
+    attempt_id INTEGER NOT NULL REFERENCES exam_attempts(id) ON DELETE CASCADE,  
+    question_id INTEGER NOT NULL REFERENCES questions(id),  
+    section_id INTEGER NOT NULL REFERENCES exam_sections(id),  
+    student_answer JSONB,  
+    is_correct BOOLEAN,  
+    marks_awarded DECIMAL(5,2),  
+    is_marked_for_review BOOLEAN DEFAULT FALSE,  
+    is_attempted BOOLEAN DEFAULT FALSE,  
+    answered_at TIMESTAMPTZ,  
+    UNIQUE(attempt_id, question_id)  
+); 
+  
+CREATE INDEX idx_exam_responses_attempt ON e xam_responses(attempt_id);  
+CREATE INDEX idx_exam_responses_question ON exam_responses(question_id);  
+student_answer JSONB Formats  
+
+--- page 19 ---
+SPECTROPY LMS - Complete Data Model  MVP1 Implementation Guide  
+Page 19 of 25  |  SPECTROPY LMS v2.0  // MCQ Single - student selected option B  
+{"selected": "B"}  
+  
+// MCQ Multiple - student selected options A and C  
+{"selected": ["A", "C"]}  
+  
+// Numerical - student entered 9.81  
+{"value": 9.81}  
+  
+// True/False - student selected True  
+{"selected": true}  
+7. Implementation Guide  
+7.1 Table Creation Order  
+Execute SQL scripts in this exact order due to foreign key dependencies:  
+Step Table(s)  Depends On  
+1 subjects  clients (existing)  
+2 chapters  subjects  
+3 topics  chapters  
+4 questions  clients, schools, subjects, chapters, topics, users  
+5 exams  clients, schools, users  
+6 exam_sections  exams  
+7 exam_questions  exam_sections, questions  
+8 exam_attempts  exams, users  
+9 exam_responses  exam_attempts, questions, exam_sections  
+7.2 Auto -Grading Logic  
+Implement this grading function in your backend:  
+function gradeResponse(question, studentAnswer) {  
+    const type = question.question_type;  
+    const correct = question.correct_answer;  
+    const marks = question.marks_positive;  
+    const negative = question.marks_negative;  
+  
+    // Not attempted  
+    if (!studentAnswer || studentAnswer.selected === null) {  
+        return { is_correct: null, mar ks_awarded: 0 };  
+    } 
+  
+    // MCQ Single: Exact match  
+    if (type === 'mcq_single') {  
+        if (studentAnswer.selected === correct.answer) {  
+            return { is_correct: true, marks_awarded: marks };  
+        } 
+        return { is_correct: false, m arks_awarded: -negative };  
+    } 
+  
+    // MCQ Multiple: All or nothing in MVP  
+    if (type === 'mcq_multiple') {  
+
+--- page 20 ---
+SPECTROPY LMS - Complete Data Model  MVP1 Implementation Guide  
+Page 20 of 25  |  SPECTROPY LMS v2.0          const selected = [...studentAnswer.selected].sort();  
+        const correctArr = [...correct.answers].sort();  
+        if (JSON.stringify (selected) === JSON.stringify(correctArr)) {  
+            return { is_correct: true, marks_awarded: marks };  
+        } 
+        return { is_correct: false, marks_awarded: -negative };  
+    } 
+  
+    // Numerical: Within tolerance  
+    if (type === 'numerical') {  
+        const diff = Math.abs(studentAnswer.value - correct.value);  
+        if (diff <= correct.tolerance) {  
+            return { is_correct: true, marks_awarded: marks };  
+        } 
+        return { is_correct: false, marks_awarded: -negative };  
+    } 
+  
+    // True/False: Exact match  
+    if (type === 'true_false') {  
+        if (studentAnswer.selected === correct.answer) {  
+            return { is_correct: true, marks_awarded: marks };  
+        } 
+        return { is_correct: false, marks_awarded: -negative };  
+    } 
+} 
+7.3 Ownership Check Utility  
+Use this function in ALL API endpoints to ensure data isolation:  
+function checkOwnership(user, resource) {  
+    // Super admin can access everything  
+    if (user.role === 'super_admin') return true;  
+  
+    // Must be same client  
+    if (user.client_id !== resource.client_id) return false;  
+  
+    // Client admin can access all within their client  
+    if (user.role === 'client_admin') return true;  
+  
+    // School -level users must match school  
+    if (resource.school_id) {  
+        // Check if user belongs to this school  
+        const membership = user.school_memberships.find(  
+            m => m.school_id === resource.school_id && m.status === 'active'  
+        ); 
+        if (!membership) return false;  
+    } 
+  
+    return true;  
+} 
+7.4 Common Pitfalls to Avoid  
+6. NEVER store plain text passwords - always use bcrypt  
+7. ALWAYS check ownership before returning data - School A cannot see School B's questions  
+8. ALWAYS include WHERE is_active = TRUE (or status = 'active') in queries  
+9. ONLY approved questions can be added to exa ms - validate status = 'approved'  
+
+--- page 21 ---
+SPECTROPY LMS - Complete Data Model  MVP1 Implementation Guide  
+Page 21 of 25  |  SPECTROPY LMS v2.0  10. Handle exam timeout on BOTH frontend AND backend - auto-submit when time expires  
+11. Use transactions when creating exams with sections and questions - all or nothing  
+ 
+Testing Checklist  
+Before deployment: 1) School A user cannot see School B data, 2) Draft questions cannot be added to 
+exams, 3) Exam auto -submits on timeout, 4) Auto -grading  works for all 4 question types, 5) Negative 
+marking applies correctly  
+8. Visual Reference  
+8.1 Complete Table Relationship Diagram  
+PLATFORM (SPECTROPY)  
+│ 
+├── subjects (platform -level, client_id = NULL)  
+│ 
+└── CLIENTS (Narayana, FIITJEE, etc.)  
+    │ 
+    ├── subjects (client -level, client_id = X)  
+    │   └── chapters  
+    │       └── topics  
+    │ 
+    ├── users (client_id = X)  
+    │ 
+    ├── SCHOOLS (branches/campuses)  
+    │   │  
+    │   ├── school_memberships ←→  users  
+    │   │  
+    │   ├── BATCHES (classes/groups)  
+    │   │   └── batch_members ←→ users  
+    │   │  
+    │   ├── QUESTIONS (school_id = Y)  
+    │   │   ├── subject_id → subjects  
+    │   │   ├── chapter_id → chapters  
+    │   │   ├── topic_id → topics (optional)  
+    │   │   └── created_by → users  
+    │   │  
+    │   └── EXAMS (school_id = Y)  
+    │       ├── exam_sections  
+    │       │   └── exam_questions → questions  
+    │       │  
+    │       └── exam_attempts (per studen t) 
+    │           └── exam_responses (per question)  
+    │ 
+    ├── QUESTIONS (client -level, school_id = NULL)  
+    │ 
+    └── EXAMS (client -level, school_id = NULL)  
+8.2 Exam Flow Diagram  
+EXAM CREATION FLOW:  
+─────────────────────  
+1. Teacher creates EXAM (status = 'draft')  
+2. Teacher creates EXAM_SECTIONS (Physics, Chemistry, Math)  
+3. Teacher adds QUESTIONS via EXAM_QUESTIONS  
+4. Admin publishes EXAM (status = 'published')  
+5. When start_datetime arrives (status = 'active')  
+  
+
+--- page 22 ---
+SPECTROPY LMS - Complete Data Model  MVP1 Implementation Guide  
+Page 22 of 25  |  SPECTROPY LMS v2.0  EXAM TAK ING FLOW:  
+─────────────────────  
+1. Student clicks "Start Exam"  
+   → Creates EXAM_ATTEMPTS (status = 'in_progress')  
+   → Creates EXAM_RESPONSES for each question (all NULL initially)  
+  
+2. Student answers questions  
+   → Updates EXAM_RESPONSES.student_answer (JSONB)  
+   → Auto-save every 30 seconds via HTTP POST  
+  
+3. Student clicks "Submit" OR timeout occurs  
+   → EXAM_ATTEMPTS.submitted_at = NOW()  
+   → EXAM_ATTEMPTS.status = 'submitted'  
+   → If timeout: auto_submitted = TRUE  
+  
+4. Auto-grading runs  
+   → For each EXAM_RESPONSES: calculate is_correct, marks_awarded  
+   → Update EXAM_ATTEMPTS: total_score, total_correct, etc.  
+   → EXAM_ATTEMPTS.status = 'graded'  
+  
+5. Student views results (if show_result_immediately = TRUE)  
+8.3 Question Workflow  
+QUESTION STATUS FLOW:  
+─────────────────────  
+  
+  ┌─────────┐    create    ┌─────────┐  
+  │ (none)  │ ──────────→  │  DRAFT  │  
+  └─────────┘              └────┬────┘  
+                                │ 
+            ┌───────────────────┴───────────────────┐  
+            │                                       │  
+            ▼ approve                      reject   ▼  
+     ┌──────────┐                          ┌──────────┐  
+     │ APPROVED │                          │ REJECTED │  
+     └────┬─────┘                          └────┬─────┘  
+          │                                     │  
+          │ archive                        edit │  
+          ▼                                     ▼  
+     ┌──────────┐                          ┌─────────┐  
+     │ ARCHIVED │                          │  DRAFT  │  
+     └──────────┘                          └── ───────┘  
+  
+RULES:  
+• Only APPROVED questions can be used in exams  
+• REJECTED questions must be edited and re -submitted  
+• ARCHIVED questions are soft -deleted (not shown in search)  
+9. Appendix  
+A. Complete SQL Script (All New Tables)  
+Run this complete scrip t to create all 8 new tables:  
+-- =====================================================  
+-- SPECTROPY LMS - New Tables for Question Bank & Exam Engine  
+-- Run this script AFTER existing tables are in place  
+-- =====================================================  
+  
+
+--- page 23 ---
+SPECTROPY LMS - Complete Data Model  MVP1 Implementation Guide  
+Page 23 of 25  |  SPECTROPY LMS v2.0  -- 1. SUBJECTS  
+CREATE TABLE subjects (  
+    id SERIAL PRIMARY KEY,  
+    client_id INTEGER REFERENCES clients(id) ON DELETE CASCADE,  
+    name VARCHAR(100) NOT NULL,  
+    code VARCHAR(20) NOT NULL,  
+    description TEXT,  
+    display_order INTEGER DEFAULT 0,  
+    is_active BOOLEAN DEFAULT TRUE,  
+    created_at TIMESTAMPTZ DEFAULT NOW()  
+); 
+CREATE INDEX idx_subjects_client ON subjects(client_id);  
+CREATE UNIQUE INDEX idx_subje cts_code ON subjects(COALESCE(client_id, 0), code);  
+  
+-- 2. CHAPTERS  
+CREATE TABLE chapters (  
+    id SERIAL PRIMARY KEY,  
+    subject_id INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,  
+    name VARCHAR(200) NOT NULL,  
+    chapter_number INTEGER NO T NULL,  
+    description TEXT,  
+    is_active BOOLEAN DEFAULT TRUE,  
+    created_at TIMESTAMPTZ DEFAULT NOW()  
+); 
+CREATE INDEX idx_chapters_subject ON chapters(subject_id);  
+CREATE UNIQUE INDEX idx_chapters_number ON chapters(subject_id, chapter_number);  
+  
+-- 3. TOPICS  
+CREATE TABLE topics (  
+    id SERIAL PRIMARY KEY,  
+    chapter_id INTEGER NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,  
+    name VARCHAR(200) NOT NULL,  
+    topic_number INTEGER NOT NULL,  
+    is_active BOOLEAN DEFAULT TRUE,  
+    created_at TIMESTAMPTZ DEFAULT NOW()  
+); 
+CREATE INDEX idx_topics_chapter ON topics(chapter_id);  
+  
+-- 4. QUESTIONS  
+CREATE TABLE questions (  
+    id SERIAL PRIMARY KEY,  
+    client_id INTEGE R REFERENCES clients(id) ON DELETE CASCADE,  
+    school_id INTEGER REFERENCES schools(id) ON DELETE CASCADE,  
+    question_type VARCHAR(20) NOT NULL CHECK (  
+        question_type IN ('mcq_single', 'mcq_multiple', 'numerical', 'true_false')  
+    ), 
+    question_text JSONB NOT NULL,  
+    options JSONB,  
+    correct_answer JSONB NOT NULL,  
+    solution JSONB,  
+    solution_video_url TEXT,  
+    subject_id INTEGER NOT NULL REFERENCES subjects(id),  
+    chapter_id INTEGER NOT NULL REFERENCES chapters(id),  
+    topic_id INTEGER REFERENCES topics(id),  
+    difficulty_level VARCHAR(20) NOT NULL DEFAULT 'medium' CHECK (  
+        difficulty_level IN ('easy', 'medium', 'hard')  
+    ), 
+    exam_tags TEXT[] DEFAU LT '{}',  
+    marks_positive DECIMAL(5,2) DEFAULT 4,  
+    marks_negative DECIMAL(5,2) DEFAULT 0,  
+    status VARCHAR(20) DEFAULT 'draft' CHECK (  
+        status IN ('draft', 'approved', 'rejected', 'archived')  
+    ), 
+
+--- page 24 ---
+SPECTROPY LMS - Complete Data Model  MVP1 Implementation Guide  
+Page 24 of 25  |  SPECTROPY LMS v2.0      created_by INTEGER NOT NULL REFERENCES users(id),  
+    approved_by INTEGER REFERENCES users(id),  
+    approved_at TIMESTAMPTZ,  
+    rejection_reason TEXT,  
+    created_at TIMESTAMPTZ DEFAULT NOW(),  
+    updated_at TIMESTAMPTZ DEFAULT NOW()  
+); 
+CREATE INDEX idx_questions_client ON questions(client_id) ; 
+CREATE INDEX idx_questions_school ON questions(school_id);  
+CREATE INDEX idx_questions_subject ON questions(subject_id);  
+CREATE INDEX idx_questions_chapter ON questions(chapter_id);  
+CREATE INDEX idx_questions_status ON questions(status);  
+CREATE INDEX idx_ questions_type ON questions(question_type);  
+CREATE INDEX idx_questions_exam_tags ON questions USING GIN(exam_tags);  
+  
+-- 5. EXAMS  
+CREATE TABLE exams (  
+    id SERIAL PRIMARY KEY,  
+    client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,  
+    school_id INTEGER REFERENCES schools(id) ON DELETE CASCADE,  
+    title VARCHAR(255) NOT NULL,  
+    description TEXT,  
+    total_duration_minutes INTEGER NOT NULL,  
+    start_datetime TIMESTAMPTZ NOT NULL,  
+    end_datetime TIMESTAMPTZ NOT NULL,  
+    shuffle_questions BOOLEAN DEFAULT FALSE,  
+    shuffle_options BOOLEAN DEFAULT FALSE,  
+    show_result_immediately BOOLEAN DEFAULT TRUE,  
+    max_attempts INTEGER DEFAULT 1,  
+    status VARCHAR(20 ) DEFAULT 'draft' CHECK (  
+        status IN ('draft', 'published', 'active', 'completed')  
+    ), 
+    created_by INTEGER NOT NULL REFERENCES users(id),  
+    created_at TIMESTAMPTZ DEFAULT NOW(),  
+    updated_at TIMESTAMPTZ DEFAULT NOW()  
+); 
+CREATE INDEX idx_exams_client ON exams(client_id);  
+CREATE INDEX idx_exams_school ON exams(school_id);  
+CREATE INDEX idx_exams_status ON exams(status);  
+  
+-- 6. EXAM_SECTIONS  
+CREATE TABLE exam_sections (  
+    id SERIAL PRIMARY KEY,  
+    exam_id INTEGER NOT NULL REFERENCES exams(id) ON DELETE CASCADE,  
+    title VARCHAR(100) NOT NULL,  
+    order_index INTEGER NOT NULL,  
+    instructions TEXT,  
+    marks_per_question DECIMAL(5,2) DEFAULT 4,  
+    negative_marks DECIMAL(5,2) DEFAULT 1  
+); 
+CREATE INDEX idx_exam_sections_exam ON exam_sections(exam_id);  
+  
+-- 7. EXAM_QUESTIONS  
+CREATE TABLE exam_questions (  
+    id SERIAL PRIMARY KEY,  
+    section_id INTEGE R NOT NULL REFERENCES exam_sections(id) ON DELETE CASCADE,  
+    question_id INTEGER NOT NULL REFERENCES questions(id),  
+    order_index INTEGER NOT NULL,  
+    marks_override DECIMAL(5,2),  
+    negative_override DECIMAL(5,2),  
+    UNIQUE(section_id, question_id)  
+); 
+CREATE INDEX idx_exam_questions_section ON exam_questions(section_id);  
+
+--- page 25 ---
+SPECTROPY LMS - Complete Data Model  MVP1 Implementation Guide  
+Page 25 of 25  |  SPECTROPY LMS v2.0    
+-- 8. EXAM_ATTEMPTS  
+CREATE TABLE exam_attempts (  
+    id SERIAL PRIMARY KEY,  
+    exam_id INTEGER NOT NULL REFERENCES exams(id),  
+    student_id INTEGER NOT NULL REFERENCES users(id) , 
+    attempt_number INTEGER NOT NULL DEFAULT 1,  
+    started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),  
+    submitted_at TIMESTAMPTZ,  
+    auto_submitted BOOLEAN DEFAULT FALSE,  
+    total_score DECIMAL(10,2),  
+    total_correct INTEGER,  
+    total_wrong INTEGER,  
+    total_unattempted INTEGER,  
+    status VARCHAR(20) DEFAULT 'in_progress' CHECK (  
+        status IN ('in_progress', 'submitted', 'graded')  
+    ), 
+    UNIQUE(exam_id, student_id, attempt_number)  
+); 
+CREATE INDEX idx_exam_attempts_exam ON exam_attempts(exam_id);  
+CREATE INDEX idx_exam_attempts_student ON exam_attempts(student_id);  
+  
+-- 9. EXAM_RESPONSES  
+CREATE TABLE exam_responses (  
+    id SERIAL PRIMAR Y KEY,  
+    attempt_id INTEGER NOT NULL REFERENCES exam_attempts(id) ON DELETE CASCADE,  
+    question_id INTEGER NOT NULL REFERENCES questions(id),  
+    section_id INTEGER NOT NULL REFERENCES exam_sections(id),  
+    student_answer JSONB,  
+    is_correct BOOLEAN , 
+    marks_awarded DECIMAL(5,2),  
+    is_marked_for_review BOOLEAN DEFAULT FALSE,  
+    is_attempted BOOLEAN DEFAULT FALSE,  
+    answered_at TIMESTAMPTZ,  
+    UNIQUE(attempt_id, question_id)  
+); 
+CREATE INDEX idx_exam_responses_attempt ON exam_responses(attempt_ id); 
+  
+-- =====================================================  
+-- END OF SCRIPT  
+-- =====================================================  
+ 
+End of Document  
+SPECTROPY LMS Complete Data Model v2.0  
+Existing Tables + Question Bank + Exam Engine | February 2026  

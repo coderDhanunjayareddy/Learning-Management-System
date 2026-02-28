@@ -12,12 +12,25 @@ import AdminDashboard from './pages/admin/admindashboard';
 import CourseContent from './pages/admin/CourseContent';
 import EnrollUsers from "./pages/admin/EnrollUsers";
 import TeacherDashboard from './pages/teacher/Dashboard';
-import CourseContentManager from './pages/teacher/CourseContentManager';
+import TeacherHome from './pages/teacher/TeacherHome';
+import TeacherCourseContent from './pages/teacher/CourseContent';
 import StudentDashboard from './pages/student/StudentDashboard';
 import StudentCourseView from './pages/student/studentcourseview';
+import ContentAuthorizerDashboard from './pages/content_authorizer/Dashboard';
+import ContentAuthorizerCourses from './pages/content_authorizer/Courses';
+import ContentAuthorizerProfile from './pages/content_authorizer/Profile';
+import ContentAuthorizerCourseContent from './pages/content_authorizer/CourseContent';
+import SchoolOwnerDashboard from './pages/school_owner/Dashboard';
+import SchoolOwnerCourses from './pages/school_owner/Courses';
+import SchoolOwnerProfile from './pages/school_owner/Profile';
+import SchoolOwnerCourseContent from './pages/school_owner/CourseContent';
+import TeacherProfile from './pages/teacher/Profile';
+import AdminProfile from './pages/admin/Profile';
 
 
 import ContentViewer from './pages/common/ContentViewer';
+import NotFound from './pages/common/NotFound';
+import Unauthorized from './pages/common/Unauthorized';
 
 
 // Protected Route Component
@@ -45,8 +58,12 @@ function ProtectedRoute({
   //   return <Spinner />;
   //}
 
-  if (!user || !allowedRoles.includes(user.role)) {
+  if (!user) {
     return <Navigate to="/login" replace />;
+  }
+
+  if (!allowedRoles.includes(user.role)) {
+    return <Navigate to="/unauthorized" replace />;
   }
 
   return children;
@@ -69,6 +86,7 @@ function AppRoutes() {
 
 
       <Route path="/content/:contentId" element={<ContentViewer />} />
+      <Route path="/unauthorized" element={<Unauthorized />} />
 
 
       {/* SuperAdmin */}
@@ -97,6 +115,74 @@ function AppRoutes() {
         }
       />
 
+      {/* Content Authorizer */}
+      <Route
+        path="/content-authorizer/dashboard"
+        element={
+          <ProtectedRoute allowedRoles={["content_authorizer", "super_admin"]}>
+            <ContentAuthorizerDashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/content-authorizer/courses"
+        element={
+          <ProtectedRoute allowedRoles={["content_authorizer", "super_admin"]}>
+            <ContentAuthorizerCourses />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/content-authorizer/courses/:courseId/content"
+        element={
+          <ProtectedRoute allowedRoles={["content_authorizer", "super_admin"]}>
+            <ContentAuthorizerCourseContent />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/content-authorizer/profile"
+        element={
+          <ProtectedRoute allowedRoles={["content_authorizer", "super_admin"]}>
+            <ContentAuthorizerProfile />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* School Owner */}
+      <Route
+        path="/school-owner/dashboard"
+        element={
+          <ProtectedRoute allowedRoles={["school_owner", "client_admin", "super_admin"]}>
+            <SchoolOwnerDashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/school-owner/courses"
+        element={
+          <ProtectedRoute allowedRoles={["school_owner", "client_admin", "super_admin"]}>
+            <SchoolOwnerCourses />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/school-owner/courses/:courseId/content"
+        element={
+          <ProtectedRoute allowedRoles={["school_owner", "client_admin", "super_admin"]}>
+            <SchoolOwnerCourseContent />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/school-owner/profile"
+        element={
+          <ProtectedRoute allowedRoles={["school_owner", "client_admin", "super_admin"]}>
+            <SchoolOwnerProfile />
+          </ProtectedRoute>
+        }
+      />
+
       <Route
         path="/admin/courses/:courseId/content"
         element={
@@ -114,6 +200,21 @@ function AppRoutes() {
       />
       <Route path="/admin/courses/:courseId/enroll" element={<EnrollUsers />} />
       <Route
+        path="/admin/profile"
+        element={
+          <ProtectedRoute
+            allowedRoles={[
+              "super_admin",
+              "client_admin",
+              "content_authorizer",
+              "school_owner",
+            ]}
+          >
+            <AdminProfile />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/teacher/dashboard"
         element={
           <ProtectedRoute
@@ -121,22 +222,24 @@ function AppRoutes() {
               "super_admin",
               "client_admin",
               "school_owner",
+              "teacher",
             ]}
           >
-            <TeacherDashboard />
+            <TeacherHome />
           </ProtectedRoute>
         }
       />
 
       {/* Teacher */}
       <Route
-        path="/teacher/dashboard"
+        path="/teacher/courses"
         element={
           <ProtectedRoute
             allowedRoles={[
               "super_admin",
               "client_admin",
               "school_owner",
+              "teacher",
             ]}
           >
             <TeacherDashboard />
@@ -144,16 +247,32 @@ function AppRoutes() {
         }
       />
       <Route
-        path="/teacher/course/:id"
+        path="/teacher/profile"
         element={
           <ProtectedRoute
             allowedRoles={[
               "super_admin",
               "client_admin",
               "school_owner",
+              "teacher",
             ]}
           >
-            <CourseContentManager />
+            <TeacherProfile />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/teacher/courses/:courseId/content"
+        element={
+          <ProtectedRoute
+            allowedRoles={[
+              "super_admin",
+              "client_admin",
+              "school_owner",
+              "teacher",
+            ]}
+          >
+            <TeacherCourseContent />
           </ProtectedRoute>
         }
       />
@@ -185,7 +304,7 @@ function AppRoutes() {
       </Route>
 
       {/* Fallback */}
-      <Route path="*" element={<Navigate to="/login" replace />} />
+      <Route path="*" element={<NotFound />} />
     </Routes>
   );
 }

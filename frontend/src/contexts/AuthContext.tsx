@@ -28,7 +28,12 @@ interface AuthContextType {
   user: User | null;
   token: string | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (
+    identifier: string,
+    password: string,
+    identifierType?: 'email' | 'user_id'
+  ) => Promise<void>;
+  updateUser: (updates: Partial<User>) => void;
   register: (
     email: string,
     full_name: string,
@@ -71,14 +76,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     fetchUser();
   }, [token]);
 
-  const login = async (email: string, password: string) => {
-    const res = await apiaxis.post('/api/auth/login', { email, password });
+  const login = async (
+    identifier: string,
+    password: string,
+    identifierType: 'email' | 'user_id' = 'email'
+  ) => {
+    const payload =
+      identifierType === 'user_id'
+        ? { user_id: identifier, password }
+        : { email: identifier, password };
+    const res = await apiaxis.post('/api/auth/login', payload);
 
     const { token, user } = res.data;
 
     localStorage.setItem('token', token);
     setToken(token);
     setUser(user);
+  };
+
+  const updateUser = (updates: Partial<User>) => {
+    setUser((prev) => (prev ? { ...prev, ...updates } : prev));
   };
 
   const register = async (
@@ -110,7 +127,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, login, register, logout, loading }}>
+    <AuthContext.Provider value={{ user, token, login, updateUser, register, logout, loading }}>
       {children}
     </AuthContext.Provider>
   );

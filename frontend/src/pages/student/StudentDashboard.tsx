@@ -1,22 +1,13 @@
 // src/pages/student/StudentDashboard.tsx
-import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import api from '../../services/api';
 import logo from "/gvjb.png"; // adjust path if needed
-
-interface EnrolledCourse {
-  id: number;
-  title: string;
-  description: string | null;
-  enrolled_at: string;
-}
+import AdminCourseManager from '../../components/courses/AdminCourseManager';
+import { getDashboardTheme } from '../../components/layout/dashboardTheme';
 
 export default function StudentDashboard() {
   const [activeTab, setActiveTab] = useState<'courses'>('courses');
-  const [courses, setCourses] = useState<EnrolledCourse[]>([]);
-  const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
   const { logout } = useAuth();
   
@@ -27,22 +18,7 @@ export default function StudentDashboard() {
   const userEmail = user?.email || 'super@lms.com';
   const dashboardTitle =
     user?.role === 'teacher' ? 'Teacher Dashboard' : 'Student Dashboard';
-
-  useEffect(() => {
-    const fetchEnrolledCourses = async () => {
-      try {
-        const res = await api.get<EnrolledCourse[]>('/student/enrolled-courses');
-        setCourses(res.data);
-      } catch (err: any) {
-        console.error('Failed to load courses:', err);
-        alert('Failed to load your courses. Please log in again.');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchEnrolledCourses();
-  }, []);
+  const courseTheme = getDashboardTheme(true);
 
   const handleBackToLogin = async () => {
     await logout();
@@ -153,60 +129,18 @@ export default function StudentDashboard() {
           <div className="p-6">
             {activeTab === 'courses' && (
               <div className="max-w-6xl mx-auto">
-                {loading ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {[1, 2, 3].map((i) => (
-                      <div
-                        key={i}
-                        className="border border-amber-100 rounded-2xl p-4 animate-pulse bg-white"
-                      >
-                        <div className="h-28 bg-amber-100/70 rounded-xl mb-4"></div>
-                        <div className="h-4 bg-slate-200 rounded w-3/4 mb-2"></div>
-                        <div className="h-3 bg-slate-200 rounded w-1/2 mb-4"></div>
-                        <div className="h-4 bg-slate-200 rounded w-full mb-2"></div>
-                        <div className="h-3 bg-slate-200 rounded w-1/3"></div>
-                      </div>
-                    ))}
-                  </div>
-                ) : courses.length === 0 ? (
-                  <div className="text-center py-10">
-                    <p className="text-slate-600">
-                      You are not enrolled in any courses yet.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {courses.map((course) => (
-                      <div
-                        key={course.id}
-                        className="border border-amber-100 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition bg-white"
-                      >
-                        <div className="bg-amber-50 h-28 flex items-center justify-center">
-                          <img
-                            src={logo}
-                            alt="GVJB"
-                            className="h-10 w-auto opacity-70"
-                          />
-                        </div>
-                        <div className="p-4">
-                          <h2 className="font-semibold text-lg">
-                            {course.title}
-                          </h2>
-                          <p className="text-sm text-slate-500 mt-1">
-                            {course.description || 'Instructor: Not specified'}
-                          </p>
-
-                          <Link
-                            to={`/student/course/${course.id}`}
-                            className="mt-4 w-full text-center bg-amber-400 text-slate-900 text-xs px-3 py-2 rounded-full hover:bg-amber-500 font-semibold block"
-                          >
-                            View Course
-                          </Link>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <AdminCourseManager
+                  mode="student"
+                  role={user?.role}
+                  theme={courseTheme}
+                  isGvjbClient
+                  brandLogo={logo}
+                  brandName="GVB"
+                  courseBannerClass="bg-amber-50"
+                  listTitle="My Courses"
+                  emptyMessage="You are not enrolled in any courses yet."
+                  onViewCourse={(courseId) => navigate(`/student/course/${courseId}`)}
+                />
               </div>
             )}
           </div>

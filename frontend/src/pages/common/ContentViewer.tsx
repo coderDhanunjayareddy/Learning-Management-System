@@ -65,7 +65,10 @@ export default function ContentViewer({ item }: ContentViewerProps) {
      * ---------------------------------------------------- */
     const handleSignedUrl = async (content: ContentItem) => {
         console.log("generated content url for:", content.content_url);
-        if (!content.content_url || content.item_type === "link") return;
+        if (!content.content_url || content.item_type === "link") {
+            setLoading(false);
+            return;
+        }
 
 
         try {

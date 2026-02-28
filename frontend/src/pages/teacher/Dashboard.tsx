@@ -1,183 +1,145 @@
 // src/pages/teacher/Dashboard.tsx
-import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom'; // ✅ Added useNavigate
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import api from '../../services/api';
+import DashboardLayout from '../../components/layout/DashboardLayout';
+import SidebarNav from '../../components/layout/SidebarNav';
+import { getDashboardTheme } from '../../components/layout/dashboardTheme';
+import { RiHome2Line } from 'react-icons/ri';
+import { BiBookOpen } from 'react-icons/bi';
+import { PiUsersBold, PiChatsCircleBold } from 'react-icons/pi';
+import AdminCourseManager from '../../components/courses/AdminCourseManager';
 
-interface Course {
-  id: number;
-  title: string;
-  description: string | null;
-  published: boolean;
-  student_count: number;
-}
+const placeholderCourses = [
+  {
+    id: 101,
+    title: 'Foundations of Algebra',
+    description: 'Unit planning, assessments, and weekly practice sets.',
+    published: true,
+    student_count: 28,
+  },
+  {
+    id: 102,
+    title: 'Modern World History',
+    description: 'Curate reading packs and recorded discussions.',
+    published: false,
+    student_count: 18,
+  },
+  {
+    id: 103,
+    title: 'Digital Literacy',
+    description: 'Short modules on productivity and research skills.',
+    published: true,
+    student_count: 42,
+  },
+];
 
 export default function TeacherDashboard() {
-  const [courses, setCourses] = useState<Course[]>([]);
-  const [isCreating, setIsCreating] = useState(false);
-  const [newCourse, setNewCourse] = useState({ title: '', description: '' });
-  const { logout } = useAuth(); 
-  const navigate = useNavigate(); // ✅ Initialize navigate
+  const [courses] = useState(placeholderCourses);
+  const { logout, user } = useAuth();
+  const navigate = useNavigate();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const theme = getDashboardTheme(false);
 
-  useEffect(() => {
-    fetchCourses();
-  }, []);
+  const navItems = [
+    {
+      key: 'dashboard',
+      label: 'Dashboard',
+      icon: <RiHome2Line />,
+      active: false,
+      onClick: () => navigate('/teacher/dashboard'),
+    },
+    {
+      key: 'courses',
+      label: 'Courses',
+      icon: <BiBookOpen />,
+      active: true,
+      onClick: () => navigate('/teacher/courses'),
+    },
+    {
+      key: 'students',
+      label: 'Students',
+      icon: <PiUsersBold />,
+      active: false,
+      onClick: () => {},
+    },
+    {
+      key: 'community',
+      label: 'Community',
+      icon: <PiChatsCircleBold />,
+      active: false,
+      onClick: () => {},
+    },
+  ];
 
-  const fetchCourses = async () => {
-    try {
-      const res = await api.get('/teacher/courses');
-      setCourses(res.data);
-    } catch (err) {
-      console.error('Failed to load courses');
-    }
-  };
-
-  const handleCreateCourse = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      await api.post('/teacher/courses', {
-        title: newCourse.title,
-        description: newCourse.description,
-        published: false
-      });
-      setNewCourse({ title: '', description: '' });
-      setIsCreating(false);
-      fetchCourses();
-    } catch (err: any) {
-      alert(err.response?.data?.error || 'Failed to create course');
-    }
-  };
-
-  // ✅ Handle back to login
   const handleBackToLogin = async () => {
-  await logout(); // ✅ Clear auth state (token, user, etc.)
-  navigate('/login', { replace: true }); // prevent back navigation to dashboard
-};
+    await logout();
+    navigate('/login', { replace: true });
+  };
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
-      {/* Back Button at the top (or bottom — see note below) */}
-      <button
-        onClick={handleBackToLogin}
-        className="mb-4 text-sm text-gray-600 hover:text-gray-900 flex items-center"
-      >
-        ← Back to Login
-      </button>
-
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">My Courses</h1>
-        <button
-          onClick={() => setIsCreating(!isCreating)}
-          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-        >
-          {isCreating ? 'Cancel' : 'Create New Course'}
-        </button>
-      </div>
-
-      {isCreating && (
-        <div className="bg-white p-4 rounded-lg shadow mb-6 border">
-          <h2 className="text-lg font-semibold mb-3">Create Course</h2>
-          <form onSubmit={handleCreateCourse} className="space-y-3">
-            <input
-              type="text"
-              placeholder="Course title"
-              value={newCourse.title}
-              onChange={(e) => setNewCourse({...newCourse, title: e.target.value})}
-              className="w-full p-2 border rounded"
-              required
-            />
-            <textarea
-              placeholder="Description (optional)"
-              value={newCourse.description}
-              onChange={(e) => setNewCourse({...newCourse, description: e.target.value})}
-              className="w-full p-2 border rounded"
-              rows={3}
-            />
-            <div className="flex justify-end space-x-2">
-              <button
-                type="button"
-                onClick={() => setIsCreating(false)}
-                className="px-3 py-1 text-gray-600"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="bg-green-600 text-white px-4 py-1 rounded hover:bg-green-700"
-              >
-                Create
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {courses.length === 0 ? (
-        <p className="text-gray-500">You haven't created any courses yet.</p>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {courses.map(course => (
-            <div key={course.id} className="border rounded-lg p-5 hover:shadow-md">
-              <div className="flex justify-between">
-                <h2 className="text-xl font-semibold">{course.title}</h2>
-                <span className={`px-2 py-1 text-xs rounded ${
-                  course.published 
-                    ? 'bg-green-100 text-green-800' 
-                    : 'bg-yellow-100 text-yellow-800'
-                }`}>
-                  {course.published ? 'Published' : 'Draft'}
-                </span>
-              </div>
-              <p className="text-gray-600 mt-2 text-sm">
-                {course.description || 'No description'}
+    <DashboardLayout
+      shellClass={theme.shellClass}
+      layoutClass={theme.layoutClass}
+      sidebarOpen={sidebarOpen}
+      onSidebarClose={() => setSidebarOpen(false)}
+      contentClassName="p-0"
+      sidebar={
+        <SidebarNav
+          brandLogo="/logo.png"
+          brandName="Spectropy"
+          title="Teacher"
+          navItems={navItems}
+          userInfo={{
+            name: user?.full_name || 'Teacher',
+            email: user?.email || 'teacher@spectropy.com',
+          }}
+          onProfileClick={() => navigate('/teacher/profile')}
+          onLogout={handleBackToLogin}
+          sidebarOpen={sidebarOpen}
+          onClose={() => setSidebarOpen(false)}
+          theme={theme}
+        />
+      }
+      header={
+        <div className={theme.headerClass}>
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className={`md:hidden mr-3 p-2 rounded-lg border ${theme.secondaryBorderClass}`}
+            aria-label="Open menu"
+          >
+            Menu
+          </button>
+          <div className="flex flex-col gap-4 md:flex-row md:justify-between md:items-center">
+            <div>
+              <h1 className="text-xl md:text-2xl font-bold">My Courses</h1>
+              <p className="mt-1 text-sm md:text-base text-gray-600">
+                Review your active classes and content packages.
               </p>
-              <div className="mt-3 flex justify-between items-center">
-                <span className="text-sm text-gray-500">
-                  {course.student_count} student{course.student_count !== 1 ? 's' : ''}
-                </span>
-
-                <Link
-                  to={`/teacher/course/${course.id}`}
-                  className="text-blue-600 hover:text-blue-800 font-medium"
-                >
-                  Manage →
-                </Link>
-                <Link
-                 to={`/admin/courses/${course.id}/students`}
-                 className="text-purple-600 hover:text-purple-800 font-medium"
-                 >
-                 Manage Students →
-                </Link>
-                {/* Publish toggle button */}
-                <button
-                 onClick={async () => {
-                 try {
-                    await api.patch(`/teacher/courses/${course.id}/publish`, {
-                    published: !course.published,
-                  });
-                 // Optimistically update UI
-                  setCourses(prev =>
-                  prev.map(c =>
-                  c.id === course.id ? { ...c, published: !c.published } : c
-                  )
-                  );
-                 } catch (err: any) {
-                 alert(err.response?.data?.error || 'Failed to update publish status');
-                }
-                }}
-                className={`px-3 py-1 text-xs rounded font-medium ${
-                course.published
-               ? 'bg-green-600 text-white hover:bg-green-700'
-               : 'bg-gray-200 text-gray-800 hover:bg-gray-300'
-               }`}
-               >
-               {course.published ? 'Published' : 'Publish'}
-              </button>
-              </div>
             </div>
-          ))}
+          </div>
         </div>
-      )}
-    </div>
+      }
+    >
+      <div className="p-6 max-w-6xl mx-auto">
+        <AdminCourseManager
+          mode="custom"
+          role={user?.role}
+          theme={theme}
+          brandLogo="/logo.png"
+          brandName="Spectropy"
+          courseBannerClass="bg-slate-100"
+          listTitle="My Courses"
+          emptyMessage="No teaching assignments yet. Courses will appear here once assigned."
+          courses={courses}
+          onManageContent={(courseId) =>
+            navigate(`/teacher/courses/${courseId}/content`)
+          }
+        />
+        <p className="mt-6 text-xs text-slate-500">
+          Course data is currently using placeholder entries until the teacher course API is available.
+        </p>
+      </div>
+    </DashboardLayout>
   );
 }
