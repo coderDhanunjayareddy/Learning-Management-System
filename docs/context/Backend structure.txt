@@ -1,0 +1,161 @@
+Backend structure
+1. Top‑Level Backend Structure
+Inside backend/ you currently have:
+controllers/ → HTTP layer only (thin wrappers)
+services/ → Business logic layer
+repositories/ → Database access
+schemas/ → Validation helpers
+routes/ → API route wiring
+middleware/ → Auth, permissions, request helpers
+config/ → Database + Supabase configuration
+utils/ → General utilities (hashing, access checks, errors)
+seed/ → Seed JSON files
+scripts/ → One‑time CLI scripts
+server.js → Main server entrypoint
+2. How a Request Flows (Very Important)
+Example: GET /api/subjects
+1.	Route file
+curriculum.routes.js
+This connects the URL to a controller function.
+2.	Controller file
+curriculum.controller.js
+Controller is a thin wrapper that just calls the service.
+3.	Service file
+curriculum.service.js
+This contains the business logic, validation, permissions.
+4.	Repository file
+curriculum.repository.js
+This file contains all SQL queries.
+5.	Database
+db.repository.js
+This calls PostgreSQL using pg.
+3. Controllers (HTTP Layer)
+Folder: backend/controllers/
+These files are thin now. Each one looks like:
+export * from '../services/some.service.js';
+They do NOT contain real logic anymore. They just re‑export service functions.
+4. Services (Business Logic Layer)
+Folder: backend/services/
+These files contain the real business logic.
+Examples:
+auth.service.js → login, refresh, logout
+admin.service.js → course CRUD, admin features
+platform.service.js → platform clients, content packs
+hierarchy.service.js → schools, batches, memberships
+curriculum.service.js → subjects/chapters/topics
+scorm.service.js → SCORM upload + storage
+student.service.js → student content fetch
+studentAttempts.service.js → SCORM attempt tracking
+user.service.js → user list, stats, reports
+Note for freshers:
+In “pure” clean architecture, services should return data only.
+Right now, many services still use req/res (old style). This still works, but it’s not 100% pure. You can gradually refactor later.
+5. Repositories (DB Layer)
+Folder: backend/repositories/
+db.repository.js → raw Postgres connection helpers
+curriculum.repository.js → SQL for subjects/chapters/topics
+rolePermissions.repository.js → SQL for role permissions
+If you need to write SQL, do it here.
+6. Schemas (Validation)
+Folder: backend/schemas/
+Validation helpers:
+curriculum.schema.js
+rolePermissions.schema.js
+This is where we check required fields, types, etc.
+7. Routes (API URL Wiring)
+Folder: backend/routes/
+Here is what each route file does:
+auth.routes.js → login, me, refresh, logout
+admin.routes.js → admin course/content operations
+platform.routes.js → super_admin platform features
+org.routes.js → client/school/batch hierarchy
+superadmin.routes.js → register admin
+user.routes.js → user CRUD
+scorm.routes.js → SCORM access
+teacher.routes.js → teacher‑specific content
+student.routes.js → student features
+enrollment.routes.js → enrollments
+course.routes.js → public course listing
+curriculum.routes.js → subjects/chapters/topics
+8. Middleware (Auth + Permissions)
+Folder: backend/middleware/
+
+Main file:
+auth.js
+It provides:
+authenticateToken → JWT auth
+requireRole → role checks
+loadPermissions → loads role_permissions
+checkPermission → checks permission per route
+attachClientContext → tenant context
+9. Config (Connections)
+Folder: backend/config/
+db.js → connects to PostgreSQL (Supabase DB)
+supabaseClient.js → Supabase storage (SCORM files)
+10. Utils (Helpers)
+Folder: backend/utils/
+Examples:
+hash.js → bcrypt helpers
+access.js → tenant/school/batch access
+errors.js → centralized error helper
+11. Seeds + Scripts
+role_permissions.seed.json → permission matrix
+curriculum.seed.json → Physics/Chem/Math/Bio
+seed-role-permissions.mjs → one‑time seeding
+seed-curriculum.mjs → one‑time seeding
+Run them with:
+npm run seed:permissions -- --client_id=1
+npm run seed:curriculum -- --client_id=1
+12. server.js (Entry Point)
+This file:
+Starts Express
+Loads middleware
+Mounts all routes
+Starts server at PORT
+Summary for Freshers
+Routes map URL → controller
+Controllers call services
+Services contain logic
+Repositories contain SQL
+Schemas validate data
+Middleware handles auth/permissions
+Config connects database/storage
+WORKING FLOW:
+┌────────────────────┐
+│  Client (Browser)                          │
+└─────────┬──────────┘
+          │ HTTP Request
+┌────────────────────┐
+│  Express Routes                            │   backend/routes/*.js
+└─────────┬──────────┘
+          │ calls
+┌────────────────────┐
+│  Controllers                                   │   backend/controllers/*.js
+│  (HTTP layer only)                       │
+└─────────┬──────────┘
+          │ calls
+┌────────────────────┐
+│  Services                                        │   backend/services/*.js
+│  (business rules)                            │
+└─────────┬──────────┘
+          │ calls
+┌────────────────────┐
+│  Repositories                                  │   backend/repositories/*.js
+│  (SQL queries)                               │
+└─────────┬──────────┘
+          │
+┌────────────────────┐
+│  Database (PG)                              │   Supabase Postgres
+└────────────────────┘
+
+
+
+With middleware in the path:
+Request
+  │
+  ├─ authenticateToken
+  ├─ requireRole
+  ├─ attachClientContext
+  └─ loadPermissions → checkPermission
+  │
+Route → Controller → Service → Repository → DB

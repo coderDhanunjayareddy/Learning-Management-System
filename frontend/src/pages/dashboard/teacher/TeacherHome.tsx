@@ -5,12 +5,17 @@ import { useAuth } from "@/features/auth/hooks/useAuth";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import SidebarNav from "@/components/layout/SidebarNav";
 import { getDashboardTheme } from "@/components/layout/dashboardTheme";
-import { RiHome2Line } from "react-icons/ri";
+import { RiHome2Line, RiQuestionAnswerLine } from "react-icons/ri";
 import { BiBookOpen } from "react-icons/bi";
 import { PiUsersBold, PiChatsCircleBold } from 'react-icons/pi';
 
 const featureCards = [
-  { title: "Question Bank", desc: "Create and draft questions by subject and chapter." },
+  {
+    title: "Question Bank",
+    desc: "Create and draft questions by subject and chapter.",
+    path: "/questions",
+    cta: "Open Question Bank",
+  },
   { title: "Exams", desc: "Build exams with sections and rules." },
   { title: "Results", desc: "Review performance after grading." },
   { title: "Courses", desc: "Publish lessons and manage course content." },
@@ -39,6 +44,13 @@ export default function TeacherHome() {
       icon: <BiBookOpen />,
       active: false,
       onClick: () => navigate("/teacher/courses"),
+    },
+    {
+      key: "questions",
+      label: "Question Bank",
+      icon: <RiQuestionAnswerLine />,
+      active: false,
+      onClick: () => navigate("/questions"),
     },
     {
       key: "users",
@@ -98,12 +110,20 @@ export default function TeacherHome() {
                 Manage your classes, assessments, and learning materials.
               </p>
             </div>
-            <button
-              onClick={() => navigate("/teacher/courses")}
-              className={`px-4 py-2 text-sm font-semibold rounded-lg border ${theme.secondaryBorderClass}`}
-            >
-              Manage Courses
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => navigate("/teacher/courses")}
+                className={`px-4 py-2 text-sm font-semibold rounded-lg border ${theme.secondaryBorderClass}`}
+              >
+                Manage Courses
+              </button>
+              <button
+                onClick={() => navigate("/questions")}
+                className="px-4 py-2 text-sm font-semibold rounded-lg border border-blue-200 text-blue-700 hover:bg-blue-50"
+              >
+                Question Bank
+              </button>
+            </div>
           </div>
         </div>
       }
@@ -117,9 +137,18 @@ export default function TeacherHome() {
             >
               <h2 className="text-lg font-semibold">{card.title}</h2>
               <p className="mt-2 text-sm text-slate-600">{card.desc}</p>
-              <div className="mt-4 text-xs font-semibold uppercase tracking-wide text-slate-400">
-                Coming soon
-              </div>
+              {card.path ? (
+                <button
+                  onClick={() => navigate(card.path)}
+                  className="mt-4 rounded-lg border border-blue-200 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-50"
+                >
+                  {card.cta}
+                </button>
+              ) : (
+                <div className="mt-4 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  Coming soon
+                </div>
+              )}
             </div>
           ))}
         </section>

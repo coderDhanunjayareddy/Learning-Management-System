@@ -1,0 +1,39 @@
+|                        ORGANIZATIONAL HIERARCHY                           | 
+|                                                                           | 
+|    +------------------------------------------------------------------+   | 
+|    |  PLATFORM (SPECTROPY)                                            |   | 
+|    |  * Super Admin, Content Authorizer                               |   | 
+|    |  * Manages: clients, content_packs, content_entitlements         |   | 
+|    +-----------------------------+------------------------------------+   | 
+|                                  |                                        | 
+|                                                                           | 
+|    +------------------------------------------------------------------+   | 
+|    |  CLIENT (Organization/Institution)                               |   | 
+|    |  * Client Admin                                                  |   | 
+|    |  * Manages: schools, users, courses, role_permissions            |   | 
+|    +-----------------------------+------------------------------------+   | 
+|                                  |                                        | 
+|                                                                           | 
+|    +------------------------------------------------------------------+   | 
+|    |  SCHOOL (Campus/Branch)                                          |   | 
+|    |  * School Owner                                                  |   | 
+|    |  * Manages: batches, teachers, students via school_memberships   |   | 
+|    +-----------------------------+------------------------------------+   | 
+|                                  |                                        | 
+|                                                                           | 
+|    +------------------------------------------------------------------+   | 
+|    |  BATCH/CLASS (Section/Group)                                     |   | 
+|    |  * Teacher                                                       |   | 
+|    |  * Manages: batch_members, enrollments, content organization     |   | 
+|    +-----------------------------+------------------------------------+   | 
+|                                  
+|                                  | 
+|                                                                          | 
+|    +------------------------------------------------------------------+   | 
+|    |  USER (Student)                                                  
+|    | 
+|    |  * Access: courses, content_items, student_attempts              |   | 
+|    |  * Earns: certificates                                           |   | 
+|    +------------------------------------------------------------------+   | 
+|                                                                           | 
++---------------------------------------------------------------------------+

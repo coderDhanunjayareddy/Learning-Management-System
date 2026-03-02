@@ -1,8 +1,10 @@
 ﻿import { useEffect, useState } from 'react';
 import api from '@/lib/api';
 import { useAuth } from '@/features/auth/hooks/useAuth';
+import { useNavigate } from 'react-router-dom';
+import BulkSetup from './BulkSetup';
 
-type TabKey = 'schools' | 'schoolMembers' | 'batches' | 'batchMembers' | 'roles' | 'users';
+type TabKey = 'schools' | 'schoolMembers' | 'batches' | 'batchMembers' | 'roles' | 'users' | 'bulkSetup';
 
 interface School {
   id: number;
@@ -44,6 +46,7 @@ interface User {
 
 export default function OrgDashboard() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<TabKey>('schools');
   const [schools, setSchools] = useState<School[]>([]);
   const [batches, setBatches] = useState<Batch[]>([]);
@@ -159,11 +162,21 @@ export default function OrgDashboard() {
     { key: 'batchMembers', label: 'Batch Members', roles: ['super_admin', 'client_admin', 'school_owner', 'teacher'] },
     { key: 'roles', label: 'Role Permissions', roles: ['super_admin', 'client_admin'] },
     { key: 'users', label: 'Users', roles: ['super_admin', 'client_admin', 'school_owner'] },
+    { key: 'bulkSetup', label: 'Bulk Upload', roles: ['super_admin', 'client_admin', 'school_owner'] },
   ];
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
       <div className="mx-auto max-w-6xl px-6 py-8">
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          <button
+            onClick={() => navigate('/admin/dashboard')}
+            className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            Back to Dashboard
+          </button>
+          <h2 className="text-lg font-semibold text-slate-900">Organization Setup</h2>
+        </div>
         <div className="flex flex-wrap gap-3">
           {tabs
             .filter((tab) => !tab.roles || tab.roles.includes(user?.role || ''))
@@ -449,6 +462,12 @@ export default function OrgDashboard() {
                 </button>
               </div>
             </form>
+          </section>
+        )}
+
+        {activeTab === 'bulkSetup' && (
+          <section className="mt-6">
+            <BulkSetup />
           </section>
         )}
       </div>

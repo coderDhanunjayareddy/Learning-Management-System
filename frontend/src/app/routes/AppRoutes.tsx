@@ -39,6 +39,10 @@ import AdminProfile from '@/pages/dashboard/admin/Profile';
 import TeacherCourseContent from '@/pages/course/teacher/CourseContent';
 import TeacherProfile from '@/pages/dashboard/teacher/Profile';
 import TeacherHome from '@/pages/dashboard/teacher/TeacherHome';
+import QuestionListPage from '@/pages/questions/QuestionListPage';
+import QuestionCreatePage from '@/pages/questions/QuestionCreatePage';
+import QuestionDetailPage from '@/pages/questions/QuestionDetailPage';
+import QuestionEditPage from '@/pages/questions/QuestionEditPage';
 
 export default function AppRoutes() {
   const { loading } = useAuth();
@@ -81,6 +85,14 @@ export default function AppRoutes() {
         <Route path="/admin/courses/:courseId/content" element={<CourseContent />} />
         <Route path="/admin/courses/:courseId/enroll" element={<EnrollUsers />} />
         <Route path="/admin/profile" element={<AdminProfile />} />
+      </Route>
+
+      {/* Question Bank */}
+      <Route element={<Protect roles={['super_admin', 'client_admin', 'content_authorizer', 'school_owner', 'teacher']} />}>
+        <Route path="/questions" element={<QuestionListPage />} />
+        <Route path="/questions/new" element={<QuestionCreatePage />} />
+        <Route path="/questions/:id" element={<QuestionDetailPage />} />
+        <Route path="/questions/:id/edit" element={<QuestionEditPage />} />
       </Route>
 
       <Route element={<Protect roles={['super_admin', 'client_admin', 'school_owner']} />}>
