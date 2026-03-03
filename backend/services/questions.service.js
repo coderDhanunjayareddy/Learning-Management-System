@@ -1,6 +1,12 @@
 import { query as dbQuery } from '../repositories/db.repository.js';
 import { AppError, handleServiceError } from '../utils/errors.js';
-import { parseNullableInt, parseRequiredInt, requireString, parseStringArray } from '../schemas/questions.schema.js';
+import {
+  parseNullableInt,
+  parseRequiredInt,
+  requireString,
+  parseStringArray,
+  parseStringArrayParam,
+} from '../schemas/questions.schema.js';
 
 const VALID_QUESTION_TYPES = ['mcq_single', 'mcq_multiple', 'numerical', 'true_false'];
 const VALID_DIFFICULTY_LEVELS = ['easy', 'medium', 'hard'];
@@ -167,8 +173,17 @@ const buildQuestionWhere = async ({ user, query, includeArchived = false }) => {
   if (createdBy) conditions.push(`q.created_by = ${addParam(createdBy)}`);
 
   if (query.q) {
-    const search = `%${String(query.q).trim()}%`;
-    conditions.push(`q.question_text::text ILIKE ${addParam(search)}`);
+    const search = String(query.q).trim();
+    if (search.length > 0) {
+      conditions.push(
+        `to_tsvector('simple', coalesce(q.question_text::text,'') || ' ' || coalesce(q.options::text,'')) @@ plainto_tsquery('simple', ${addParam(search)})`
+      );
+    }
+  }
+
+  const examTags = parseStringArrayParam(query.exam_tags, 'exam_tags');
+  if (examTags.length > 0) {
+    conditions.push(`q.exam_tags && ${addParam(examTags)}::text[]`);
   }
 
   return { conditions, params };
