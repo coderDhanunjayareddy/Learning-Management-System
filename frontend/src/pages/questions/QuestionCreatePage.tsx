@@ -51,8 +51,8 @@ export default function QuestionCreatePage() {
         const payload = Array.isArray(res.data)
           ? res.data
           : Array.isArray(res.data?.data)
-          ? res.data.data
-          : [];
+            ? res.data.data
+            : [];
         if (payload.length) {
           setSubjects(normalizeCurriculum(payload));
         }

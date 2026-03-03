@@ -8,6 +8,7 @@ import gvjbLogo from "/gvjb.png";
 import { RiHome2Line, RiFileList3Line } from "react-icons/ri";
 import { BiBookOpen } from "react-icons/bi";
 import { PiUsersBold, PiChatsCircleBold } from 'react-icons/pi';
+import { HiOutlineBuildingOffice2 } from "react-icons/hi2";
 import UserManagement from './UserManagement';
 import DashboardHome from './Home';
 import Community from './Community';
@@ -44,6 +45,13 @@ export default function CourseStudents() {
       icon: <RiHome2Line />,
       active: activeTab === 'home',
       onClick: () => setActiveTab('home'),
+    },
+    {
+      key: 'org',
+      label: 'Organization',
+      icon: <HiOutlineBuildingOffice2 />,
+      active: false,
+      onClick: () => navigate('/admin/org'),
     },
     {
       key: 'courses',

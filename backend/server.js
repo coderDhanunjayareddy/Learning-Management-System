@@ -18,6 +18,7 @@ import userRoutes from './routes/user.routes.js';
 import platformRoutes from './routes/platform.routes.js';
 import orgRoutes from './routes/org.routes.js';
 import curriculumRoutes from './routes/curriculum.routes.js';
+import questionsRoutes from './routes/questions.routes.js';
 import { authenticateToken } from './middleware/auth.js';
 import supabase from './config/supabaseClient.js';
 
@@ -114,6 +115,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/platform', platformRoutes);
 app.use('/api/org', orgRoutes);
 app.use('/api', curriculumRoutes);
+app.use('/api', questionsRoutes);
 
 
 

@@ -52,14 +52,14 @@ export default function TeacherHome() {
       label: "Students",
       icon: <PiUsersBold />,
       active: false,
-      onClick: () => {},
+      onClick: () => { },
     },
     {
       key: "community",
       label: "Community",
       icon: <PiChatsCircleBold />,
       active: false,
-      onClick: () => {},
+      onClick: () => { },
     },
   ];
 
