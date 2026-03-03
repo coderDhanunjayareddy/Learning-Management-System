@@ -71,6 +71,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await api.post('/auth/logout');
     } catch (error) {
+      console.log('Failed to logout:', error);
       // ignore logout errors, clear local state anyway
     } finally {
       localStorage.removeItem('token');

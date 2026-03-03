@@ -7,7 +7,7 @@ import { getDashboardTheme } from "@/components/layout/dashboardTheme";
 import ProfilePanel from "@/features/users/components/ProfilePanel";
 import spectropyLogo from "/logo.png";
 import gvjbLogo from "/gvjb.png";
-import { RiHome2Line } from "react-icons/ri";
+import { RiHome2Line, RiFileList3Line } from "react-icons/ri";
 import { BiBookOpen } from "react-icons/bi";
 import { PiUsersBold, PiChatsCircleBold } from 'react-icons/pi';
 
@@ -36,6 +36,13 @@ export default function AdminProfile() {
       icon: <BiBookOpen />,
       active: false,
       onClick: () => navigate("/admin/dashboard"),
+    },
+    {
+      key: "question-bank",
+      label: "Question Bank",
+      icon: <RiFileList3Line />,
+      active: false,
+      onClick: () => navigate("/question-bank"),
     },
     {
       key: "users",

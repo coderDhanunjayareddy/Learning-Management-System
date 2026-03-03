@@ -39,6 +39,18 @@ import AdminProfile from '@/pages/dashboard/admin/Profile';
 import TeacherCourseContent from '@/pages/course/teacher/CourseContent';
 import TeacherProfile from '@/pages/dashboard/teacher/Profile';
 import TeacherHome from '@/pages/dashboard/teacher/TeacherHome';
+import QuestionBankPage from '@/pages/questions/QuestionBankPage';
+import QuestionDetail from '@/pages/questions/QuestionDetail';
+import QuestionCreatePage from '@/pages/questions/QuestionCreatePage';
+import QuestionEditPage from '@/pages/questions/QuestionEditPage';
+import QuestionDeletePage from '@/pages/questions/QuestionDeletePage';
+import QuestionBulkUploadPage from '@/pages/questions/QuestionBulkUploadPage';
+import QuestionSubjectsPage from '@/pages/questions/QuestionSubjectsPage';
+import QuestionSubjectCreatePage from '@/pages/questions/QuestionSubjectCreatePage';
+import QuestionSubjectEditPage from '@/pages/questions/QuestionSubjectEditPage';
+import QuestionFoldersPage from '@/pages/questions/QuestionFoldersPage';
+import QuestionFolderCreatePage from '@/pages/questions/QuestionFolderCreatePage';
+import QuestionFolderEditPage from '@/pages/questions/QuestionFolderEditPage';
 
 export default function AppRoutes() {
   const { loading } = useAuth();
@@ -120,6 +132,35 @@ export default function AppRoutes() {
           <Route index element={<div className="p-6 text-gray-500">Select a topic from the left to view content.</div>} />
           <Route path="content/:contentId" element={<ContentViewer />} />
         </Route>
+      </Route>
+
+      {/* Question Bank */}
+      <Route
+        element={
+          <Protect
+            roles={[
+              'super_admin',
+              'client_admin',
+              'content_authorizer',
+              'school_owner',
+              'teacher',
+              'student',
+            ]}
+          />
+        }
+      >
+        <Route path="/question-bank" element={<QuestionBankPage />} />
+        <Route path="/question-bank/new" element={<QuestionCreatePage />} />
+        <Route path="/question-bank/:id/edit" element={<QuestionEditPage />} />
+        <Route path="/question-bank/:id/delete" element={<QuestionDeletePage />} />
+        <Route path="/question-bank/:id" element={<QuestionDetail />} />
+        <Route path="/question-bank/bulk-upload" element={<QuestionBulkUploadPage />} />
+        <Route path="/question-bank/subjects" element={<QuestionSubjectsPage />} />
+        <Route path="/question-bank/subjects/new" element={<QuestionSubjectCreatePage />} />
+        <Route path="/question-bank/subjects/:id/edit" element={<QuestionSubjectEditPage />} />
+        <Route path="/question-bank/folders" element={<QuestionFoldersPage />} />
+        <Route path="/question-bank/folders/new" element={<QuestionFolderCreatePage />} />
+        <Route path="/question-bank/folders/:id/edit" element={<QuestionFolderEditPage />} />
       </Route>
 
       {/* Fallback */}
