@@ -1,0 +1,15 @@
+{
+  "name": "Spectropy LMS",
+  "short_name": "Spectropy LMS",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0b1f44",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "826x762",
+      "type": "image/png"
+    }
+  ]
+}

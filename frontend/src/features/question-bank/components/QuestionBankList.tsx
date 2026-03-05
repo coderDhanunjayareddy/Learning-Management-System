@@ -27,12 +27,29 @@ const resolveQuestionText = (value: any) => {
   return "";
 };
 
+const normalizeOptions = (options: any) => {
+  if (!Array.isArray(options)) return [];
+  return options.map((option, index) => {
+    if (typeof option === "string") {
+      return { id: `${index}`, text: option };
+    }
+    if (option && typeof option === "object") {
+      return {
+        id: String(option.id ?? index),
+        text: option.text ?? option.label ?? option.value ?? "",
+        is_correct: option.is_correct ?? option.isCorrect ?? option.correct ?? undefined,
+      };
+    }
+    return { id: `${index}`, text: String(option ?? "") };
+  });
+};
+
 const normalizeQuestions = (items: any[]): Question[] =>
   items.map((item) => ({
     id: item.id ?? item.question_id ?? `${Math.random()}`,
     question_type: item.question_type ?? "mcq_single",
     question_text: resolveQuestionText(item.question_text),
-    options: item.options ?? [],
+    options: normalizeOptions(item.options),
     correct_answer: item.correct_answer ?? null,
     subject_id: item.subject_id ?? null,
     chapter_id: item.chapter_id ?? null,
@@ -42,9 +59,11 @@ const normalizeQuestions = (items: any[]): Question[] =>
     marks_negative: Number(item.marks_negative ?? 1),
     exam_tags: item.exam_tags ?? [],
     status: item.status ?? "draft",
-    created_by: item.created_by ?? "Unknown",
+    created_by:
+      item.created_by_name ??
+      (item.created_by !== undefined && item.created_by !== null ? String(item.created_by) : "Unknown"),
     created_at: item.created_at ?? null,
-    review_note: item.review_note ?? null,
+    review_note: item.review_note ?? item.rejection_reason ?? null,
   }));
 
 export default function QuestionBankList({ filtersPlacement = "sidebar" }: { filtersPlacement?: "content" | "sidebar" }) {
@@ -59,8 +78,8 @@ export default function QuestionBankList({ filtersPlacement = "sidebar" }: { fil
   const [dataSource, setDataSource] = useState<"api" | "mock">("api");
 
   const [subjects, setSubjects] = useState<CurriculumItem[]>(mockSubjects);
-  const [chapters] = useState<CurriculumItem[]>(mockChapters);
-  const [topics] = useState<CurriculumItem[]>(mockTopics);
+  const [chapters, setChapters] = useState<CurriculumItem[]>(mockChapters);
+  const [topics, setTopics] = useState<CurriculumItem[]>(mockTopics);
 
   const [filters, setFilters] = useState<QuestionFiltersState>({
     search: "",
@@ -77,28 +96,9 @@ export default function QuestionBankList({ filtersPlacement = "sidebar" }: { fil
   const [rejectQuestion, setRejectQuestion] = useState<Question | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 25;
+  const [total, setTotal] = useState(0);
 
   useEffect(() => {
-    const loadQuestions = async () => {
-      setLoading(true);
-      try {
-        const res = await api.get("/questions");
-        const payload = Array.isArray(res.data)
-          ? res.data
-          : Array.isArray(res.data?.data)
-            ? res.data.data
-            : [];
-        if (!payload.length) throw new Error("Empty response");
-        setQuestions(normalizeQuestions(payload));
-        setDataSource("api");
-      } catch (error) {
-        setQuestions(mockQuestions);
-        setDataSource("mock");
-      } finally {
-        setLoading(false);
-      }
-    };
-
     const loadSubjects = async () => {
       try {
         const res = await api.get("/subjects");
@@ -115,9 +115,110 @@ export default function QuestionBankList({ filtersPlacement = "sidebar" }: { fil
       }
     };
 
-    loadQuestions();
     loadSubjects();
   }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadQuestions = async () => {
+      setLoading(true);
+      try {
+        const params: Record<string, string | number> = {
+          page: currentPage,
+          page_size: pageSize,
+        };
+        if (filters.search.trim()) params.q = filters.search.trim();
+        if (filters.subjectId) params.subject_id = filters.subjectId;
+        if (filters.chapterId) params.chapter_id = filters.chapterId;
+        if (filters.topicId) params.topic_id = filters.topicId;
+        if (filters.difficulty) params.difficulty_level = filters.difficulty;
+        if (filters.type) params.question_type = filters.type;
+        if (filters.status) params.status = filters.status;
+
+        const res = await api.get("/questions", { params });
+        const payload = Array.isArray(res.data?.data) ? res.data.data : [];
+        if (!isMounted) return;
+        setQuestions(normalizeQuestions(payload));
+        setTotal(Number(res.data?.total ?? payload.length));
+        setDataSource("api");
+      } catch (error) {
+        if (!isMounted) return;
+        setQuestions(mockQuestions);
+        setTotal(mockQuestions.length);
+        setDataSource("mock");
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
+
+    loadQuestions();
+    return () => {
+      isMounted = false;
+    };
+  }, [filters, currentPage, pageSize]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadChapters = async () => {
+      if (!filters.subjectId) {
+        if (isMounted) {
+          setChapters([]);
+          setTopics([]);
+        }
+        return;
+      }
+      try {
+        const res = await api.get(`/subjects/${filters.subjectId}/chapters`);
+        const payload = Array.isArray(res.data)
+          ? res.data
+          : Array.isArray(res.data?.data)
+            ? res.data.data
+            : [];
+        if (!isMounted) return;
+        setChapters(normalizeCurriculum(payload));
+      } catch (error) {
+        if (!isMounted) return;
+        setChapters(
+          mockChapters.filter((chapter) => String(chapter.subject_id) === String(filters.subjectId))
+        );
+      }
+    };
+
+    loadChapters();
+    return () => {
+      isMounted = false;
+    };
+  }, [filters.subjectId]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadTopics = async () => {
+      if (!filters.chapterId) {
+        if (isMounted) setTopics([]);
+        return;
+      }
+      try {
+        const res = await api.get(`/chapters/${filters.chapterId}/topics`);
+        const payload = Array.isArray(res.data)
+          ? res.data
+          : Array.isArray(res.data?.data)
+            ? res.data.data
+            : [];
+        if (!isMounted) return;
+        setTopics(normalizeCurriculum(payload));
+      } catch (error) {
+        if (!isMounted) return;
+        setTopics(
+          mockTopics.filter((topic) => String(topic.chapter_id) === String(filters.chapterId))
+        );
+      }
+    };
+
+    loadTopics();
+    return () => {
+      isMounted = false;
+    };
+  }, [filters.chapterId]);
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -172,6 +273,7 @@ export default function QuestionBankList({ filtersPlacement = "sidebar" }: { fil
   );
 
   const filteredQuestions = useMemo(() => {
+    if (dataSource === "api") return questions;
     const query = filters.search.trim().toLowerCase();
     return questions
       .filter((question) => {
@@ -198,17 +300,18 @@ export default function QuestionBankList({ filtersPlacement = "sidebar" }: { fil
         }
         return String(a.id).localeCompare(String(b.id));
       });
-  }, [filters, questions]);
+  }, [dataSource, filters, questions]);
 
   useEffect(() => {
     setCurrentPage(1);
   }, [filters]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredQuestions.length / pageSize));
-  const paginatedQuestions = filteredQuestions.slice(
-    (currentPage - 1) * pageSize,
-    currentPage * pageSize
-  );
+  const totalCount = dataSource === "api" ? total : filteredQuestions.length;
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+  const paginatedQuestions =
+    dataSource === "api"
+      ? questions
+      : filteredQuestions.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   const handleApprove = async (question: Question) => {
     if (dataSource === "api") {
@@ -235,7 +338,8 @@ export default function QuestionBankList({ filtersPlacement = "sidebar" }: { fil
     if (!rejectQuestion) return;
     if (dataSource === "api") {
       try {
-        await api.post(`/questions/${rejectQuestion.id}/reject`, { note: rejectReason });
+        const reason = rejectReason.trim() || "Rejected";
+        await api.post(`/questions/${rejectQuestion.id}/reject`, { reason });
       } catch (error) {
         setDataSource("mock");
       }
@@ -282,7 +386,7 @@ export default function QuestionBankList({ filtersPlacement = "sidebar" }: { fil
         <div>
           <h2 className="text-lg font-semibold text-slate-900">Question Library</h2>
           <p className="text-sm text-slate-500">
-            {filteredQuestions.length} questions found
+            {totalCount} questions found
           </p>
         </div>
       </div>
@@ -312,7 +416,7 @@ export default function QuestionBankList({ filtersPlacement = "sidebar" }: { fil
         <div className="rounded-xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-500">
           Loading questions...
         </div>
-      ) : filteredQuestions.length === 0 ? (
+      ) : paginatedQuestions.length === 0 ? (
         <div className="rounded-xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-500">
           No questions match the current filters.
         </div>
@@ -332,9 +436,11 @@ export default function QuestionBankList({ filtersPlacement = "sidebar" }: { fil
           ))}
           <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
             <div className="text-xs text-slate-500">
-              Showing {(currentPage - 1) * pageSize + 1}-
-              {Math.min(currentPage * pageSize, filteredQuestions.length)} of{" "}
-              {filteredQuestions.length}
+              Showing {totalCount === 0 ? 0 : (currentPage - 1) * pageSize + 1}-
+              {totalCount === 0
+                ? 0
+                : Math.min(currentPage * pageSize, totalCount)}{" "}
+              of {totalCount}
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <button

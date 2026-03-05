@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import type { CurriculumItem, DifficultyLevel, QuestionStatus, QuestionType } from "@/types/questionBank";
 
 export interface QuestionFiltersState {
@@ -28,6 +29,26 @@ export default function QuestionFilters({
   layout = "grid",
 }: QuestionFiltersProps) {
   const isVertical = layout === "vertical";
+  const [searchValue, setSearchValue] = useState(filters.search);
+  const filtersRef = useRef(filters);
+
+  useEffect(() => {
+    filtersRef.current = filters;
+  }, [filters]);
+
+  useEffect(() => {
+    setSearchValue(filters.search);
+  }, [filters.search]);
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => {
+      if (filtersRef.current.search !== searchValue) {
+        onChange({ ...filtersRef.current, search: searchValue });
+      }
+    }, 300);
+
+    return () => window.clearTimeout(handle);
+  }, [searchValue, onChange]);
 
   return (
     <div className={isVertical ? "space-y-3" : "grid gap-4 md:grid-cols-2 xl:grid-cols-6"}>
@@ -35,8 +56,8 @@ export default function QuestionFilters({
         <label className="text-xs font-semibold text-slate-500">Search</label>
         <input
           type="text"
-          value={filters.search}
-          onChange={(event) => onChange({ ...filters, search: event.target.value })}
+          value={searchValue}
+          onChange={(event) => setSearchValue(event.target.value)}
           placeholder="Search by text, tag, or author"
           className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
         />
