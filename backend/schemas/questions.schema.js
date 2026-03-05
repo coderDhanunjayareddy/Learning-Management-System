@@ -32,3 +32,17 @@ export const parseStringArray = (value, fieldName) => {
   }
   return value.map((entry) => String(entry));
 };
+
+export const parseStringArrayParam = (value, fieldName) => {
+  if (value === undefined || value === null || value === '') return [];
+  if (Array.isArray(value)) {
+    return value.map((entry) => String(entry).trim()).filter((entry) => entry.length > 0);
+  }
+  if (typeof value === 'string') {
+    return value
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0);
+  }
+  throw new AppError(`${fieldName} must be an array or comma-separated string`, 400);
+};
