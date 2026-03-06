@@ -3,6 +3,7 @@ import api from '@/lib/api';
 import { useAuth } from '@/features/auth/hooks/useAuth';
 import { Link } from 'react-router-dom';
 import spectropyLogo from '/logo.png';
+import toast from 'react-hot-toast';
 
 type TabKey = 'clients' | 'packs' | 'entitlements' | 'users' | 'permissions';
 
@@ -182,15 +183,25 @@ export default function PlatformDashboard() {
 
   const registerUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    await api.post('/superadmin/register-admin', userForm);
-    setUserForm({
-      email: '',
-      full_name: '',
-      password: '',
-      role: 'client_admin',
-      client_id: '',
-      user_id: '',
-    });
+    try {
+      await api.post('/superadmin/register-admin', {
+        ...userForm,
+        client_id: userForm.client_id ? Number(userForm.client_id) : null,
+      });
+      toast.success('User registered successfully');
+      setUserForm({
+        email: '',
+        full_name: '',
+        password: '',
+        role: 'client_admin',
+        client_id: '',
+        user_id: '',
+      });
+    } catch (error: any) {
+      console.error(error);
+      const message = error.response?.data?.error || 'Failed to register user';
+      toast.error(message);
+    }
   };
 
   const createPermission = async (e: React.FormEvent) => {
@@ -600,5 +611,3 @@ export default function PlatformDashboard() {
     </div>
   );
 }
-
-

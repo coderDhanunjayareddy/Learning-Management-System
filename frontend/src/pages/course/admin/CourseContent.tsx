@@ -6,7 +6,7 @@ import { useAuth } from "@/features/auth/hooks/useAuth";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import SidebarNav from "@/components/layout/SidebarNav";
 import { getDashboardTheme } from "@/components/layout/dashboardTheme";
-import { RiHome2Line } from "react-icons/ri";
+import { RiHome2Line, RiFileList3Line } from "react-icons/ri";
 import { BiBookOpen } from "react-icons/bi";
 import { PiUsersBold, PiChatsCircleBold } from "react-icons/pi";
 import CourseContentManager from "@/features/courses/components/editor/CourseContentManager";
@@ -36,6 +36,13 @@ export default function CourseContent() {
       icon: <BiBookOpen />,
       active: true,
       onClick: () => navigate("/admin/dashboard"),
+    },
+    {
+      key: "question-bank",
+      label: "Question Bank",
+      icon: <RiFileList3Line />,
+      active: false,
+      onClick: () => navigate("/question-bank"),
     },
     {
       key: "users",

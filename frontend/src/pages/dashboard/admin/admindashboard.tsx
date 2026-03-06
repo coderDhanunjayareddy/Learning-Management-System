@@ -5,7 +5,7 @@ import { useAuth } from '@/features/auth/hooks/useAuth';
 
 import spectropyLogo from "/logo.png";
 import gvjbLogo from "/gvjb.png";
-import { RiHome2Line } from "react-icons/ri";
+import { RiHome2Line, RiFileList3Line } from "react-icons/ri";
 import { BiBookOpen } from "react-icons/bi";
 import { PiUsersBold, PiChatsCircleBold } from 'react-icons/pi';
 import { HiOutlineBuildingOffice2 } from "react-icons/hi2";
@@ -59,6 +59,13 @@ export default function CourseStudents() {
       icon: <BiBookOpen />,
       active: activeTab === 'courses',
       onClick: () => setActiveTab('courses'),
+    },
+    {
+      key: 'question-bank',
+      label: 'Question Bank',
+      icon: <RiFileList3Line />,
+      active: false,
+      onClick: () => navigate('/question-bank'),
     },
     {
       key: 'users',

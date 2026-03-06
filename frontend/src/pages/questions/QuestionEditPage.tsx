@@ -1,135 +1,132 @@
-import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import QuestionForm from '@/features/questions/components/QuestionForm';
-import {
-  fetchChapters,
-  fetchQuestionById,
-  fetchSubjects,
-  fetchTopics,
-  updateQuestion,
-} from '@/features/questions/api/questionsApi';
-import type { Question } from '@/features/questions/types';
+import { useEffect, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import api from "@/lib/api";
+import QuestionBankLayout from "@/features/question-bank/components/QuestionBankLayout";
+import QuestionForm from "@/features/question-bank/components/QuestionForm";
+import { mockChapters, mockQuestions, mockSubjects, mockTopics } from "@/features/question-bank/data/mockQuestions";
+import type { CurriculumItem, Question } from "@/types/questionBank";
+
+const normalizeQuestion = (item: any): Question => ({
+  id: item.id ?? item.question_id ?? `${Math.random()}`,
+  question_type: item.question_type ?? "mcq_single",
+  question_text: item.question_text?.html ?? item.question_text?.text ?? item.question_text ?? "",
+  options: item.options ?? [],
+  correct_answer: item.correct_answer ?? null,
+  subject_id: item.subject_id ?? null,
+  chapter_id: item.chapter_id ?? null,
+  topic_id: item.topic_id ?? null,
+  difficulty_level: item.difficulty_level ?? "easy",
+  marks_positive: Number(item.marks_positive ?? 4),
+  marks_negative: Number(item.marks_negative ?? 1),
+  exam_tags: item.exam_tags ?? [],
+  status: item.status ?? "draft",
+  created_by: item.created_by ?? "Unknown",
+  created_at: item.created_at ?? null,
+  review_note: item.review_note ?? null,
+});
+
+const normalizeCurriculum = (items: any[]): CurriculumItem[] =>
+  items
+    .map((item) => ({
+      id: item.id ?? item.subject_id ?? item.chapter_id ?? item.topic_id,
+      name: item.name ?? item.title ?? item.subject_name ?? "Untitled",
+      subject_id: item.subject_id ?? item.subjectId ?? null,
+      chapter_id: item.chapter_id ?? item.chapterId ?? null,
+    }))
+    .filter((item) => item.id !== undefined && item.id !== null);
 
 export default function QuestionEditPage() {
-  const navigate = useNavigate();
   const { id } = useParams();
-  const questionId = Number(id);
-
-  const [subjects, setSubjects] = useState<Array<{ id: number; name: string }>>([]);
-  const [chapters, setChapters] = useState<Array<{ id: number; name: string }>>([]);
-  const [topics, setTopics] = useState<Array<{ id: number; name: string }>>([]);
+  const navigate = useNavigate();
   const [question, setQuestion] = useState<Question | null>(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+
+  const [subjects, setSubjects] = useState<CurriculumItem[]>(mockSubjects);
+  const [chapters] = useState<CurriculumItem[]>(mockChapters);
+  const [topics] = useState<CurriculumItem[]>(mockTopics);
 
   useEffect(() => {
-    let isMounted = true;
-    setLoading(true);
-    Promise.all([fetchSubjects(), fetchQuestionById(questionId)])
-      .then(([subjectList, questionData]) => {
-        if (!isMounted) return;
-        setSubjects(Array.isArray(subjectList) ? subjectList : []);
-        setQuestion(questionData);
-        if (questionData.subject_id) {
-          fetchChapters(questionData.subject_id)
-            .then((data) => setChapters(Array.isArray(data) ? data : []))
-            .catch(() => setChapters([]));
+    const loadSubjects = async () => {
+      try {
+        const res = await api.get("/subjects");
+        const payload = Array.isArray(res.data)
+          ? res.data
+          : Array.isArray(res.data?.data)
+            ? res.data.data
+            : [];
+        if (payload.length) {
+          setSubjects(normalizeCurriculum(payload));
         }
-        if (questionData.chapter_id) {
-          fetchTopics(questionData.chapter_id)
-            .then((data) => setTopics(Array.isArray(data) ? data : []))
-            .catch(() => setTopics([]));
-        }
-      })
-      .catch((err: any) => {
-        if (!isMounted) return;
-        setError(err?.response?.data?.error || 'Failed to load question');
-      })
-      .finally(() => {
-        if (!isMounted) return;
-        setLoading(false);
-      });
-
-    return () => {
-      isMounted = false;
+      } catch (error) {
+        setSubjects(mockSubjects);
+      }
     };
-  }, [questionId]);
+    loadSubjects();
+  }, []);
 
-  const handleSubjectChange = (subjectId: number | null) => {
-    if (!subjectId) {
-      setChapters([]);
-      setTopics([]);
-      return;
-    }
-    fetchChapters(subjectId)
-      .then((data) => setChapters(Array.isArray(data) ? data : []))
-      .catch(() => setChapters([]));
-  };
+  useEffect(() => {
+    if (!id) return;
+    const loadQuestion = async () => {
+      setLoading(true);
+      try {
+        const res = await api.get(`/questions/${id}`);
+        if (!res.data) throw new Error("Missing data");
+        setQuestion(normalizeQuestion(res.data));
+      } catch (error) {
+        const fallback = mockQuestions.find((item) => String(item.id) === String(id)) ?? null;
+        setQuestion(fallback);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadQuestion();
+  }, [id]);
 
-  const handleChapterChange = (chapterId: number | null) => {
-    if (!chapterId) {
-      setTopics([]);
-      return;
-    }
-    fetchTopics(chapterId)
-      .then((data) => setTopics(Array.isArray(data) ? data : []))
-      .catch(() => setTopics([]));
-  };
-
-  const handleSubmit = async (payload: Record<string, unknown>) => {
-    setSaving(true);
-    setError(null);
+  const handleSave = async (payload: Omit<Question, "id">) => {
+    if (!id) return;
     try {
-      const updated = await updateQuestion(questionId, payload);
-      navigate(`/questions/${updated.id}`);
-    } catch (err: any) {
-      setError(err?.response?.data?.error || 'Failed to update question');
-    } finally {
-      setSaving(false);
+      const res = await api.put(`/questions/${id}`, payload);
+      const updated = res.data ? normalizeQuestion(res.data) : { ...payload, id };
+      navigate(`/question-bank/${id}`, { state: { question: updated } });
+      return;
+    } catch (error) {
+      const updated = { ...payload, id };
+      navigate(`/question-bank/${id}`, { state: { question: updated } });
     }
   };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 p-6">
-        <div className="rounded-md border border-gray-200 bg-white p-6 text-sm text-gray-600">
-          Loading question...
-        </div>
-      </div>
-    );
-  }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Edit Question</h1>
-          <p className="text-sm text-gray-600">Update question details.</p>
-        </div>
+    <QuestionBankLayout
+      title="Edit Question"
+      description="Update the question details and answers."
+      actions={
         <button
-          className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100"
-          onClick={() => navigate('/questions')}
+          onClick={() => navigate(`/question-bank/${id}`)}
+          className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
         >
-          Back to list
+          Cancel
         </button>
-      </div>
-
-      {error ? (
-        <div className="mb-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>
-      ) : null}
-
-      <QuestionForm
-        initialQuestion={question}
-        subjects={subjects}
-        chapters={chapters}
-        topics={topics}
-        onSubjectChange={handleSubjectChange}
-        onChapterChange={handleChapterChange}
-        onSubmit={handleSubmit}
-        submitLabel={saving ? 'Saving...' : 'Save Changes'}
-        disabled={saving}
-      />
-    </div>
+      }
+    >
+      {loading ? (
+        <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-500">
+          Loading question...
+        </div>
+      ) : question ? (
+        <QuestionForm
+          variant="page"
+          initialQuestion={question}
+          subjects={subjects}
+          chapters={chapters}
+          topics={topics}
+          onClose={() => navigate(`/question-bank/${id}`)}
+          onSave={(payload) => handleSave(payload)}
+        />
+      ) : (
+        <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-500">
+          Question not found.
+        </div>
+      )}
+    </QuestionBankLayout>
   );
 }
