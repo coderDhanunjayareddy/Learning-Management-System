@@ -440,6 +440,17 @@ export const updateQuestion = async (req, res) => {
     if (req.body.solution !== undefined) updates.solution = req.body.solution ?? null;
     if (req.body.solution_video_url !== undefined) updates.solution_video_url = req.body.solution_video_url ?? null;
 
+    if (req.body.status !== undefined) {
+      const nextStatus = requireString(req.body.status, 'status');
+      if (nextStatus !== 'draft') {
+        throw new AppError('Only status "draft" is allowed', 400);
+      }
+      if (question.status !== 'rejected') {
+        throw new AppError('Only rejected questions can be moved to draft', 400);
+      }
+      updates.status = 'draft';
+    }
+
     if (req.body.subject_id || req.body.chapter_id || req.body.topic_id !== undefined) {
       const subjectId = req.body.subject_id ? parseRequiredInt(req.body.subject_id, 'subject_id') : question.subject_id;
       const chapterId = req.body.chapter_id ? parseRequiredInt(req.body.chapter_id, 'chapter_id') : question.chapter_id;
@@ -560,6 +571,10 @@ export const approveQuestion = async (req, res) => {
       }
     }
 
+    if (question.status !== 'draft') {
+      return res.status(400).json({ error: 'Only draft questions can be approved' });
+    }
+
     const result = await dbQuery(
       `
       UPDATE questions
@@ -610,6 +625,10 @@ export const rejectQuestion = async (req, res) => {
       if (question.school_id && !schoolIds.includes(question.school_id)) {
         return res.status(403).json({ error: 'Access denied' });
       }
+    }
+
+    if (question.status !== 'draft') {
+      return res.status(400).json({ error: 'Only draft questions can be rejected' });
     }
 
     const result = await dbQuery(

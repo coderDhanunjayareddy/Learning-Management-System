@@ -47,8 +47,8 @@ router.post('/batches/:batchId/members', requireRole(['super_admin', 'client_adm
 router.delete('/batches/:batchId/members/:userId', requireRole(['super_admin', 'client_admin', 'school_owner', 'teacher']), removeBatchMember);
 
 // Role permissions (super admin only)
-router.get('/role-permissions', requireRole(['super_admin']), listRolePermissions);
-router.post('/role-permissions', requireRole(['super_admin']), upsertRolePermission);
+router.get('/role-permissions', requireRole(['super_admin', 'client_admin']), listRolePermissions);
+router.post('/role-permissions', requireRole(['super_admin', 'client_admin']), upsertRolePermission);
 router.delete('/role-permissions/:id', requireRole(['super_admin']), deleteRolePermission);
 
 export default router;
