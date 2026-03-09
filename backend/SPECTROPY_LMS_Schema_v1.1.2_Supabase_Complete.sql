@@ -453,15 +453,29 @@ CREATE TABLE questions (
   id SERIAL PRIMARY KEY,
   client_id INTEGER REFERENCES clients(id) ON DELETE CASCADE,
   school_id INTEGER REFERENCES schools(id) ON DELETE CASCADE,
-  question_type VARCHAR(20) NOT NULL CHECK (
-    question_type IN ('mcq_single', 'mcq_multiple', 'numerical', 'true_false')
-  ),
-  question_text JSONB NOT NULL,
-  options JSONB,
-  correct_answer JSONB NOT NULL,
-  solution JSONB,
-  solution_video_url TEXT,
-  subject_id INTEGER NOT NULL REFERENCES subjects(id),
+    question_type VARCHAR(20) NOT NULL CHECK (
+      question_type IN (
+        'mcq_single',
+        'mcq_multiple',
+        'numerical',
+        'true_false',
+        'short_answer',
+        'match_following',
+        'fill_in_blank',
+        'comprehensive'
+      )
+    ),
+    question_text JSONB NOT NULL,
+    options JSONB,
+    correct_answer JSONB NOT NULL,
+    solution JSONB,
+    solution_video_url TEXT,
+    scoring_mode VARCHAR(20) NOT NULL DEFAULT 'all_or_nothing' CHECK (
+      scoring_mode IN ('all_or_nothing', 'partial', 'mixed')
+    ),
+    comprehension_passage JSONB,
+    comprehension_questions JSONB,
+    subject_id INTEGER NOT NULL REFERENCES subjects(id),
   chapter_id INTEGER NOT NULL REFERENCES chapters(id),
   topic_id INTEGER REFERENCES topics(id),
   difficulty_level VARCHAR(20) NOT NULL DEFAULT 'medium' CHECK (

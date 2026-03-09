@@ -6,12 +6,34 @@ import QuestionPreview from "@/features/question-bank/components/QuestionPreview
 import { mockQuestions } from "@/features/question-bank/data/mockQuestions";
 import type { Question } from "@/types/questionBank";
 
+const normalizeQuestionText = (value: any) => {
+  if (typeof value === "string") return { html: value, json: null };
+  if (value && typeof value === "object") {
+    return { html: value.html ?? value.text ?? "", json: value.json ?? null };
+  }
+  return { html: "", json: null };
+};
+
+const normalizeOptions = (options: any) => {
+  if (!Array.isArray(options)) return [];
+  return options.map((option: any, index: number) => ({
+    id: String(option.id ?? index),
+    text: typeof option.text === "object" ? option.text : { html: option.text ?? "", json: null },
+    is_correct: option.is_correct ?? option.isCorrect ?? option.correct ?? undefined,
+  }));
+};
+
 const normalizeQuestion = (item: any): Question => ({
   id: item.id ?? item.question_id ?? `${Math.random()}`,
   question_type: item.question_type ?? "mcq_single",
-  question_text: item.question_text?.html ?? item.question_text?.text ?? item.question_text ?? "",
-  options: item.options ?? [],
+  question_text: normalizeQuestionText(item.question_text),
+  options: normalizeOptions(item.options),
   correct_answer: item.correct_answer ?? null,
+  solution: normalizeQuestionText(item.solution),
+  solution_video_url: item.solution_video_url ?? null,
+  scoring_mode: item.scoring_mode ?? "all_or_nothing",
+  comprehension_passage: normalizeQuestionText(item.comprehension_passage),
+  comprehension_questions: item.comprehension_questions ?? [],
   subject_id: item.subject_id ?? null,
   chapter_id: item.chapter_id ?? null,
   topic_id: item.topic_id ?? null,
@@ -96,7 +118,7 @@ export default function QuestionDeletePage() {
                 {deleting ? "Deleting..." : "Yes, delete"}
               </button>
               <button
-                onClick={() => navigate(`/question-bank/${id}`)}
+                onClick={() => navigate(`/question-bank`)}
                 className="rounded-lg border border-rose-200 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-100"
               >
                 Keep Question

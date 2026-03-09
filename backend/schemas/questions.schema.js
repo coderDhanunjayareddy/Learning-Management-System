@@ -11,8 +11,11 @@ export const parseNullableInt = (value, fieldName) => {
 };
 
 export const parseRequiredInt = (value, fieldName) => {
+  if (value === undefined || value === null || value === '') {
+    throw new AppError(`${fieldName} is required`, 400);
+  }
   const parsed = Number(value);
-  if (!Number.isInteger(parsed)) {
+  if (!Number.isInteger(parsed) || parsed <= 0) {
     throw new AppError(`${fieldName} must be an integer`, 400);
   }
   return parsed;

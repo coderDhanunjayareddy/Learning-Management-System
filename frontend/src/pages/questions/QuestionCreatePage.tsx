@@ -7,12 +7,34 @@ import { mockChapters, mockSubjects, mockTopics } from "@/features/question-bank
 import type { CurriculumItem, Question } from "@/types/questionBank";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 
+const normalizeQuestionText = (value: any) => {
+  if (typeof value === "string") return { html: value, json: null };
+  if (value && typeof value === "object") {
+    return { html: value.html ?? value.text ?? "", json: value.json ?? null };
+  }
+  return { html: "", json: null };
+};
+
+const normalizeOptions = (options: any) => {
+  if (!Array.isArray(options)) return [];
+  return options.map((option: any, index: number) => ({
+    id: String(option.id ?? index),
+    text: typeof option.text === "object" ? option.text : { html: option.text ?? "", json: null },
+    is_correct: option.is_correct ?? option.isCorrect ?? option.correct ?? undefined,
+  }));
+};
+
 const normalizeQuestion = (item: any): Question => ({
   id: item.id ?? item.question_id ?? `${Math.random()}`,
   question_type: item.question_type ?? "mcq_single",
-  question_text: item.question_text?.html ?? item.question_text?.text ?? item.question_text ?? "",
-  options: item.options ?? [],
+  question_text: normalizeQuestionText(item.question_text),
+  options: normalizeOptions(item.options),
   correct_answer: item.correct_answer ?? null,
+  solution: normalizeQuestionText(item.solution),
+  solution_video_url: item.solution_video_url ?? null,
+  scoring_mode: item.scoring_mode ?? "all_or_nothing",
+  comprehension_passage: normalizeQuestionText(item.comprehension_passage),
+  comprehension_questions: item.comprehension_questions ?? [],
   subject_id: item.subject_id ?? null,
   chapter_id: item.chapter_id ?? null,
   topic_id: item.topic_id ?? null,
@@ -89,6 +111,7 @@ export default function QuestionCreatePage() {
     <QuestionBankLayout
       title="Create Question"
       description="Compose a new question for your assessment library."
+      showBack={false}
       actions={
         <button
           onClick={() => navigate("/question-bank")}

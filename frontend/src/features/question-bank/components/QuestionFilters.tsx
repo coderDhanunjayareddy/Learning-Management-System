@@ -143,8 +143,12 @@ export default function QuestionFilters({
           <option value="">All</option>
           <option value="mcq_single">MCQ Single</option>
           <option value="mcq_multiple">MCQ Multiple</option>
+          <option value="short_answer">Short Answer</option>
           <option value="numerical">Numerical</option>
+          <option value="match_following">Match the Following</option>
+          <option value="fill_in_blank">Fill in the Blank</option>
           <option value="true_false">True/False</option>
+          <option value="comprehensive">Comprehensive</option>
         </select>
       </div>
       <div>

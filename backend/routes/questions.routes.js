@@ -7,10 +7,14 @@ import {
   softDeleteQuestion,
   approveQuestion,
   rejectQuestion,
+  bulkUploadQuestions,
+  bulkUploadTemplate,
 } from '../controllers/questions.controller.js';
 import { authenticateToken, requireRole } from '../middleware/auth.js';
+import multer from 'multer';
 
 const router = Router();
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
 router.use(
   authenticateToken,
@@ -18,6 +22,8 @@ router.use(
 );
 
 router.get('/questions', listQuestions);
+router.get('/questions/bulk-upload/template', bulkUploadTemplate);
+router.post('/questions/bulk-upload', upload.single('file'), bulkUploadQuestions);
 router.get('/questions/:id', getQuestionById);
 router.post('/questions', createQuestion);
 router.put('/questions/:id', updateQuestion);

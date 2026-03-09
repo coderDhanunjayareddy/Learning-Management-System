@@ -20,27 +20,41 @@ const normalizeCurriculum = (items: any[]): CurriculumItem[] =>
     .filter((item) => item.id !== undefined && item.id !== null);
 
 const resolveQuestionText = (value: any) => {
-  if (typeof value === "string") return value;
+  if (typeof value === "string") return { html: value, json: null };
   if (value && typeof value === "object") {
-    return value.html ?? value.text ?? "";
+    return { html: value.html ?? value.text ?? "", json: value.json ?? null };
   }
-  return "";
+  return { html: "", json: null };
 };
 
 const normalizeOptions = (options: any) => {
-  if (!Array.isArray(options)) return [];
+  if (!Array.isArray(options)) {
+    if (options && typeof options === "object" && options.left && options.right) {
+      const normalizeSide = (side: any[]) =>
+        side.map((option, index) => ({
+          id: String(option.id ?? index),
+          text: typeof option.text === "object" ? option.text : { html: option.text ?? "", json: null },
+          is_correct: option.is_correct ?? undefined,
+        }));
+      return {
+        left: normalizeSide(options.left),
+        right: normalizeSide(options.right),
+      };
+    }
+    return [];
+  }
   return options.map((option, index) => {
     if (typeof option === "string") {
-      return { id: `${index}`, text: option };
+      return { id: `${index}`, text: { html: option, json: null } };
     }
     if (option && typeof option === "object") {
       return {
         id: String(option.id ?? index),
-        text: option.text ?? option.label ?? option.value ?? "",
+        text: typeof option.text === "object" ? option.text : { html: option.text ?? option.label ?? option.value ?? "", json: null },
         is_correct: option.is_correct ?? option.isCorrect ?? option.correct ?? undefined,
       };
     }
-    return { id: `${index}`, text: String(option ?? "") };
+    return { id: `${index}`, text: { html: String(option ?? ""), json: null } };
   });
 };
 
@@ -51,6 +65,11 @@ const normalizeQuestions = (items: any[]): Question[] =>
     question_text: resolveQuestionText(item.question_text),
     options: normalizeOptions(item.options),
     correct_answer: item.correct_answer ?? null,
+    solution: resolveQuestionText(item.solution),
+    solution_video_url: item.solution_video_url ?? null,
+    scoring_mode: item.scoring_mode ?? "all_or_nothing",
+    comprehension_passage: resolveQuestionText(item.comprehension_passage),
+    comprehension_questions: item.comprehension_questions ?? [],
     subject_id: item.subject_id ?? null,
     chapter_id: item.chapter_id ?? null,
     topic_id: item.topic_id ?? null,
@@ -65,6 +84,17 @@ const normalizeQuestions = (items: any[]): Question[] =>
     created_at: item.created_at ?? null,
     review_note: item.review_note ?? item.rejection_reason ?? null,
   }));
+
+const sortByIdAsc = (items: Question[]) => {
+  return [...items].sort((a, b) => {
+    const aNum = Number(a.id);
+    const bNum = Number(b.id);
+    if (!Number.isNaN(aNum) && !Number.isNaN(bNum)) {
+      return aNum - bNum;
+    }
+    return String(a.id).localeCompare(String(b.id));
+  });
+};
 
 export default function QuestionBankList({ filtersPlacement = "sidebar" }: { filtersPlacement?: "content" | "sidebar" }) {
   const { user } = useAuth();
@@ -138,7 +168,7 @@ export default function QuestionBankList({ filtersPlacement = "sidebar" }: { fil
         const res = await api.get("/questions", { params });
         const payload = Array.isArray(res.data?.data) ? res.data.data : [];
         if (!isMounted) return;
-        setQuestions(normalizeQuestions(payload));
+        setQuestions(sortByIdAsc(normalizeQuestions(payload)));
         setTotal(Number(res.data?.total ?? payload.length));
         setDataSource("api");
       } catch (error) {
@@ -287,7 +317,7 @@ export default function QuestionBankList({ filtersPlacement = "sidebar" }: { fil
         const tags = question.exam_tags?.join(" ").toLowerCase() ?? "";
         const author = question.created_by?.toLowerCase() ?? "";
         return (
-          question.question_text.toLowerCase().includes(query) ||
+          question.question_text.html.toLowerCase().includes(query) ||
           tags.includes(query) ||
           author.includes(query)
         );
@@ -352,10 +382,6 @@ export default function QuestionBankList({ filtersPlacement = "sidebar" }: { fil
       )
     );
     setRejectModalOpen(false);
-  };
-
-  const handleView = (question: Question) => {
-    navigate(`/question-bank/${question.id}`, { state: { question } });
   };
 
   const filtersPanel = (
@@ -427,7 +453,6 @@ export default function QuestionBankList({ filtersPlacement = "sidebar" }: { fil
               key={question.id}
               question={question}
               permissions={permissions}
-              onView={handleView}
               onEdit={(item) => navigate(`/question-bank/${item.id}/edit`)}
               onDelete={(item) => navigate(`/question-bank/${item.id}/delete`)}
               onApprove={handleApprove}
