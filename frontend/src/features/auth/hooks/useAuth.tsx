@@ -37,10 +37,24 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const getStoredUser = (): User | null => {
+  try {
+    const raw = localStorage.getItem('auth_user');
+    if (!raw) return null;
+    return JSON.parse(raw) as User;
+  } catch {
+    localStorage.removeItem('auth_user');
+    return null;
+  }
+};
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<User | null>(() => getStoredUser());
+  const [token, setToken] = useState<string | null>(() => localStorage.getItem('token'));
+  const [loading, setLoading] = useState<boolean>(() => {
+    const initialToken = localStorage.getItem('token');
+    return Boolean(initialToken);
+  });
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -67,14 +81,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     syncAuthCookie(token);
   }, [token, syncAuthCookie]);
 
+  useEffect(() => {
+    if (user) {
+      localStorage.setItem('auth_user', JSON.stringify(user));
+    } else {
+      localStorage.removeItem('auth_user');
+    }
+  }, [user]);
+
   const logout = useCallback(async () => {
     try {
-      await api.post('/auth/logout');
+      await api.post('/auth/logout', null, { _skipAuthRefresh: true } as any);
     } catch (error) {
       console.log('Failed to logout:', error);
       // ignore logout errors, clear local state anyway
     } finally {
       localStorage.removeItem('token');
+      localStorage.removeItem('auth_user');
       setToken(null);
       setUser(null);
       syncAuthCookie(null);
@@ -83,7 +106,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     const fetchUser = async () => {
-      if (!token) return setLoading(false);
+      if (!token) {
+        setUser(null);
+        localStorage.removeItem('auth_user');
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+
       try {
         const res = await api.get('/auth/me');
         setUser(res.data.user);
@@ -111,12 +142,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const { token, user } = res.data;
 
     localStorage.setItem('token', token);
+    localStorage.setItem('auth_user', JSON.stringify(user));
     setToken(token);
     setUser(user);
   }, []);
 
   const updateUser = (updates: Partial<User>) => {
-    setUser((prev) => (prev ? { ...prev, ...updates } : prev));
+    setUser((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev, ...updates };
+      localStorage.setItem('auth_user', JSON.stringify(next));
+      return next;
+    });
   };
 
   const register = useCallback(async (
@@ -137,6 +174,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
     const { token, user } = res.data;
     localStorage.setItem('token', token);
+    localStorage.setItem('auth_user', JSON.stringify(user));
     setToken(token);
     setUser(user);
   }, []);

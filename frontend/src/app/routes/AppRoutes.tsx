@@ -55,6 +55,12 @@ import QuestionSubjectEditPage from '@/pages/questions/QuestionSubjectEditPage';
 import QuestionFoldersPage from '@/pages/questions/QuestionFoldersPage';
 import QuestionFolderCreatePage from '@/pages/questions/QuestionFolderCreatePage';
 import QuestionFolderEditPage from '@/pages/questions/QuestionFolderEditPage';
+import QuestionChaptersPage from '@/pages/questions/QuestionChaptersPage';
+import QuestionChapterCreatePage from '@/pages/questions/QuestionChapterCreatePage';
+import QuestionChapterEditPage from '@/pages/questions/QuestionChapterEditPage';
+import QuestionTopicsPage from '@/pages/questions/QuestionTopicsPage';
+import QuestionTopicCreatePage from '@/pages/questions/QuestionTopicCreatePage';
+import QuestionTopicEditPage from '@/pages/questions/QuestionTopicEditPage';
 
 export default function AppRoutes() {
   const { loading } = useAuth();
@@ -166,6 +172,12 @@ export default function AppRoutes() {
         <Route path="/question-bank/subjects" element={<QuestionSubjectsPage />} />
         <Route path="/question-bank/subjects/new" element={<QuestionSubjectCreatePage />} />
         <Route path="/question-bank/subjects/:id/edit" element={<QuestionSubjectEditPage />} />
+        <Route path="/question-bank/chapters" element={<QuestionChaptersPage />} />
+        <Route path="/question-bank/chapters/new" element={<QuestionChapterCreatePage />} />
+        <Route path="/question-bank/chapters/:id/edit" element={<QuestionChapterEditPage />} />
+        <Route path="/question-bank/topics" element={<QuestionTopicsPage />} />
+        <Route path="/question-bank/topics/new" element={<QuestionTopicCreatePage />} />
+        <Route path="/question-bank/topics/:id/edit" element={<QuestionTopicEditPage />} />
         <Route path="/question-bank/folders" element={<QuestionFoldersPage />} />
         <Route path="/question-bank/folders/new" element={<QuestionFolderCreatePage />} />
         <Route path="/question-bank/folders/:id/edit" element={<QuestionFolderEditPage />} />

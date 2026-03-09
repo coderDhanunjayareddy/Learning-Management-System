@@ -9,6 +9,10 @@ import {
   rejectQuestion,
   bulkUploadQuestions,
   bulkUploadTemplate,
+  listQuestionFolders,
+  getQuestionFolderById,
+  createQuestionFolder,
+  updateQuestionFolder,
 } from '../controllers/questions.controller.js';
 import { authenticateToken, requireRole } from '../middleware/auth.js';
 import multer from 'multer';
@@ -30,5 +34,10 @@ router.put('/questions/:id', updateQuestion);
 router.delete('/questions/:id', softDeleteQuestion);
 router.post('/questions/:id/approve', approveQuestion);
 router.post('/questions/:id/reject', rejectQuestion);
+
+router.get('/question-folders', listQuestionFolders);
+router.get('/question-folders/:id', getQuestionFolderById);
+router.post('/question-folders', createQuestionFolder);
+router.patch('/question-folders/:id', updateQuestionFolder);
 
 export default router;

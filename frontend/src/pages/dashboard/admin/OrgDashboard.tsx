@@ -87,6 +87,8 @@ export default function OrgDashboard() {
   };
 
   const loadRolePermissions = async () => {
+    const role = user?.role;
+    if (!role || (role !== 'super_admin' && role !== 'client_admin')) return;
     const res = await api.get('/org/role-permissions?scope=client');
     setRolePermissions(res.data);
   };
@@ -99,9 +101,12 @@ export default function OrgDashboard() {
   useEffect(() => {
     loadSchools();
     loadBatches();
-    loadRolePermissions();
     loadUsers();
   }, []);
+
+  useEffect(() => {
+    loadRolePermissions();
+  }, [user?.role]);
 
   useEffect(() => {
     if (selectedSchoolId) loadSchoolMembers(selectedSchoolId);

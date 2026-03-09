@@ -1,4 +1,16 @@
 {
+<<<<<<< HEAD
+  "name": "Learning Management System",
+  "short_name": "LMS",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#0f172a",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+=======
   "name": "Spectropy LMS",
   "short_name": "Spectropy LMS",
   "start_url": "/",
@@ -9,6 +21,7 @@
     {
       "src": "/logo.png",
       "sizes": "826x762",
+>>>>>>> 9161778233bb43d75f925aa4e163568d65acd479
       "type": "image/png"
     }
   ]

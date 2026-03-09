@@ -1,15 +1,23 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import QuestionBankLayout from "@/features/question-bank/components/QuestionBankLayout";
-import { mockFolders } from "@/features/question-bank/data/mockFolders";
-import { mockChapters, mockSubjects, mockTopics } from "@/features/question-bank/data/mockQuestions";
 import api from "@/lib/api";
+import QuestionBankLayout from "@/features/question-bank/components/QuestionBankLayout";
+import { mockChapters, mockSubjects, mockTopics } from "@/features/question-bank/data/mockQuestions";
+import type { QuestionFolder } from "@/types/questionFolder";
+
+const normalizeFolder = (item: any): QuestionFolder => ({
+  id: item.id,
+  name: item.name ?? "Untitled Folder",
+  description: item.description ?? "",
+  questionCount: Number(item.questionCount ?? item.question_count ?? 0),
+});
 
 export default function QuestionBulkUploadPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const [bulkFile, setBulkFile] = useState<File | null>(null);
   const [selectedFolder, setSelectedFolder] = useState("");
+  const [folderOptions, setFolderOptions] = useState<QuestionFolder[]>([]);
   const [subjects, setSubjects] = useState(mockSubjects);
   const [chapters, setChapters] = useState(mockChapters);
   const [topics, setTopics] = useState(mockTopics);
@@ -86,7 +94,22 @@ export default function QuestionBulkUploadPage() {
     return params.get("folderId") ?? "";
   }, [location.search]);
 
-  const folderOptions = useMemo(() => mockFolders, []);
+  useEffect(() => {
+    const loadFolders = async () => {
+      try {
+        const res = await api.get("/question-folders");
+        const payload = Array.isArray(res.data)
+          ? res.data
+          : Array.isArray(res.data?.data)
+            ? res.data.data
+            : [];
+        setFolderOptions(payload.map(normalizeFolder));
+      } catch (err) {
+        setFolderOptions([]);
+      }
+    };
+    loadFolders();
+  }, []);
 
   const activeFolder = selectedFolder || folderFromQuery;
 
@@ -159,9 +182,9 @@ export default function QuestionBulkUploadPage() {
         </button>
       }
     >
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
-          <div>
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:p-6">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <div className="lg:col-span-2">
             <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
               <p className="text-sm font-medium text-slate-700">Drop your file here</p>
               <p className="mt-1 text-xs text-slate-500">Supported: .docx (table template)</p>
@@ -213,7 +236,7 @@ export default function QuestionBulkUploadPage() {
               <div className="mt-4">
                 <div className="text-xs font-semibold text-slate-500">DOCX Template (Dummy Sample)</div>
                 <div className="mt-2 overflow-x-auto rounded-lg border border-slate-200">
-                  <table className="w-full border-collapse text-left text-xs">
+                  <table className="min-w-full border-collapse text-left text-xs">
                     <thead className="bg-slate-50 text-slate-600">
                       <tr>
                         <th className="border border-slate-200 px-2 py-1">Type</th>

@@ -21,6 +21,8 @@ const roleDashboardMap: Record<string, string> = {
 const navItems = [
   { label: "Questions", to: "/question-bank" },
   { label: "Subjects", to: "/question-bank/subjects" },
+  { label: "Chapters", to: "/question-bank/chapters" },
+  { label: "Topics", to: "/question-bank/topics" },
   { label: "Folders", to: "/question-bank/folders" },
   { label: "Bulk Upload", to: "/question-bank/bulk-upload" },
 ];

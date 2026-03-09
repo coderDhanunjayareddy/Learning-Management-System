@@ -1,25 +1,35 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import api from "@/lib/api";
 import QuestionBankLayout from "@/features/question-bank/components/QuestionBankLayout";
-import type { QuestionFolder } from "@/features/question-bank/data/mockFolders";
 
 export default function QuestionFolderCreatePage() {
   const navigate = useNavigate();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleSave = (event: React.FormEvent) => {
+  const handleSave = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!name.trim()) return;
+    if (!name.trim()) {
+      setError("Folder name is required");
+      return;
+    }
 
-    const created: QuestionFolder = {
-      id: `${Date.now()}`,
-      name: name.trim(),
-      description: description.trim(),
-      questionCount: 0,
-    };
-
-    navigate("/question-bank/folders", { state: { createdFolder: created } });
+    setSaving(true);
+    setError(null);
+    try {
+      await api.post("/question-folders", {
+        name: name.trim(),
+        description: description.trim() || null,
+      });
+      navigate("/question-bank/folders");
+    } catch (err: any) {
+      setError(err?.response?.data?.error || "Failed to create folder");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -39,6 +49,11 @@ export default function QuestionFolderCreatePage() {
         onSubmit={handleSave}
         className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
       >
+        {error && (
+          <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            {error}
+          </div>
+        )}
         <label className="text-xs font-semibold text-slate-500">Folder Name</label>
         <input
           value={name}
@@ -55,9 +70,10 @@ export default function QuestionFolderCreatePage() {
         />
         <button
           type="submit"
+          disabled={saving}
           className="mt-4 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
         >
-          Save Folder
+          {saving ? "Saving..." : "Save Folder"}
         </button>
       </form>
     </QuestionBankLayout>

@@ -1,4 +1,75 @@
-import { query as dbQuery, getClient } from '../repositories/db.repository.js';
+import { query as dbQuery } from '../repositories/db.repository.js';
+
+const DASHBOARD_STATS_TTL_MS = Number(process.env.DASHBOARD_STATS_TTL_MS || 30_000);
+const dashboardStatsCache = new Map();
+let ensureDashboardIndexesPromise = null;
+
+const ensureDashboardIndexes = async () => {
+  if (!ensureDashboardIndexesPromise) {
+    ensureDashboardIndexesPromise = (async () => {
+      await dbQuery(
+        `CREATE INDEX IF NOT EXISTS idx_users_client_role_created_at
+         ON users (client_id, role, created_at DESC)`
+      );
+      await dbQuery(
+        `CREATE INDEX IF NOT EXISTS idx_users_client_last_login_active
+         ON users (client_id, last_login_at DESC)
+         WHERE is_active = true`
+      );
+      await dbQuery(
+        `CREATE INDEX IF NOT EXISTS idx_enrollments_enrolled_at_course
+         ON enrollments (enrolled_at DESC, course_id)`
+      );
+      await dbQuery(
+        `CREATE INDEX IF NOT EXISTS idx_courses_client_id_id
+         ON courses (client_id, id)`
+      );
+      await dbQuery(
+        `CREATE INDEX IF NOT EXISTS idx_student_attempts_started_content
+         ON student_attempts (started_at DESC, content_item_id)`
+      );
+      await dbQuery(
+        `CREATE INDEX IF NOT EXISTS idx_student_attempts_total_time_content
+         ON student_attempts (content_item_id)
+         WHERE total_time IS NOT NULL`
+      );
+    })().catch((err) => {
+      ensureDashboardIndexesPromise = null;
+      throw err;
+    });
+  }
+
+  return ensureDashboardIndexesPromise;
+};
+
+const getDashboardCache = (cacheKey) => {
+  const cached = dashboardStatsCache.get(cacheKey);
+  if (!cached) return null;
+  if (cached.expiresAt <= Date.now()) {
+    dashboardStatsCache.delete(cacheKey);
+    return null;
+  }
+  return cached.data;
+};
+
+const setDashboardCache = (cacheKey, data) => {
+  dashboardStatsCache.set(cacheKey, {
+    data,
+    expiresAt: Date.now() + DASHBOARD_STATS_TTL_MS,
+  });
+};
+
+const toDayKey = (value) => new Date(value).toISOString().split('T')[0];
+
+const buildDayMap = (rows, fieldName, mapper = (val) => Number(val)) => {
+  const map = {};
+  rows.forEach((row) => {
+    const dayKey = toDayKey(row.day);
+    map[dayKey] = mapper(row[fieldName]);
+  });
+  return map;
+};
+
 // Fetch all users from the database
 export const getAllUsers = async (req, res) => {
   const role = req.user?.role;
@@ -7,7 +78,7 @@ export const getAllUsers = async (req, res) => {
 
   try {
     const query = `
-      SELECT 
+      SELECT
         id,
         full_name,
         email,
@@ -28,24 +99,30 @@ export const getAllUsers = async (req, res) => {
   }
 };
 
-//fetch a day updates from the users,enrollments,student attempts tables
+// Fetch dashboard metrics and last 7-day trends
 export const getDashboardStats = async (req, res) => {
   const role = req.user?.role;
   const clientId = req.user?.client_id;
   const shouldScope = Boolean(clientId) && role !== 'super_admin';
+  const cacheKey = `${role || 'unknown'}:${clientId ?? 'all'}`;
 
   try {
+    const cached = getDashboardCache(cacheKey);
+    if (cached) {
+      return res.json(cached);
+    }
+
+    await ensureDashboardIndexes();
+
     const now = new Date();
-    // ✅ Get START of today in UTC
     const todayUTC = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-    
-    // ✅ Seven full days: from 7 days ago (00:00 UTC) to now
+
     const sevenDaysAgo = new Date(todayUTC);
     sevenDaysAgo.setUTCDate(todayUTC.getUTCDate() - 7);
-    
+
     const thirtyDaysAgo = new Date(todayUTC);
     thirtyDaysAgo.setUTCDate(todayUTC.getUTCDate() - 30);
-    // ===== 1. TOTAL METRICS (unchanged) =====
+
     const newSignupsQuery = `
       SELECT COUNT(*) AS count
       FROM users
@@ -53,9 +130,6 @@ export const getDashboardStats = async (req, res) => {
         AND created_at >= $1
         ${shouldScope ? 'AND client_id = $2' : ''}
     `;
-    const newSignupsParams = shouldScope ? [sevenDaysAgo, clientId] : [sevenDaysAgo];
-    const newSignupsResult = await dbQuery(newSignupsQuery, newSignupsParams);
-
     const newEnrollmentsQuery = `
       SELECT COUNT(*) AS count
       FROM enrollments e
@@ -63,9 +137,6 @@ export const getDashboardStats = async (req, res) => {
       WHERE e.enrolled_at >= $1
         ${shouldScope ? 'AND c.client_id = $2' : ''}
     `;
-    const newEnrollmentsParams = shouldScope ? [sevenDaysAgo, clientId] : [sevenDaysAgo];
-    const newEnrollmentsResult = await dbQuery(newEnrollmentsQuery, newEnrollmentsParams);
-
     const activeUsersQuery = `
       SELECT COUNT(*) AS count
       FROM users
@@ -73,9 +144,6 @@ export const getDashboardStats = async (req, res) => {
         AND last_login_at >= $1
         ${shouldScope ? 'AND client_id = $2' : ''}
     `;
-    const activeUsersParams = shouldScope ? [thirtyDaysAgo, clientId] : [thirtyDaysAgo];
-    const activeUsersResult = await dbQuery(activeUsersQuery, activeUsersParams);
-
     const totalLearningTimeQuery = `
       SELECT COALESCE(EXTRACT(EPOCH FROM SUM(sa.total_time)), 0) AS total_seconds
       FROM student_attempts sa
@@ -84,30 +152,7 @@ export const getDashboardStats = async (req, res) => {
       WHERE sa.total_time IS NOT NULL
       ${shouldScope ? 'AND c.client_id = $1' : ''}
     `;
-    const totalLearningTimeParams = shouldScope ? [clientId] : [];
-    const totalLearningTimeResult = await dbQuery(
-      totalLearningTimeQuery,
-      totalLearningTimeParams
-    );
 
-    const metrics = {
-      newSignups: parseInt(newSignupsResult.rows[0].count),
-      newEnrollments: parseInt(newEnrollmentsResult.rows[0].count),
-      activeUsers: parseInt(activeUsersResult.rows[0].count),
-      totalLearningHours: Math.round(
-        (parseFloat(totalLearningTimeResult.rows[0].total_seconds || 0) / 3600) * 10
-      ) / 10,
-    };
-
-    // ===== 2. HELPER: Generate full 7-day labels =====
-    const labels = [];
-    for (let i = 0; i < 7; i++) {
-      const date = new Date(todayUTC);
-      date.setUTCDate(todayUTC.getUTCDate() - (6 - i));
-      labels.push(date.toISOString().split('T')[0]); // "YYYY-MM-DD"
-    }
-
-    // ===== 3. DAILY SIGNUPS =====
     const dailySignupsQuery = `
       SELECT DATE(created_at) AS day, COUNT(*) AS count
       FROM users
@@ -116,19 +161,6 @@ export const getDashboardStats = async (req, res) => {
         ${shouldScope ? 'AND client_id = $2' : ''}
       GROUP BY day
     `;
-    const dailySignupsParams = shouldScope ? [sevenDaysAgo, clientId] : [sevenDaysAgo];
-    const dailySignupsResult = await dbQuery(dailySignupsQuery, dailySignupsParams);
-
-    const signupMap = {};
-dailySignupsResult.rows.forEach(row => {
-  // ✅ FIX: Normalize day to "YYYY-MM-DD"
-  const dayKey = new Date(row.day).toISOString().split('T')[0];
-  signupMap[dayKey] = parseInt(row.count);
-});
-
-const signupsData = labels.map(day => signupMap[day] || 0);
-
-    // ===== 4. DAILY ENROLLMENTS =====
     const dailyEnrollmentsQuery = `
       SELECT DATE(e.enrolled_at) AS day, COUNT(*) AS count
       FROM enrollments e
@@ -137,22 +169,6 @@ const signupsData = labels.map(day => signupMap[day] || 0);
         ${shouldScope ? 'AND c.client_id = $2' : ''}
       GROUP BY day
     `;
-    const dailyEnrollmentsParams = shouldScope ? [sevenDaysAgo, clientId] : [sevenDaysAgo];
-    const dailyEnrollmentsResult = await dbQuery(
-      dailyEnrollmentsQuery,
-      dailyEnrollmentsParams
-    );
-
-    const enrollMap = {};
-dailyEnrollmentsResult.rows.forEach(row => {
-  // ✅ FIX
-  const dayKey = new Date(row.day).toISOString().split('T')[0];
-  enrollMap[dayKey] = parseInt(row.count);
-});
-
-const enrollmentsData = labels.map(day => enrollMap[day] || 0);
-
-    // ===== 5. DAILY LOGINS (as proxy for "Active Users" trend) =====
     const dailyLoginsQuery = `
       SELECT DATE(last_login_at) AS day, COUNT(*) AS count
       FROM users
@@ -162,21 +178,8 @@ const enrollmentsData = labels.map(day => enrollMap[day] || 0);
         ${shouldScope ? 'AND client_id = $2' : ''}
       GROUP BY day
     `;
-    const dailyLoginsParams = shouldScope ? [sevenDaysAgo, clientId] : [sevenDaysAgo];
-    const dailyLoginsResult = await dbQuery(dailyLoginsQuery, dailyLoginsParams);
-
-    const loginMap = {};
-dailyLoginsResult.rows.forEach(row => {
-  // ✅ FIX
-  const dayKey = new Date(row.day).toISOString().split('T')[0];
-  loginMap[dayKey] = parseInt(row.count);
-});
-
-const loginsData = labels.map(day => loginMap[day] || 0);
-
-    // ===== 6. DAILY LEARNING TIME (in hours) =====
     const dailyLearningQuery = `
-      SELECT 
+      SELECT
         DATE(sa.started_at) AS day,
         COALESCE(EXTRACT(EPOCH FROM SUM(sa.total_time)) / 3600, 0) AS hours
       FROM student_attempts sa
@@ -186,39 +189,68 @@ const loginsData = labels.map(day => loginMap[day] || 0);
         ${shouldScope ? 'AND c.client_id = $2' : ''}
       GROUP BY day
     `;
-    const dailyLearningParams = shouldScope ? [sevenDaysAgo, clientId] : [sevenDaysAgo];
-    const dailyLearningResult = await dbQuery(dailyLearningQuery, dailyLearningParams);
 
-    const learningMap = {};
-dailyLearningResult.rows.forEach(row => {
-  // ✅ FIX
-  const dayKey = new Date(row.day).toISOString().split('T')[0];
-  learningMap[dayKey] = Math.round(parseFloat(row.hours) * 10) / 10;
-});
+    const scopedSevenDayParams = shouldScope ? [sevenDaysAgo, clientId] : [sevenDaysAgo];
+    const scopedThirtyDayParams = shouldScope ? [thirtyDaysAgo, clientId] : [thirtyDaysAgo];
+    const totalLearningTimeParams = shouldScope ? [clientId] : [];
 
-const learningTimeData = labels.map(day => learningMap[day] || 0);
+    const [
+      newSignupsResult,
+      newEnrollmentsResult,
+      activeUsersResult,
+      totalLearningTimeResult,
+      dailySignupsResult,
+      dailyEnrollmentsResult,
+      dailyLoginsResult,
+      dailyLearningResult,
+    ] = await Promise.all([
+      dbQuery(newSignupsQuery, scopedSevenDayParams),
+      dbQuery(newEnrollmentsQuery, scopedSevenDayParams),
+      dbQuery(activeUsersQuery, scopedThirtyDayParams),
+      dbQuery(totalLearningTimeQuery, totalLearningTimeParams),
+      dbQuery(dailySignupsQuery, scopedSevenDayParams),
+      dbQuery(dailyEnrollmentsQuery, scopedSevenDayParams),
+      dbQuery(dailyLoginsQuery, scopedSevenDayParams),
+      dbQuery(dailyLearningQuery, scopedSevenDayParams),
+    ]);
 
-    // ===== 7. CHART DATA STRUCTURE =====
-    const chartData = {
-      labels,
-      signups: signupsData,
-      enrollments: enrollmentsData,
-      logins: loginsData,
-      learningTime: learningTimeData,
+    const metrics = {
+      newSignups: Number.parseInt(newSignupsResult.rows[0].count, 10),
+      newEnrollments: Number.parseInt(newEnrollmentsResult.rows[0].count, 10),
+      activeUsers: Number.parseInt(activeUsersResult.rows[0].count, 10),
+      totalLearningHours:
+        Math.round((Number.parseFloat(totalLearningTimeResult.rows[0].total_seconds || 0) / 3600) * 10) / 10,
     };
-    
-    console.log("sevenDaysAgo (UTC):", sevenDaysAgo.toISOString());
-console.log("Labels:", labels);
-console.log("Raw signup rows:", dailySignupsResult.rows);
 
-    res.json({
-      metrics,
-      chartData,
+    const labels = [];
+    for (let i = 0; i < 7; i += 1) {
+      const date = new Date(todayUTC);
+      date.setUTCDate(todayUTC.getUTCDate() - (6 - i));
+      labels.push(date.toISOString().split('T')[0]);
+    }
+
+    const signupMap = buildDayMap(dailySignupsResult.rows, 'count', (val) => Number.parseInt(val, 10));
+    const enrollMap = buildDayMap(dailyEnrollmentsResult.rows, 'count', (val) => Number.parseInt(val, 10));
+    const loginMap = buildDayMap(dailyLoginsResult.rows, 'count', (val) => Number.parseInt(val, 10));
+    const learningMap = buildDayMap(dailyLearningResult.rows, 'hours', (val) => {
+      return Math.round(Number.parseFloat(val || 0) * 10) / 10;
     });
+
+    const payload = {
+      metrics,
+      chartData: {
+        labels,
+        signups: labels.map((day) => signupMap[day] || 0),
+        enrollments: labels.map((day) => enrollMap[day] || 0),
+        logins: labels.map((day) => loginMap[day] || 0),
+        learningTime: labels.map((day) => learningMap[day] || 0),
+      },
+    };
+
+    setDashboardCache(cacheKey, payload);
+    res.json(payload);
   } catch (err) {
     console.error('Failed to fetch dashboard stats:', err);
     res.status(500).json({ error: 'Failed to fetch dashboard stats' });
   }
 };
-
-

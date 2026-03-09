@@ -13,23 +13,68 @@ const ensureSuperAdmin = (user) => {
   }
 };
 
+const ensureClientAdmin = (user) => {
+  if (user?.role !== 'client_admin') {
+    throw new AppError('Access denied', 403);
+  }
+};
+
+const requireClientId = (clientId) => {
+  if (!clientId) {
+    throw new AppError('client_id is required', 400);
+  }
+  return clientId;
+};
+
 export const listRolePermissions = async ({ user, query }) => {
-  ensureSuperAdmin(user);
-  const clientId = parseClientId(query?.client_id);
-  const scope = query?.scope || 'all';
+  if (user?.role === 'super_admin') {
+    const clientId = parseClientId(query?.client_id);
+    const scope = query?.scope || 'all';
+    const result = await rolePermissionsRepo.fetchRolePermissions({ clientId, scope });
+    return result.rows;
+  }
+
+  ensureClientAdmin(user);
+  const clientId = requireClientId(parseClientId(user?.client_id));
+  if (query?.client_id && parseClientId(query?.client_id) !== clientId) {
+    throw new AppError('Access denied', 403);
+  }
+  const scope = query?.scope === 'all' ? 'all' : 'client';
   const result = await rolePermissionsRepo.fetchRolePermissions({ clientId, scope });
   return result.rows;
 };
 
 export const upsertRolePermission = async ({ user, body }) => {
-  ensureSuperAdmin(user);
+  if (user?.role === 'super_admin') {
+    const role = requireRole(body?.role);
+    const permission = requirePermission(body?.permission);
+    const granted = body?.granted !== false;
+    const clientId = parseClientId(body?.client_id);
+
+    if (['client_admin', 'school_owner', 'teacher', 'student'].includes(role) && !clientId) {
+      throw new AppError('client_id is required for this role', 400);
+    }
+
+    const result = await rolePermissionsRepo.upsertRolePermission({
+      clientId,
+      role,
+      permission,
+      granted,
+    });
+    return result.rows[0];
+  }
+
+  ensureClientAdmin(user);
   const role = requireRole(body?.role);
+  if (['super_admin', 'content_authorizer'].includes(role)) {
+    throw new AppError('Access denied', 403);
+  }
+
   const permission = requirePermission(body?.permission);
   const granted = body?.granted !== false;
-  const clientId = parseClientId(body?.client_id);
-
-  if (['client_admin', 'school_owner', 'teacher', 'student'].includes(role) && !clientId) {
-    throw new AppError('client_id is required for this role', 400);
+  const clientId = requireClientId(parseClientId(user?.client_id));
+  if (body?.client_id && parseClientId(body?.client_id) !== clientId) {
+    throw new AppError('Access denied', 403);
   }
 
   const result = await rolePermissionsRepo.upsertRolePermission({
