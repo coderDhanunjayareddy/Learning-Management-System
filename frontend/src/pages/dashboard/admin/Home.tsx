@@ -38,14 +38,14 @@ function MetricCard({
 interface DailyBarChartProps {
   title: string;
   labels: string[];
-  data: number[]; // âœ… CORRECT: 'data' is the property name
+  data: number[]; //  CORRECT: 'data' is the property name
   unit?: string;
 }
 
 function DailyBarChart({
   title,
   labels,
-  data, // âœ… CORRECT
+  data, //  CORRECT
   unit = 'count'
 }: DailyBarChartProps) {
   const chartData = {
@@ -53,7 +53,7 @@ function DailyBarChart({
     datasets: [
       {
         label: unit === 'hrs' ? 'Hours' : 'Count',
-        data, // âœ… CORRECT
+        data, //  CORRECT
         backgroundColor: '#3b82f6',
         borderRadius: 2,
         borderSkipped: false,
@@ -134,7 +134,7 @@ export default function DashboardHome() {
   useEffect(() => {
     const fetchDashboardData = async () => {
       try {
-        // âœ… Make sure this matches your backend route
+        //  Make sure this matches your backend route
         const res = await api.get('users/stats');
         const data = res.data;
 
@@ -199,25 +199,25 @@ export default function DashboardHome() {
       {/* Charts */}
       <div className="space-y-8 max-w-6xl mx-auto">
         <DailyBarChart
-          title="New Signups â€“ Last 7 Days"
+          title="New Signups Last 7 Days"
           labels={dailySignups.labels}
           data={dailySignups.data}
           unit="signups"
         />
         <DailyBarChart
-          title="New Enrollments â€“ Last 7 Days"
+          title="New Enrollments Last 7 Days"
           labels={dailyEnrollments.labels}
           data={dailyEnrollments.data}
           unit="enrollments"
         />
         <DailyBarChart
-          title="Daily Logins â€“ Last 7 Days"
+          title="Daily Logins Last 7 Days"
           labels={dailyLogins.labels}
           data={dailyLogins.data}
           unit="logins"
         />
         <DailyBarChart
-          title="Daily Learning Time â€“ Last 7 Days"
+          title="Daily Learning Time Last 7 Days"
           labels={dailyLearningTime.labels}
           data={dailyLearningTime.data}
           unit="hrs"
