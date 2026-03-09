@@ -43,6 +43,32 @@ api.interceptors.request.use((config) => {
 
 let refreshPromise: Promise<string | null> | null = null;
 
+const isAuthError = (status?: number, data?: any) => {
+  const code = String(data?.code ?? '').toUpperCase();
+  if (code === 'TOKEN_EXPIRED' || code === 'TOKEN_INVALID') return true;
+  if (status === 401) return true;
+  if (status !== 403) return false;
+
+  const rawMessage = data?.error ?? data?.message ?? '';
+  const message = String(rawMessage).toLowerCase();
+
+  return (
+    message.includes('invalid or expired token') ||
+    message.includes('invalid token') ||
+    message.includes('access token required')
+  );
+};
+
+const shouldSkipRefreshForUrl = (url: string) => {
+  if (!url) return false;
+  return (
+    url.includes('/auth/refresh') ||
+    url.includes('/auth/login') ||
+    url.includes('/auth/register') ||
+    url.includes('/auth/logout')
+  );
+};
+
 const refreshAccessToken = async () => {
   try {
     const res = await authClient.post('/auth/refresh');
@@ -64,7 +90,18 @@ api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
-    if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
+    const status = error.response?.status;
+    const data = error.response?.data;
+    const requestUrl = String(originalRequest?.url || '');
+    const skipRefresh = Boolean(originalRequest?._skipAuthRefresh);
+
+    if (
+      originalRequest &&
+      !originalRequest._retry &&
+      !skipRefresh &&
+      !shouldSkipRefreshForUrl(requestUrl) &&
+      isAuthError(status, data)
+    ) {
       originalRequest._retry = true;
 
       if (!refreshPromise) {

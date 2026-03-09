@@ -14,6 +14,8 @@ import {
 import type { TooltipItem } from 'chart.js';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
+const DASHBOARD_CACHE_KEY = 'dashboard_stats_v1';
+const DASHBOARD_CACHE_TTL_MS = 30_000;
 
 // ===== Metric Card Component =====
 function MetricCard({
@@ -132,38 +134,69 @@ export default function DashboardHome() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let mounted = true;
+
+    const applyDashboardData = (data: any) => {
+      if (!mounted || !data) return;
+      setMetrics(data.metrics);
+      setDailySignups({
+        labels: data.chartData.labels,
+        data: data.chartData.signups,
+      });
+      setDailyEnrollments({
+        labels: data.chartData.labels,
+        data: data.chartData.enrollments,
+      });
+      setDailyLogins({
+        labels: data.chartData.labels,
+        data: data.chartData.logins,
+      });
+      setDailyLearningTime({
+        labels: data.chartData.labels,
+        data: data.chartData.learningTime,
+      });
+    };
+
+    try {
+      const raw = sessionStorage.getItem(DASHBOARD_CACHE_KEY);
+      if (raw) {
+        const cached = JSON.parse(raw);
+        if (
+          cached?.timestamp &&
+          Date.now() - Number(cached.timestamp) < DASHBOARD_CACHE_TTL_MS &&
+          cached?.payload
+        ) {
+          applyDashboardData(cached.payload);
+          setLoading(false);
+        }
+      }
+    } catch {
+      sessionStorage.removeItem(DASHBOARD_CACHE_KEY);
+    }
+
     const fetchDashboardData = async () => {
       try {
-        //  Make sure this matches your backend route
         const res = await api.get('users/stats');
         const data = res.data;
-
-        setMetrics(data.metrics);
-
-        setDailySignups({
-          labels: data.chartData.labels,
-          data: data.chartData.signups,
-        });
-        setDailyEnrollments({
-          labels: data.chartData.labels,
-          data: data.chartData.enrollments,
-        });
-        setDailyLogins({
-          labels: data.chartData.labels,
-          data: data.chartData.logins,
-        });
-        setDailyLearningTime({
-          labels: data.chartData.labels,
-          data: data.chartData.learningTime,
-        });
+        applyDashboardData(data);
+        sessionStorage.setItem(
+          DASHBOARD_CACHE_KEY,
+          JSON.stringify({
+            timestamp: Date.now(),
+            payload: data,
+          })
+        );
       } catch (err) {
         console.error('Failed to load dashboard data', err);
       } finally {
-        setLoading(false);
+        if (mounted) setLoading(false);
       }
     };
 
     fetchDashboardData();
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   if (loading) {

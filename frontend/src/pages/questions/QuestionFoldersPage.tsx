@@ -1,33 +1,44 @@
-import { useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import api from "@/lib/api";
 import QuestionBankLayout from "@/features/question-bank/components/QuestionBankLayout";
-import { mockFolders, type QuestionFolder } from "@/features/question-bank/data/mockFolders";
+import type { QuestionFolder } from "@/types/questionFolder";
+
+const normalizeFolder = (item: any): QuestionFolder => ({
+  id: item.id,
+  name: item.name ?? "Untitled Folder",
+  description: item.description ?? "",
+  questionCount: Number(item.questionCount ?? item.question_count ?? 0),
+});
 
 export default function QuestionFoldersPage() {
   const navigate = useNavigate();
-  const location = useLocation();
-  const [folders, setFolders] = useState<QuestionFolder[]>(mockFolders);
+  const [folders, setFolders] = useState<QuestionFolder[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const state = location.state as
-      | { createdFolder?: QuestionFolder; updatedFolder?: QuestionFolder }
-      | null;
-    if (state?.createdFolder) {
-      setFolders((prev) => [state.createdFolder as QuestionFolder, ...prev]);
-    }
-    if (state?.updatedFolder) {
-      setFolders((prev) =>
-        prev.map((item) =>
-          item.id === state.updatedFolder?.id
-            ? (state.updatedFolder as QuestionFolder)
-            : item
-        )
-      );
-    }
-    if (state) {
-      navigate(location.pathname, { replace: true });
-    }
-  }, [location.pathname, location.state, navigate]);
+    const loadFolders = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await api.get("/question-folders");
+        const payload = Array.isArray(res.data)
+          ? res.data
+          : Array.isArray(res.data?.data)
+          ? res.data.data
+          : [];
+        setFolders(payload.map(normalizeFolder));
+      } catch (err: any) {
+        setFolders([]);
+        setError(err?.response?.data?.error || "Failed to load folders");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadFolders();
+  }, []);
 
   return (
     <QuestionBankLayout
@@ -42,38 +53,55 @@ export default function QuestionFoldersPage() {
         </button>
       }
     >
-      <div className="grid gap-4 lg:grid-cols-2">
-        {folders.map((folder) => (
-          <div
-            key={folder.id}
-            className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 className="text-lg font-semibold text-slate-900">{folder.name}</h3>
-                <p className="mt-1 text-sm text-slate-500">
-                  {folder.description || "No description yet."}
-                </p>
+      {error && (
+        <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          {error}
+        </div>
+      )}
+
+      {loading ? (
+        <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-500">
+          Loading folders...
+        </div>
+      ) : (
+        <div className="grid gap-4 lg:grid-cols-2">
+          {folders.map((folder) => (
+            <div
+              key={folder.id}
+              className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900">{folder.name}</h3>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {folder.description || "No description yet."}
+                  </p>
+                </div>
+                <div className="text-xs text-slate-400">{folder.questionCount} questions</div>
               </div>
-              <div className="text-xs text-slate-400">{folder.questionCount} questions</div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  onClick={() => navigate(`/question-bank/bulk-upload?folderId=${folder.id}`)}
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                >
+                  Upload to Folder
+                </button>
+                <button
+                  onClick={() => navigate(`/question-bank/folders/${folder.id}/edit`)}
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                >
+                  Edit
+                </button>
+              </div>
             </div>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <button
-                onClick={() => navigate(`/question-bank/bulk-upload?folderId=${folder.id}`)}
-                className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-              >
-                Upload to Folder
-              </button>
-              <button
-                onClick={() => navigate(`/question-bank/folders/${folder.id}/edit`)}
-                className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-              >
-                Edit
-              </button>
+          ))}
+          {folders.length === 0 && (
+            <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-500 lg:col-span-2">
+              No folders found.
             </div>
-          </div>
-        ))}
-      </div>
+          )}
+        </div>
+      )}
     </QuestionBankLayout>
   );
 }

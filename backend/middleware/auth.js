@@ -3,6 +3,10 @@ import jwt from 'jsonwebtoken';
 import pool from '../config/db.js';
 
 const JWT_SECRET = process.env.JWT_SECRET;
+const USER_CACHE_TTL_MS = Number(process.env.AUTH_USER_CACHE_TTL_MS || 30_000);
+const PERMISSIONS_CACHE_TTL_MS = Number(process.env.PERMISSION_CACHE_TTL_MS || 60_000);
+const userCache = new Map();
+const permissionsCache = new Map();
 
 const parseCookies = (cookieHeader) => {
   if (!cookieHeader) return {};
@@ -37,6 +41,44 @@ const normalizeRole = (role) => {
   return role;
 };
 
+const getCachedUser = (userId) => {
+  const key = String(userId);
+  const cached = userCache.get(key);
+  if (!cached) return null;
+  if (cached.expiresAt <= Date.now()) {
+    userCache.delete(key);
+    return null;
+  }
+  return cached.user;
+};
+
+const setCachedUser = (userId, user) => {
+  const key = String(userId);
+  userCache.set(key, {
+    user,
+    expiresAt: Date.now() + USER_CACHE_TTL_MS,
+  });
+};
+
+const getCachedPermissions = (role, clientId) => {
+  const key = `${role}:${clientId ?? 'global'}`;
+  const cached = permissionsCache.get(key);
+  if (!cached) return null;
+  if (cached.expiresAt <= Date.now()) {
+    permissionsCache.delete(key);
+    return null;
+  }
+  return cached.permissions;
+};
+
+const setCachedPermissions = (role, clientId, permissions) => {
+  const key = `${role}:${clientId ?? 'global'}`;
+  permissionsCache.set(key, {
+    permissions,
+    expiresAt: Date.now() + PERMISSIONS_CACHE_TTL_MS,
+  });
+};
+
 export const authenticateToken = async (req, res, next) => {
   const token = getTokenFromRequest(req);
 
@@ -46,17 +88,34 @@ export const authenticateToken = async (req, res, next) => {
     const decoded = jwt.verify(token, JWT_SECRET);
     req.auth = decoded;
 
-    const user = await pool.query('SELECT * FROM users WHERE id = $1 AND is_active = true', [decoded.userId]);
+    const cachedUser = getCachedUser(decoded.userId);
+    if (cachedUser) {
+      req.user = cachedUser;
+      return next();
+    }
 
-    if (!user.rows[0]) return res.status(403).json({ error: 'Invalid token' });
+    const user = await pool.query(
+      `SELECT id, email, full_name, role, is_active, client_id, user_id
+       FROM users
+       WHERE id = $1 AND is_active = true`,
+      [decoded.userId]
+    );
 
-    console.log("authenticate token value: ", user.rows[0]);
+    if (!user.rows[0]) {
+      return res.status(401).json({ error: 'Invalid token', code: 'TOKEN_INVALID' });
+    }
 
-
+    setCachedUser(decoded.userId, user.rows[0]);
     req.user = user.rows[0];
     next();
   } catch (err) {
-    return res.status(403).json({ error: 'Invalid or expired token' });
+    if (err?.name === 'TokenExpiredError') {
+      return res.status(401).json({ error: 'Token expired', code: 'TOKEN_EXPIRED' });
+    }
+    if (err?.name === 'JsonWebTokenError') {
+      return res.status(401).json({ error: 'Invalid token', code: 'TOKEN_INVALID' });
+    }
+    return res.status(401).json({ error: 'Invalid or expired token', code: 'TOKEN_INVALID' });
   }
 };
 
@@ -91,6 +150,12 @@ export const loadPermissions = async (req, res, next) => {
   const clientId = req.clientId ?? null;
 
   try {
+    const cachedPermissions = getCachedPermissions(role, clientId);
+    if (cachedPermissions) {
+      req.permissions = cachedPermissions;
+      return next();
+    }
+
     const result = await pool.query(
       `SELECT permission, granted, client_id
        FROM role_permissions
@@ -106,6 +171,7 @@ export const loadPermissions = async (req, res, next) => {
       }
     }
 
+    setCachedPermissions(role, clientId, permissions);
     req.permissions = permissions;
     next();
   } catch (err) {

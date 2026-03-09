@@ -189,6 +189,178 @@ const buildQuestionWhere = async ({ user, query, includeArchived = false }) => {
   return { conditions, params };
 };
 
+const coerceLooseValue = (value) => {
+  if (typeof value !== 'string') return value;
+
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return null;
+
+  if (trimmed === 'true') return true;
+  if (trimmed === 'false') return false;
+
+  if (
+    (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+    (trimmed.startsWith('[') && trimmed.endsWith(']'))
+  ) {
+    try {
+      return JSON.parse(trimmed);
+    } catch (err) {
+      return value;
+    }
+  }
+
+  if (!Number.isNaN(Number(trimmed))) {
+    return Number(trimmed);
+  }
+
+  return value;
+};
+
+const parseExamTagsInput = (value) => {
+  if (value === undefined || value === null) return [];
+  if (Array.isArray(value)) return parseStringArray(value, 'exam_tags');
+  if (typeof value === 'string') {
+    return value
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0);
+  }
+  throw new AppError('exam_tags must be an array or comma-separated string', 400);
+};
+
+const parseOptionsInput = (value) => {
+  if (value === undefined) return null;
+  if (value === null) return null;
+  if (Array.isArray(value)) return value;
+
+  if (typeof value === 'string') {
+    const coerced = coerceLooseValue(value);
+    if (Array.isArray(coerced)) return coerced;
+
+    return value
+      .split('|')
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0)
+      .map((entry, index) => ({
+        id: `opt-${index + 1}`,
+        text: entry,
+      }));
+  }
+
+  throw new AppError('options must be an array or pipe-delimited string', 400);
+};
+
+const parseNumberField = (value, fieldName, fallback) => {
+  if (value === undefined || value === null || value === '') return fallback;
+  const parsed = Number(value);
+  if (Number.isNaN(parsed)) {
+    throw new AppError(`${fieldName} must be a number`, 400);
+  }
+  return parsed;
+};
+
+const buildQuestionInsertPayload = async ({ input, user, role, clientId }) => {
+  const questionType = requireString(input.question_type, 'question_type');
+  if (!VALID_QUESTION_TYPES.includes(questionType)) {
+    throw new AppError('Invalid question_type', 400);
+  }
+
+  const questionTextInput = input.question_text;
+  if (
+    questionTextInput === undefined ||
+    questionTextInput === null ||
+    (typeof questionTextInput === 'string' && !questionTextInput.trim())
+  ) {
+    throw new AppError('question_text is required', 400);
+  }
+  const questionText = typeof questionTextInput === 'string' ? questionTextInput.trim() : questionTextInput;
+
+  const correctAnswerRaw = coerceLooseValue(input.correct_answer);
+  if (
+    correctAnswerRaw === undefined ||
+    correctAnswerRaw === null ||
+    (typeof correctAnswerRaw === 'string' && !correctAnswerRaw.trim())
+  ) {
+    throw new AppError('correct_answer is required', 400);
+  }
+
+  const subjectId = parseRequiredInt(input.subject_id, 'subject_id');
+  const chapterId = parseRequiredInt(input.chapter_id, 'chapter_id');
+  const topicId = parseNullableInt(input.topic_id, 'topic_id');
+  await ensureCurriculumScope({ subjectId, chapterId, topicId, clientId });
+
+  const schoolId = parseNullableInt(input.school_id, 'school_id');
+  await ensureSchoolAccess({ schoolId, role, userId: user.id, clientId });
+
+  const difficulty = input.difficulty_level ? String(input.difficulty_level) : 'medium';
+  if (!VALID_DIFFICULTY_LEVELS.includes(difficulty)) {
+    throw new AppError('Invalid difficulty_level', 400);
+  }
+
+  const statusInput = input.status ? String(input.status) : null;
+  const status =
+    isTeacher(role) ? 'draft' : statusInput && VALID_STATUSES.includes(statusInput) ? statusInput : 'draft';
+
+  const options = parseOptionsInput(input.options);
+  if (questionType.startsWith('mcq') && (!options || options.length === 0)) {
+    throw new AppError('options are required for MCQ questions', 400);
+  }
+
+  return {
+    client_id: clientId,
+    school_id: schoolId,
+    question_type: questionType,
+    question_text: questionText,
+    options,
+    correct_answer: correctAnswerRaw,
+    solution: input.solution ?? null,
+    solution_video_url: input.solution_video_url ?? null,
+    subject_id: subjectId,
+    chapter_id: chapterId,
+    topic_id: topicId,
+    difficulty_level: difficulty,
+    exam_tags: parseExamTagsInput(input.exam_tags),
+    marks_positive: parseNumberField(input.marks_positive, 'marks_positive', 4),
+    marks_negative: parseNumberField(input.marks_negative, 'marks_negative', 0),
+    status,
+    created_by: user.id,
+  };
+};
+
+const insertQuestion = async (payload) => {
+  const insertResult = await dbQuery(
+    `
+    INSERT INTO questions
+    (client_id, school_id, question_type, question_text, options, correct_answer, solution,
+     solution_video_url, subject_id, chapter_id, topic_id, difficulty_level, exam_tags,
+     marks_positive, marks_negative, status, created_by)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+    RETURNING *
+    `,
+    [
+      payload.client_id,
+      payload.school_id,
+      payload.question_type,
+      payload.question_text,
+      payload.options,
+      payload.correct_answer,
+      payload.solution,
+      payload.solution_video_url,
+      payload.subject_id,
+      payload.chapter_id,
+      payload.topic_id,
+      payload.difficulty_level,
+      payload.exam_tags,
+      payload.marks_positive,
+      payload.marks_negative,
+      payload.status,
+      payload.created_by,
+    ]
+  );
+
+  return insertResult.rows[0];
+};
+
 export const listQuestions = async (req, res) => {
   try {
     if (!req.user?.id || !req.user?.role) {
@@ -295,97 +467,151 @@ export const createQuestion = async (req, res) => {
 
     const role = req.user.role;
     const clientId = ensureClientScope(req.user.client_id ?? null, role);
+    const payload = await buildQuestionInsertPayload({
+      input: req.body ?? {},
+      user: req.user,
+      role,
+      clientId,
+    });
+    const created = await insertQuestion(payload);
 
-    const questionType = requireString(req.body.question_type, 'question_type');
-    if (!VALID_QUESTION_TYPES.includes(questionType)) {
-      throw new AppError('Invalid question_type', 400);
-    }
-
-    const questionText = req.body.question_text;
-    if (!questionText) {
-      throw new AppError('question_text is required', 400);
-    }
-
-    const correctAnswer = req.body.correct_answer;
-    if (!correctAnswer) {
-      throw new AppError('correct_answer is required', 400);
-    }
-
-    const subjectId = parseRequiredInt(req.body.subject_id, 'subject_id');
-    const chapterId = parseRequiredInt(req.body.chapter_id, 'chapter_id');
-    const topicId = parseNullableInt(req.body.topic_id, 'topic_id');
-
-    await ensureCurriculumScope({ subjectId, chapterId, topicId, clientId });
-
-    const schoolId = parseNullableInt(req.body.school_id, 'school_id');
-    await ensureSchoolAccess({ schoolId, role, userId: req.user.id, clientId });
-
-    const difficulty = req.body.difficulty_level || 'medium';
-    if (!VALID_DIFFICULTY_LEVELS.includes(difficulty)) {
-      throw new AppError('Invalid difficulty_level', 400);
-    }
-
-    const statusInput = req.body.status ? String(req.body.status) : null;
-    const status =
-      isTeacher(role) ? 'draft' : statusInput && VALID_STATUSES.includes(statusInput) ? statusInput : 'draft';
-
-    const payload = {
-      client_id: clientId,
-      school_id: schoolId,
-      question_type: questionType,
-      question_text: questionText,
-      options: req.body.options ?? null,
-      correct_answer: correctAnswer,
-      solution: req.body.solution ?? null,
-      solution_video_url: req.body.solution_video_url ?? null,
-      subject_id: subjectId,
-      chapter_id: chapterId,
-      topic_id: topicId,
-      difficulty_level: difficulty,
-      exam_tags: parseStringArray(req.body.exam_tags, 'exam_tags'),
-      marks_positive: req.body.marks_positive ?? 4,
-      marks_negative: req.body.marks_negative ?? 0,
-      status,
-      created_by: req.user.id,
-    };
-
-    if (questionType.startsWith('mcq') && (!payload.options || payload.options.length === 0)) {
-      throw new AppError('options are required for MCQ questions', 400);
-    }
-
-    const insertResult = await dbQuery(
-      `
-      INSERT INTO questions
-      (client_id, school_id, question_type, question_text, options, correct_answer, solution,
-       solution_video_url, subject_id, chapter_id, topic_id, difficulty_level, exam_tags,
-       marks_positive, marks_negative, status, created_by)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
-      RETURNING *
-      `,
-      [
-        payload.client_id,
-        payload.school_id,
-        payload.question_type,
-        payload.question_text,
-        payload.options,
-        payload.correct_answer,
-        payload.solution,
-        payload.solution_video_url,
-        payload.subject_id,
-        payload.chapter_id,
-        payload.topic_id,
-        payload.difficulty_level,
-        payload.exam_tags,
-        payload.marks_positive,
-        payload.marks_negative,
-        payload.status,
-        payload.created_by,
-      ]
-    );
-
-    res.status(201).json(insertResult.rows[0]);
+    res.status(201).json(created);
   } catch (err) {
     handleServiceError(res, err, 'Failed to create question');
+  }
+};
+
+let ensureQuestionFoldersTablePromise = null;
+
+const ensureQuestionFoldersTable = async () => {
+  if (!ensureQuestionFoldersTablePromise) {
+    ensureQuestionFoldersTablePromise = (async () => {
+      await dbQuery(
+        `
+        CREATE TABLE IF NOT EXISTS question_folders (
+          id SERIAL PRIMARY KEY,
+          client_id INTEGER REFERENCES clients(id) ON DELETE CASCADE,
+          school_id INTEGER REFERENCES schools(id) ON DELETE CASCADE,
+          name VARCHAR(255) NOT NULL,
+          description TEXT,
+          created_by INTEGER REFERENCES users(id),
+          created_at TIMESTAMPTZ DEFAULT NOW(),
+          updated_at TIMESTAMPTZ DEFAULT NOW()
+        )
+        `
+      );
+      await dbQuery(
+        `CREATE INDEX IF NOT EXISTS idx_question_folders_client ON question_folders(client_id)`
+      );
+      await dbQuery(
+        `CREATE INDEX IF NOT EXISTS idx_question_folders_school ON question_folders(school_id)`
+      );
+    })().catch((err) => {
+      ensureQuestionFoldersTablePromise = null;
+      throw err;
+    });
+  }
+
+  return ensureQuestionFoldersTablePromise;
+};
+
+const buildQuestionFolderWhere = async ({ user, paramsStartAt = 1 }) => {
+  const role = user?.role;
+  const clientId = ensureClientScope(user?.client_id ?? null, role);
+  const conditions = [];
+  const params = [];
+
+  const addParam = (value) => {
+    params.push(value);
+    return `$${paramsStartAt + params.length - 1}`;
+  };
+
+  if (clientId) {
+    conditions.push(`f.client_id = ${addParam(clientId)}`);
+  }
+
+  if (isTeacher(role) || isSchoolOwner(role)) {
+    const schoolIds = await fetchUserSchoolIds(user.id);
+    if (schoolIds.length > 0) {
+      conditions.push(`(f.school_id IS NULL OR f.school_id = ANY(${addParam(schoolIds)}))`);
+    } else {
+      conditions.push(`f.school_id IS NULL`);
+    }
+  }
+
+  return { conditions, params };
+};
+
+const normalizeFolder = (row) => ({
+  id: row.id,
+  name: row.name,
+  description: row.description ?? '',
+  question_count: Number(row.question_count ?? 0),
+  questionCount: Number(row.question_count ?? 0),
+  created_at: row.created_at,
+  updated_at: row.updated_at,
+});
+
+export const bulkUploadQuestions = async (req, res) => {
+  try {
+    if (!req.user?.id || !req.user?.role) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const role = req.user.role;
+    const clientId = ensureClientScope(req.user.client_id ?? null, role);
+    const questions = req.body?.questions;
+
+    if (!Array.isArray(questions) || questions.length === 0) {
+      throw new AppError('questions must be a non-empty array', 400);
+    }
+
+    if (questions.length > 500) {
+      throw new AppError('A maximum of 500 questions can be uploaded at once', 400);
+    }
+
+    const created = [];
+    const failed = [];
+
+    for (let index = 0; index < questions.length; index += 1) {
+      const row = questions[index];
+      try {
+        if (!row || typeof row !== 'object' || Array.isArray(row)) {
+          throw new AppError('Row must be an object', 400);
+        }
+
+        const payload = await buildQuestionInsertPayload({
+          input: row,
+          user: req.user,
+          role,
+          clientId,
+        });
+        const inserted = await insertQuestion(payload);
+        created.push({
+          index,
+          id: inserted.id,
+          status: inserted.status,
+        });
+      } catch (err) {
+        if (err instanceof AppError) {
+          failed.push({ index, error: err.message });
+        } else {
+          console.error(`Bulk upload failed at row ${index}:`, err);
+          failed.push({ index, error: 'Unexpected error while creating question' });
+        }
+      }
+    }
+
+    const successStatus = created.length > 0 ? 201 : 400;
+    res.status(successStatus).json({
+      total: questions.length,
+      created_count: created.length,
+      failed_count: failed.length,
+      created,
+      failed,
+    });
+  } catch (err) {
+    handleServiceError(res, err, 'Failed to bulk upload questions');
   }
 };
 
@@ -648,5 +874,167 @@ export const rejectQuestion = async (req, res) => {
     res.json(result.rows[0]);
   } catch (err) {
     handleServiceError(res, err, 'Failed to reject question');
+  }
+};
+
+export const listQuestionFolders = async (req, res) => {
+  try {
+    if (!req.user?.id || !req.user?.role) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    await ensureQuestionFoldersTable();
+    const { conditions, params } = await buildQuestionFolderWhere({ user: req.user });
+    const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const result = await dbQuery(
+      `
+      SELECT
+        f.id,
+        f.name,
+        f.description,
+        f.created_at,
+        f.updated_at,
+        0::INT AS question_count
+      FROM question_folders f
+      ${whereClause}
+      ORDER BY f.created_at DESC
+      `,
+      params
+    );
+
+    res.json(result.rows.map(normalizeFolder));
+  } catch (err) {
+    handleServiceError(res, err, 'Failed to load folders');
+  }
+};
+
+export const getQuestionFolderById = async (req, res) => {
+  try {
+    if (!req.user?.id || !req.user?.role) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    await ensureQuestionFoldersTable();
+    const id = parseRequiredInt(req.params.id, 'id');
+    const { conditions, params } = await buildQuestionFolderWhere({
+      user: req.user,
+      paramsStartAt: 2,
+    });
+
+    const whereParts = [`f.id = $1`, ...conditions];
+    const result = await dbQuery(
+      `
+      SELECT
+        f.id,
+        f.name,
+        f.description,
+        f.created_at,
+        f.updated_at,
+        0::INT AS question_count
+      FROM question_folders f
+      WHERE ${whereParts.join(' AND ')}
+      LIMIT 1
+      `,
+      [id, ...params]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Folder not found' });
+    }
+
+    res.json(normalizeFolder(result.rows[0]));
+  } catch (err) {
+    handleServiceError(res, err, 'Failed to load folder');
+  }
+};
+
+export const createQuestionFolder = async (req, res) => {
+  try {
+    if (!req.user?.id || !req.user?.role) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    await ensureQuestionFoldersTable();
+    const role = req.user.role;
+    const clientId = ensureClientScope(req.user.client_id ?? null, role);
+    const name = requireString(req.body?.name, 'name');
+    const description = req.body?.description ? String(req.body.description).trim() : null;
+    const schoolId = parseNullableInt(req.body?.school_id, 'school_id');
+
+    await ensureSchoolAccess({ schoolId, role, userId: req.user.id, clientId });
+
+    const result = await dbQuery(
+      `
+      INSERT INTO question_folders (client_id, school_id, name, description, created_by)
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING id, name, description, created_at, updated_at
+      `,
+      [clientId, schoolId, name, description, req.user.id]
+    );
+
+    res.status(201).json(normalizeFolder(result.rows[0]));
+  } catch (err) {
+    handleServiceError(res, err, 'Failed to create folder');
+  }
+};
+
+export const updateQuestionFolder = async (req, res) => {
+  try {
+    if (!req.user?.id || !req.user?.role) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    await ensureQuestionFoldersTable();
+    const id = parseRequiredInt(req.params.id, 'id');
+    const { conditions, params } = await buildQuestionFolderWhere({
+      user: req.user,
+      paramsStartAt: 2,
+    });
+    const existingWhere = [`id = $1`, ...conditions];
+
+    const existing = await dbQuery(
+      `SELECT id, school_id FROM question_folders WHERE ${existingWhere.join(' AND ')} LIMIT 1`,
+      [id, ...params]
+    );
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ error: 'Folder not found' });
+    }
+
+    const updates = {};
+    if (req.body?.name !== undefined) {
+      updates.name = requireString(req.body.name, 'name');
+    }
+    if (req.body?.description !== undefined) {
+      updates.description =
+        req.body.description === null ? null : String(req.body.description).trim();
+    }
+
+    if (Object.keys(updates).length === 0) {
+      throw new AppError('No updates provided', 400);
+    }
+
+    const setClauses = [];
+    const values = [];
+    let idx = 1;
+    Object.entries(updates).forEach(([column, value]) => {
+      setClauses.push(`${column} = $${idx++}`);
+      values.push(value);
+    });
+    values.push(id);
+
+    const result = await dbQuery(
+      `
+      UPDATE question_folders
+      SET ${setClauses.join(', ')}, updated_at = NOW()
+      WHERE id = $${idx}
+      RETURNING id, name, description, created_at, updated_at
+      `,
+      values
+    );
+
+    res.json(normalizeFolder(result.rows[0]));
+  } catch (err) {
+    handleServiceError(res, err, 'Failed to update folder');
   }
 };

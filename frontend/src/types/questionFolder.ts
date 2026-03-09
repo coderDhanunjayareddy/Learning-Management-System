@@ -1,8 +1,7 @@
 export interface QuestionFolder {
-  id: string;
+  id: string | number;
   name: string;
   description?: string;
   questionCount: number;
 }
 
-export const mockFolders: QuestionFolder[] = [];
