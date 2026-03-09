@@ -6,21 +6,27 @@ import SidebarNav from "@/components/layout/SidebarNav";
 import { getDashboardTheme } from "@/components/layout/dashboardTheme";
 import ProfilePanel from "@/features/users/components/ProfilePanel";
 import spectropyLogo from "/logo.png";
-import gvjbLogo from "/gvjb.png";
 import { RiHome2Line, RiFileList3Line } from "react-icons/ri";
 import { BiBookOpen } from "react-icons/bi";
 import { PiUsersBold, PiChatsCircleBold } from 'react-icons/pi';
+import { HiOutlineBuildingOffice2 } from "react-icons/hi2";
+
+type ClientUser = {
+  logo?: string;
+  client_name?: string;
+};
 
 export default function AdminProfile() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  const isGvjbClient = user?.role === "client_admin";
-  const theme = getDashboardTheme(isGvjbClient);
-  const brandLogo = isGvjbClient ? gvjbLogo : spectropyLogo;
-  const brandName = isGvjbClient ? "GVB" : "Spectropy";
-  const dashboardTitle = isGvjbClient ? "GVB Dashboard" : "Admin Dashboard";
+  const clientUser = user as (typeof user & ClientUser) | null;
+
+  const theme = getDashboardTheme(false);
+  const brandLogo = clientUser?.logo || spectropyLogo;
+  const brandName = clientUser?.client_name || "Spectropy";
+  const dashboardTitle = clientUser?.client_name ? `${clientUser.client_name} Dashboard` : "Admin Dashboard";
 
   const navItems = [
     {
@@ -29,6 +35,13 @@ export default function AdminProfile() {
       icon: <RiHome2Line />,
       active: false,
       onClick: () => navigate("/admin/dashboard"),
+    },
+    {
+      key: 'org',
+      label: 'Organization',
+      icon: <HiOutlineBuildingOffice2 />,
+      active: false,
+      onClick: () => navigate('/admin/org'),
     },
     {
       key: "courses",
@@ -77,12 +90,12 @@ export default function AdminProfile() {
           brandLogo={brandLogo}
           brandName={brandName}
           title={dashboardTitle}
-          brandTag={isGvjbClient ? "GVB" : undefined}
+          brandTag={clientUser?.client_name}
           navItems={navItems}
           userInfo={{
             name: user?.full_name || "Administrator",
             email: user?.email || "admin@spectropy.com",
-            meta: isGvjbClient ? "GVB Client" : null,
+            meta: clientUser?.client_name ? `${clientUser.client_name} Client` : null,
           }}
           onLogout={handleLogout}
           sidebarOpen={sidebarOpen}
@@ -116,7 +129,3 @@ export default function AdminProfile() {
     </DashboardLayout>
   );
 }
-
-
-
-

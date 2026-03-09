@@ -4,7 +4,6 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/features/auth/hooks/useAuth';
 
 import spectropyLogo from "/logo.png";
-import gvjbLogo from "/gvjb.png";
 import { RiHome2Line, RiFileList3Line } from "react-icons/ri";
 import { BiBookOpen } from "react-icons/bi";
 import { PiUsersBold, PiChatsCircleBold } from 'react-icons/pi';
@@ -17,25 +16,32 @@ import SidebarNav from '@/components/layout/SidebarNav';
 import { getDashboardTheme } from '@/components/layout/dashboardTheme';
 import AdminCourseManager from '@/features/courses/components/list/AdminCourseManager';
 
+type ClientUser = {
+  logo?: string;
+  client_name?: string;
+};
+
 export default function CourseStudents() {
   const navigate = useNavigate();
   const { logout, user } = useAuth();
 
+  const clientUser = user as (typeof user & ClientUser) | null;
+
   const userFullName = user?.full_name || 'Super Administrator';
   const userEmail = user?.email || 'super@lms.com';
-  const isGvjbClient = Boolean(user?.client_id);
   const isContentAuthorizer = user?.role === 'content_authorizer';
-  const brandLogo = isGvjbClient ? gvjbLogo : spectropyLogo;
-  const brandName = isGvjbClient ? 'GVB' : 'Spectropy';
-  const dashboardTitle = isGvjbClient ? 'GVB Dashboard' : 'Admin Dashboard';
-  const homeTitle = isGvjbClient
-    ? 'Welcome to the GVB Dashboard'
+
+  const brandLogo = clientUser?.logo || spectropyLogo;
+  const brandName = clientUser?.client_name || 'Spectropy';
+  const dashboardTitle = clientUser?.client_name ? `${clientUser.client_name} Dashboard` : 'Admin Dashboard';
+  const homeTitle = clientUser?.client_name
+    ? `Welcome to the ${clientUser.client_name} Dashboard`
     : 'Welcome to the Admin Dashboard';
-  const clientMeta = isGvjbClient ? 'GVB Client' : null;
-  const theme = getDashboardTheme(isGvjbClient);
+  const clientMeta = clientUser?.client_name ? `${clientUser.client_name} Client` : null;
+  const theme = getDashboardTheme(false);
   const courseBannerClass = isContentAuthorizer ? 'bg-sky-100' : 'bg-amber-50';
 
-  const [activeTab, setActiveTab] = useState<'courses' | 'home' | 'users' | 'community'>('courses');
+  const [activeTab, setActiveTab] = useState<'courses' | 'home' | 'users' | 'community'>('home');
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const navItems = [
@@ -102,7 +108,7 @@ export default function CourseStudents() {
           brandLogo={brandLogo}
           brandName={brandName}
           title={dashboardTitle}
-          brandTag={isGvjbClient ? 'GVB' : undefined}
+          brandTag={clientUser?.client_name}
           navItems={navItems}
           userInfo={{ name: userFullName, email: userEmail, meta: clientMeta }}
           onProfileClick={() => navigate("/admin/profile")}
@@ -131,8 +137,7 @@ export default function CourseStudents() {
               </h1>
 
               <p
-                className={`${isGvjbClient ? 'text-slate-600' : 'text-gray-600'
-                  } mt-1 text-sm md:text-base`}
+                className="text-gray-600 mt-1 text-sm md:text-base"
               >
                 {activeTab === 'courses' &&
                   'Set up your courses and share your knowledge.'}
@@ -152,7 +157,6 @@ export default function CourseStudents() {
             mode="admin"
             role={user?.role}
             theme={theme}
-            isGvjbClient={isGvjbClient}
             brandLogo={brandLogo}
             brandName={brandName}
             courseBannerClass={courseBannerClass}
@@ -172,7 +176,3 @@ export default function CourseStudents() {
     </DashboardLayout>
   );
 }
-
-
-
-

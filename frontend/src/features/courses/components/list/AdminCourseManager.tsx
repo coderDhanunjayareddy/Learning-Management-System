@@ -3,6 +3,7 @@ import api from "@/lib/api";
 import { GrChapterAdd } from "react-icons/gr";
 import { PiUsersBold } from "react-icons/pi";
 import type { DashboardTheme } from "@/components/layout/dashboardTheme";
+import spectropyLogo from "/logo.png";
 
 type Course = {
   id: number;
@@ -90,7 +91,6 @@ interface AdminCourseManagerProps {
   role?: string | null;
   permissions?: Partial<CoursePermissions>;
   theme: DashboardTheme;
-  isGvjbClient?: boolean;
   brandLogo?: string;
   brandName?: string;
   courseBannerClass?: string;
@@ -108,7 +108,6 @@ export default function AdminCourseManager({
   role,
   permissions,
   theme,
-  isGvjbClient = false,
   brandLogo,
   brandName = "Spectropy",
   courseBannerClass = "bg-amber-50",
@@ -291,11 +290,11 @@ export default function AdminCourseManager({
         prev.map((course) =>
           course.id === id
             ? {
-                ...course,
-                title: editTitle.trim(),
-                description: editDescription.trim() || null,
-                published: editPublished,
-              }
+              ...course,
+              title: editTitle.trim(),
+              description: editDescription.trim() || null,
+              published: editPublished,
+            }
             : course
         )
       );
@@ -319,8 +318,8 @@ export default function AdminCourseManager({
       !hasPublishState || statusFilter === "all"
         ? true
         : statusFilter === "published"
-        ? course.published === true
-        : course.published === false;
+          ? course.published === true
+          : course.published === false;
 
     return matchesSearch && matchesStatus;
   });
@@ -338,11 +337,7 @@ export default function AdminCourseManager({
             placeholder="Search by Course Title"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className={`w-full p-3 pl-10 border rounded-lg focus:outline-none focus:ring-2 ${
-              isGvjbClient
-                ? "border-amber-200 focus:ring-amber-400 focus:border-amber-400"
-                : "border-gray-300 focus:ring-blue-900 focus:border-transparent"
-            }`}
+            className="w-full p-3 pl-10 border rounded-lg focus:outline-none focus:ring-2 border-gray-300 focus:ring-blue-900 focus:border-transparent"
           />
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -365,16 +360,13 @@ export default function AdminCourseManager({
             <div ref={filterRef} className="relative">
               <button
                 onClick={() => setShowFilters((prev) => !prev)}
-                className={`inline-flex items-center px-4 py-2 border rounded-lg text-sm bg-white ${
-                  theme.secondaryBorderClass
-                } ${isGvjbClient ? "hover:bg-amber-50 text-amber-900" : "hover:bg-gray-50"}`}
+                className={`inline-flex items-center px-4 py-2 border rounded-lg text-sm bg-white ${theme.secondaryBorderClass} hover:bg-gray-50`}
               >
                 Filters
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
-                  className={`h-4 w-4 ml-1 transition-transform ${
-                    showFilters ? "rotate-180" : ""
-                  }`}
+                  className={`h-4 w-4 ml-1 transition-transform ${showFilters ? "rotate-180" : ""
+                    }`}
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -390,14 +382,10 @@ export default function AdminCourseManager({
 
               {showFilters && (
                 <div
-                  className={`absolute right-0 mt-2 w-56 bg-white border shadow-lg rounded-lg p-3 z-50 ${
-                    isGvjbClient ? "border-amber-200" : "border-gray-200"
-                  }`}
+                  className="absolute right-0 mt-2 w-56 bg-white border shadow-lg rounded-lg p-3 z-50 border-gray-200"
                 >
                   <label
-                    className={`text-xs font-semibold ${
-                      isGvjbClient ? "text-slate-600" : "text-gray-600"
-                    }`}
+                    className="text-xs font-semibold text-gray-600"
                   >
                     Published Status
                   </label>
@@ -408,9 +396,7 @@ export default function AdminCourseManager({
                       setStatusFilter(val);
                       setShowFilters(false);
                     }}
-                    className={`w-full p-2 mt-1 border rounded text-sm ${
-                      isGvjbClient ? "border-amber-200" : "border-gray-300"
-                    }`}
+                    className="w-full p-2 mt-1 border rounded text-sm border-gray-300"
                   >
                     <option value="all">All Courses</option>
                     <option value="published">Published</option>
@@ -423,15 +409,10 @@ export default function AdminCourseManager({
 
           <button
             onClick={() => setViewMode("grid")}
-            className={`p-2 border rounded-lg ${
-              viewMode === "grid"
-                ? isGvjbClient
-                  ? "bg-amber-400 text-slate-900 border-amber-400"
-                  : "bg-blue-900 text-white border-blue-900"
-                : isGvjbClient
-                ? "border-amber-200 hover:bg-amber-50"
-                : "border-gray-300 hover:bg-gray-50"
-            }`}
+            className={`p-2 border rounded-lg ${viewMode === "grid"
+              ? "bg-blue-900 text-white border-blue-900"
+              : "border-gray-300 hover:bg-gray-50"
+              }`}
             title="Grid view"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -441,15 +422,10 @@ export default function AdminCourseManager({
 
           <button
             onClick={() => setViewMode("list")}
-            className={`p-2 border rounded-lg ${
-              viewMode === "list"
-                ? isGvjbClient
-                  ? "bg-amber-400 text-slate-900 border-amber-400"
-                  : "bg-blue-900 text-white border-blue-900"
-                : isGvjbClient
-                ? "border-amber-200 hover:bg-amber-50"
-                : "border-gray-300 hover:bg-gray-50"
-            }`}
+            className={`p-2 border rounded-lg ${viewMode === "list"
+              ? "bg-blue-900 text-white border-blue-900"
+              : "border-gray-300 hover:bg-gray-50"
+              }`}
             title="List view"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -460,9 +436,7 @@ export default function AdminCourseManager({
           {canShowCreate && (
             <button
               onClick={() => setShowCreateForm(true)}
-              className={`px-4 py-2 ${
-                isGvjbClient ? "rounded-full" : "rounded-lg"
-              } flex items-center gap-2 ${theme.primaryButtonClass}`}
+              className={`px-4 py-2 rounded-lg flex items-center gap-2 ${theme.primaryButtonClass}`}
             >
               Create Course
             </button>
@@ -473,19 +447,13 @@ export default function AdminCourseManager({
       {showCreateForm && canShowCreate && (
         <div className="fixed inset-0 bg-black/40 flex justify-center items-center z-50">
           <div
-            className={`bg-white rounded-lg shadow-lg w-full max-w-md mx-auto p-6 ${
-              isGvjbClient ? "border border-amber-100" : ""
-            }`}
+            className="bg-white rounded-lg shadow-lg w-full max-w-md mx-auto p-6"
           >
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-lg font-semibold">Create New Course</h2>
               <button
                 onClick={() => setShowCreateForm(false)}
-                className={
-                  isGvjbClient
-                    ? "text-amber-700 hover:text-amber-800"
-                    : "text-gray-500 hover:text-gray-700"
-                }
+                className="text-gray-500 hover:text-gray-700"
                 aria-label="Close form"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -501,11 +469,7 @@ export default function AdminCourseManager({
                   type="text"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  className={`w-full p-2 border rounded focus:outline-none focus:ring-2 ${
-                    isGvjbClient
-                      ? "border-amber-200 focus:ring-amber-400 focus:border-amber-400"
-                      : "border-gray-300 focus:ring-blue-900 focus:border-transparent"
-                  }`}
+                  className="w-full p-2 border rounded focus:outline-none focus:ring-2 border-gray-300 focus:ring-blue-900 focus:border-transparent"
                   placeholder="Enter course title"
                   required
                   autoFocus
@@ -517,11 +481,7 @@ export default function AdminCourseManager({
                 <textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  className={`w-full p-2 border rounded focus:outline-none focus:ring-2 ${
-                    isGvjbClient
-                      ? "border-amber-200 focus:ring-amber-400 focus:border-amber-400"
-                      : "border-gray-300 focus:ring-blue-900 focus:border-transparent"
-                  }`}
+                  className="w-full p-2 border rounded focus:outline-none focus:ring-2 border-gray-300 focus:ring-blue-900 focus:border-transparent"
                   placeholder="Optional course description"
                   rows={3}
                 />
@@ -529,25 +489,23 @@ export default function AdminCourseManager({
 
               <div className="flex items-center justify-between pt-2">
                 <div className="flex items-center">
-                  <span className={`text-sm font-medium mr-3 ${isGvjbClient ? "text-amber-800" : "text-gray-700"}`}>
+                  <span className="text-sm font-medium mr-3 text-gray-700">
                     Publish Course
                   </span>
                   <button
                     type="button"
                     onClick={() => setPublished(!published)}
                     disabled={!canShowPublishToggle}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
-                      published ? "bg-green-500" : isGvjbClient ? "bg-amber-200" : "bg-gray-300"
-                    } ${canShowPublishToggle ? "" : "opacity-50 cursor-not-allowed"}`}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${published ? "bg-green-500" : "bg-gray-300"
+                      } ${canShowPublishToggle ? "" : "opacity-50 cursor-not-allowed"}`}
                     aria-label="Toggle publish"
                   >
                     <span
-                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                        published ? "translate-x-6" : "translate-x-1"
-                      }`}
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${published ? "translate-x-6" : "translate-x-1"
+                        }`}
                     />
                   </button>
-                  <span className={`ml-2 text-sm ${isGvjbClient ? "text-amber-700" : "text-gray-600"}`}>
+                  <span className="ml-2 text-sm text-gray-600">
                     {published ? "Published" : "Draft"}
                   </span>
                 </div>
@@ -555,11 +513,7 @@ export default function AdminCourseManager({
                 <button
                   type="submit"
                   disabled={loading}
-                  className={`px-4 py-2 rounded disabled:opacity-50 font-medium ${
-                    isGvjbClient
-                      ? "bg-amber-400 text-slate-900 hover:bg-amber-500"
-                      : "bg-blue-900 text-white hover:bg-blue-700"
-                  }`}
+                  className="px-4 py-2 rounded disabled:opacity-50 font-medium bg-blue-900 text-white hover:bg-blue-700"
                 >
                   {loading ? "Creating..." : "Create Course"}
                 </button>
@@ -598,11 +552,10 @@ export default function AdminCourseManager({
               return (
                 <div
                   key={course.id}
-                  className={`bg-white rounded-lg border shadow-sm hover:shadow-md transition-shadow ${
-                    viewMode === "list"
-                      ? "p-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between md:gap-4"
-                      : "flex flex-col justify-end"
-                  }`}
+                  className={`bg-white rounded-lg border shadow-sm hover:shadow-md transition-shadow ${viewMode === "list"
+                    ? "p-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between md:gap-4"
+                    : "flex flex-col justify-end"
+                    }`}
                 >
                   {viewMode === "list" ? (
                     <>
@@ -629,14 +582,12 @@ export default function AdminCourseManager({
                                 <button
                                   type="button"
                                   onClick={() => setEditPublished(!editPublished)}
-                                  className={`relative inline-flex h-4 w-8 items-center rounded-full ${
-                                    editPublished ? "bg-green-500" : "bg-gray-300"
-                                  }`}
+                                  className={`relative inline-flex h-4 w-8 items-center rounded-full ${editPublished ? "bg-green-500" : "bg-gray-300"
+                                    }`}
                                 >
                                   <span
-                                    className={`h-3 w-3 rounded-full bg-white transform transition ${
-                                      editPublished ? "translate-x-4" : "translate-x-0.5"
-                                    }`}
+                                    className={`h-3 w-3 rounded-full bg-white transform transition ${editPublished ? "translate-x-4" : "translate-x-0.5"
+                                      }`}
                                   />
                                 </button>
                               </div>
@@ -783,13 +734,11 @@ export default function AdminCourseManager({
                       <div
                         className={`relative h-28 ${courseBannerClass} flex items-center justify-center overflow-hidden rounded-t-lg`}
                       >
-                        {brandLogo && (
-                          <img
-                            src={brandLogo}
-                            alt={`${brandName} Logo`}
-                            className="h-10 w-auto opacity-70"
-                          />
-                        )}
+                        <img
+                          src={brandLogo || spectropyLogo}
+                          alt={`${brandName} Logo`}
+                          className="h-10 w-auto opacity-70"
+                        />
 
                         {showStatus &&
                           (course.published ? (
@@ -835,14 +784,12 @@ export default function AdminCourseManager({
                                   <button
                                     type="button"
                                     onClick={() => setEditPublished(!editPublished)}
-                                    className={`relative inline-flex h-5 w-9 items-center rounded-full ${
-                                      editPublished ? "bg-green-500" : "bg-gray-300"
-                                    }`}
+                                    className={`relative inline-flex h-5 w-9 items-center rounded-full ${editPublished ? "bg-green-500" : "bg-gray-300"
+                                      }`}
                                   >
                                     <span
-                                      className={`inline-block h-3 w-3 transform rounded-full bg-white transition ${
-                                        editPublished ? "translate-x-4" : "translate-x-1"
-                                      }`}
+                                      className={`inline-block h-3 w-3 transform rounded-full bg-white transition ${editPublished ? "translate-x-4" : "translate-x-1"
+                                        }`}
                                     />
                                   </button>
                                 </div>
@@ -1002,5 +949,3 @@ export default function AdminCourseManager({
     </div>
   );
 }
-
-

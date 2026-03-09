@@ -10,6 +10,11 @@ import Courses from '@/pages/course/CoursesPage';
 // SuperAdmin
 import PlatformDashboard from '@/pages/dashboard/superadmin/PlatformDashboard';
 import RegisterAdmin from '@/pages/dashboard/superadmin/RegisterAdmin';
+import ClientsPage from '@/pages/dashboard/superadmin/ClientsPage';
+import PacksPage from '@/pages/dashboard/superadmin/PacksPage';
+import EntitlementsPage from '@/pages/dashboard/superadmin/EntitlementsPage';
+import UsersPage from '@/pages/dashboard/superadmin/UsersPage';
+import PermissionsPage from '@/pages/dashboard/superadmin/PermissionsPage';
 
 // Admin / Client / School
 import AdminDashboard from '@/pages/dashboard/admin/admindashboard';
@@ -76,16 +81,21 @@ export default function AppRoutes() {
       {/* SuperAdmin */}
       <Route element={<Protect roles={['super_admin']} />}>
         <Route path="/superadmin/dashboard" element={<PlatformDashboard />} />
+        <Route path="/superadmin/clients" element={<ClientsPage />} />
+        <Route path="/superadmin/packs" element={<PacksPage />} />
+        <Route path="/superadmin/entitlements" element={<EntitlementsPage />} />
+        <Route path="/superadmin/users" element={<UsersPage />} />
+        <Route path="/superadmin/permissions" element={<PermissionsPage />} />
         <Route path="/superadmin/register" element={<RegisterAdmin />} />
       </Route>
 
-      {/* Client / School (alias routes for SaaS separation) */}
+      {/* Client / School (alias routes for SaaS separation) 
       <Route element={<Protect roles={['client_admin', 'content_authorizer']} />}>
         <Route path="/client/dashboard" element={<AdminDashboard />} />
       </Route>
       <Route element={<Protect roles={['school_owner']} />}>
         <Route path="/school/dashboard" element={<AdminDashboard />} />
-      </Route>
+      </Route>*/}
 
       {/* Admin */}
       <Route element={<Protect roles={['super_admin', 'client_admin', 'content_authorizer', 'school_owner']} />}>
