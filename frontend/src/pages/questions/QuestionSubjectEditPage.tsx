@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import api from "@/lib/api";
 import QuestionBankLayout from "@/features/question-bank/components/QuestionBankLayout";
-import { mockSubjects } from "@/features/question-bank/data/mockQuestions";
 import type { CurriculumItem } from "@/types/questionBank";
 
 export default function QuestionSubjectEditPage() {
@@ -28,10 +27,9 @@ export default function QuestionSubjectEditPage() {
           setName(loaded.name);
           return;
         }
-      } catch (error) {
-        const fallback = mockSubjects.find((item) => String(item.id) === String(id)) ?? null;
-        setSubject(fallback);
-        setName(fallback?.name ?? "");
+      } catch {
+        setSubject(null);
+        setName("");
       } finally {
         setLoading(false);
       }
@@ -51,12 +49,9 @@ export default function QuestionSubjectEditPage() {
       };
       navigate("/question-bank/subjects", { state: { updatedSubject: updated } });
       return;
-    } catch (error) {
-      const updated: CurriculumItem = {
-        id: subject.id,
-        name: name.trim(),
-      };
-      navigate("/question-bank/subjects", { state: { updatedSubject: updated } });
+    } catch {
+      alert("Failed to update subject.");
+      return;
     } finally {
       setSaving(false);
     }

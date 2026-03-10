@@ -1,20 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { approveQuestion, fetchQuestionById, rejectQuestion } from '@/features/questions/api/questionsApi';
+import QuestionRenderer from '@/components/questions/QuestionRenderer';
 import type { Question } from '@/features/questions/types';
 import { useAuth } from '@/app/providers/AuthProvider';
 import { isAdminRole } from '@/features/auth/types';
-
-const renderHtml = (html?: string | null) => ({ __html: html || '' });
-
-const parseHtml = (input?: unknown) => {
-  if (!input) return '';
-  if (typeof input === 'string') return input;
-  if (typeof input === 'object' && input && 'html' in input) {
-    return String((input as { html?: string }).html ?? '');
-  }
-  return '';
-};
 
 export default function QuestionDetailPage() {
   const { id } = useParams();
@@ -166,22 +156,14 @@ export default function QuestionDetailPage() {
         </div>
 
         <div className="mt-6">
-          <span className="text-xs font-semibold text-gray-500">Question Text</span>
-          <div
-            className="prose prose-sm mt-2 max-w-none text-gray-900"
-            dangerouslySetInnerHTML={renderHtml(parseHtml(question.question_text))}
+          <span className="text-xs font-semibold text-gray-500">Question Content</span>
+          <QuestionRenderer
+            question={question}
+            showMeta={false}
+            showSolution
+            className="mt-2"
           />
         </div>
-
-        {question.solution ? (
-          <div className="mt-6">
-            <span className="text-xs font-semibold text-gray-500">Solution</span>
-            <div
-              className="prose prose-sm mt-2 max-w-none text-gray-900"
-              dangerouslySetInnerHTML={renderHtml(parseHtml(question.solution))}
-            />
-          </div>
-        ) : null}
 
         {question.rejection_reason ? (
           <div className="mt-6 rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">

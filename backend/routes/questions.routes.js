@@ -8,6 +8,7 @@ import {
   approveQuestion,
   rejectQuestion,
   bulkUploadQuestions,
+  bulkUploadTemplate,
   listQuestionFolders,
   getQuestionFolderById,
   createQuestionFolder,
@@ -17,10 +18,7 @@ import { authenticateToken, requireRole } from '../middleware/auth.js';
 import multer from 'multer';
 
 const router = Router();
-const bulkUploadMiddleware = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 25 * 1024 * 1024 },
-});
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
 router.use(
   authenticateToken,
@@ -28,9 +26,10 @@ router.use(
 );
 
 router.get('/questions', listQuestions);
+router.get('/questions/bulk-upload/template', bulkUploadTemplate);
+router.post('/questions/bulk-upload', upload.single('file'), bulkUploadQuestions);
 router.get('/questions/:id', getQuestionById);
 router.post('/questions', createQuestion);
-router.post('/questions/bulk-upload', bulkUploadMiddleware.single('file'), bulkUploadQuestions);
 router.put('/questions/:id', updateQuestion);
 router.delete('/questions/:id', softDeleteQuestion);
 router.post('/questions/:id/approve', approveQuestion);

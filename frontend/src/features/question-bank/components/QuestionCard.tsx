@@ -1,3 +1,4 @@
+import QuestionRenderer from "@/components/questions/QuestionRenderer";
 import type { Question } from "@/types/questionBank";
 import type { QuestionPermissions } from "@/features/question-bank/utils/questionPermissions";
 
@@ -12,31 +13,31 @@ const typeLabels: Record<string, string> = {
   mcq_multiple: "MCQ Multiple",
   numerical: "Numerical",
   true_false: "True/False",
+  short_answer: "Short Answer",
+  match_following: "Match the Following",
+  fill_in_blank: "Fill in the Blank",
+  comprehensive: "Comprehensive",
 };
+
 
 interface QuestionCardProps {
   question: Question;
   permissions: QuestionPermissions;
-  onView: (question: Question) => void;
   onEdit: (question: Question) => void;
   onDelete?: (question: Question) => void;
   onApprove: (question: Question) => void;
   onReject: (question: Question) => void;
 }
 
-const stripHtml = (value: string) => value.replace(/<[^>]*>/g, "").trim();
-
 export default function QuestionCard({
   question,
   permissions,
-  onView,
   onEdit,
   onDelete,
   onApprove,
   onReject,
 }: QuestionCardProps) {
   const isEditable = permissions.canEdit;
-  const questionPreview = stripHtml(question.question_text);
 
   return (
     <div className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -74,28 +75,13 @@ export default function QuestionCard({
         </div>
       </div>
 
-      <div className="text-sm font-semibold text-slate-900">
-        {questionPreview.slice(0, 220)}
-        {questionPreview.length > 220 ? "..." : ""}
-      </div>
-
-      {question.options?.length ? (
-        <div className="space-y-2 text-sm text-slate-600">
-          {question.options.slice(0, 4).map((option, index) => (
-            <div
-              key={option.id}
-              className="flex items-center gap-3 py-1"
-            >
-              <span
-                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${option.is_correct ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}
-              >
-                {String.fromCharCode(65 + index)}
-              </span>
-              <span>{stripHtml(option.text || "Option")}</span>
-            </div>
-          ))}
-        </div>
-      ) : null}
+      <QuestionRenderer
+        question={question}
+        showMeta={false}
+        showAnswer
+        showSolution
+        contentClassName="text-sm font-semibold text-slate-900"
+      />
 
       {question.review_note && (
         <div className="rounded-lg border border-rose-100 bg-rose-50 px-3 py-2 text-xs text-rose-700">
@@ -104,12 +90,6 @@ export default function QuestionCard({
       )}
 
       <div className="flex flex-wrap items-center gap-2">
-        <button
-          onClick={() => onView(question)}
-          className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-        >
-          Preview
-        </button>
         {isEditable && (
           <button
             onClick={() => onEdit(question)}

@@ -45,7 +45,6 @@ import TeacherCourseContent from '@/pages/course/teacher/CourseContent';
 import TeacherProfile from '@/pages/dashboard/teacher/Profile';
 import TeacherHome from '@/pages/dashboard/teacher/TeacherHome';
 import QuestionBankPage from '@/pages/questions/QuestionBankPage';
-import QuestionDetail from '@/pages/questions/QuestionDetail';
 import QuestionCreatePage from '@/pages/questions/QuestionCreatePage';
 import QuestionEditPage from '@/pages/questions/QuestionEditPage';
 import QuestionDeletePage from '@/pages/questions/QuestionDeletePage';
@@ -160,7 +159,6 @@ export default function AppRoutes() {
               'content_authorizer',
               'school_owner',
               'teacher',
-              'student',
             ]}
           />
         }
@@ -169,7 +167,6 @@ export default function AppRoutes() {
         <Route path="/question-bank/new" element={<QuestionCreatePage />} />
         <Route path="/question-bank/:id/edit" element={<QuestionEditPage />} />
         <Route path="/question-bank/:id/delete" element={<QuestionDeletePage />} />
-        <Route path="/question-bank/:id" element={<QuestionDetail />} />
         <Route path="/question-bank/bulk-upload" element={<QuestionBulkUploadPage />} />
         <Route path="/question-bank/subjects" element={<QuestionSubjectsPage />} />
         <Route path="/question-bank/subjects/new" element={<QuestionSubjectCreatePage />} />

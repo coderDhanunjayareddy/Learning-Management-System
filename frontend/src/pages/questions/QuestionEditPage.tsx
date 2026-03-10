@@ -3,15 +3,36 @@ import { useNavigate, useParams } from "react-router-dom";
 import api from "@/lib/api";
 import QuestionBankLayout from "@/features/question-bank/components/QuestionBankLayout";
 import QuestionForm from "@/features/question-bank/components/QuestionForm";
-import { mockChapters, mockQuestions, mockSubjects, mockTopics } from "@/features/question-bank/data/mockQuestions";
 import type { CurriculumItem, Question } from "@/types/questionBank";
+
+const normalizeQuestionText = (value: any) => {
+  if (typeof value === "string") return { html: value, json: null };
+  if (value && typeof value === "object") {
+    return { html: value.html ?? value.text ?? "", json: value.json ?? null };
+  }
+  return { html: "", json: null };
+};
+
+const normalizeOptions = (options: any) => {
+  if (!Array.isArray(options)) return [];
+  return options.map((option: any, index: number) => ({
+    id: String(option.id ?? index),
+    text: typeof option.text === "object" ? option.text : { html: option.text ?? "", json: null },
+    is_correct: option.is_correct ?? option.isCorrect ?? option.correct ?? undefined,
+  }));
+};
 
 const normalizeQuestion = (item: any): Question => ({
   id: item.id ?? item.question_id ?? `${Math.random()}`,
   question_type: item.question_type ?? "mcq_single",
-  question_text: item.question_text?.html ?? item.question_text?.text ?? item.question_text ?? "",
-  options: item.options ?? [],
+  question_text: normalizeQuestionText(item.question_text),
+  options: normalizeOptions(item.options),
   correct_answer: item.correct_answer ?? null,
+  solution: normalizeQuestionText(item.solution),
+  solution_video_url: item.solution_video_url ?? null,
+  scoring_mode: item.scoring_mode ?? "all_or_nothing",
+  comprehension_passage: normalizeQuestionText(item.comprehension_passage),
+  comprehension_questions: item.comprehension_questions ?? [],
   subject_id: item.subject_id ?? null,
   chapter_id: item.chapter_id ?? null,
   topic_id: item.topic_id ?? null,
@@ -41,9 +62,9 @@ export default function QuestionEditPage() {
   const [question, setQuestion] = useState<Question | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const [subjects, setSubjects] = useState<CurriculumItem[]>(mockSubjects);
-  const [chapters] = useState<CurriculumItem[]>(mockChapters);
-  const [topics] = useState<CurriculumItem[]>(mockTopics);
+  const [subjects, setSubjects] = useState<CurriculumItem[]>([]);
+  const [chapters] = useState<CurriculumItem[]>([]);
+  const [topics] = useState<CurriculumItem[]>([]);
 
   useEffect(() => {
     const loadSubjects = async () => {
@@ -57,8 +78,8 @@ export default function QuestionEditPage() {
         if (payload.length) {
           setSubjects(normalizeCurriculum(payload));
         }
-      } catch (error) {
-        setSubjects(mockSubjects);
+      } catch {
+        setSubjects([]);
       }
     };
     loadSubjects();
@@ -72,9 +93,8 @@ export default function QuestionEditPage() {
         const res = await api.get(`/questions/${id}`);
         if (!res.data) throw new Error("Missing data");
         setQuestion(normalizeQuestion(res.data));
-      } catch (error) {
-        const fallback = mockQuestions.find((item) => String(item.id) === String(id)) ?? null;
-        setQuestion(fallback);
+      } catch {
+        setQuestion(null);
       } finally {
         setLoading(false);
       }
@@ -87,11 +107,11 @@ export default function QuestionEditPage() {
     try {
       const res = await api.put(`/questions/${id}`, payload);
       const updated = res.data ? normalizeQuestion(res.data) : { ...payload, id };
-      navigate(`/question-bank/${id}`, { state: { question: updated } });
+      navigate(`/question-bank`, { state: { updatedQuestion: updated } });
       return;
-    } catch (error) {
-      const updated = { ...payload, id };
-      navigate(`/question-bank/${id}`, { state: { question: updated } });
+    } catch {
+      alert("Failed to update question.");
+      return;
     }
   };
 
@@ -99,9 +119,10 @@ export default function QuestionEditPage() {
     <QuestionBankLayout
       title="Edit Question"
       description="Update the question details and answers."
+      showBack={false}
       actions={
         <button
-          onClick={() => navigate(`/question-bank/${id}`)}
+          onClick={() => navigate(`/question-bank`)}
           className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
         >
           Cancel
@@ -119,7 +140,7 @@ export default function QuestionEditPage() {
           subjects={subjects}
           chapters={chapters}
           topics={topics}
-          onClose={() => navigate(`/question-bank/${id}`)}
+          onClose={() => navigate(`/question-bank`)}
           onSave={(payload) => handleSave(payload)}
         />
       ) : (

@@ -7,7 +7,6 @@ import type { CurriculumItem, Question } from "@/types/questionBank";
 import QuestionFilters, { type QuestionFiltersState } from "./QuestionFilters";
 import QuestionCard from "./QuestionCard";
 import { getQuestionPermissions } from "@/features/question-bank/utils/questionPermissions";
-import { mockChapters, mockQuestions, mockSubjects, mockTopics } from "@/features/question-bank/data/mockQuestions";
 
 const normalizeCurriculum = (items: any[]): CurriculumItem[] =>
   items
@@ -20,27 +19,41 @@ const normalizeCurriculum = (items: any[]): CurriculumItem[] =>
     .filter((item) => item.id !== undefined && item.id !== null);
 
 const resolveQuestionText = (value: any) => {
-  if (typeof value === "string") return value;
+  if (typeof value === "string") return { html: value, json: null };
   if (value && typeof value === "object") {
-    return value.html ?? value.text ?? "";
+    return { html: value.html ?? value.text ?? "", json: value.json ?? null };
   }
-  return "";
+  return { html: "", json: null };
 };
 
 const normalizeOptions = (options: any) => {
-  if (!Array.isArray(options)) return [];
+  if (!Array.isArray(options)) {
+    if (options && typeof options === "object" && options.left && options.right) {
+      const normalizeSide = (side: any[]) =>
+        side.map((option, index) => ({
+          id: String(option.id ?? index),
+          text: typeof option.text === "object" ? option.text : { html: option.text ?? "", json: null },
+          is_correct: option.is_correct ?? undefined,
+        }));
+      return {
+        left: normalizeSide(options.left),
+        right: normalizeSide(options.right),
+      };
+    }
+    return [];
+  }
   return options.map((option, index) => {
     if (typeof option === "string") {
-      return { id: `${index}`, text: option };
+      return { id: `${index}`, text: { html: option, json: null } };
     }
     if (option && typeof option === "object") {
       return {
         id: String(option.id ?? index),
-        text: option.text ?? option.label ?? option.value ?? "",
+        text: typeof option.text === "object" ? option.text : { html: option.text ?? option.label ?? option.value ?? "", json: null },
         is_correct: option.is_correct ?? option.isCorrect ?? option.correct ?? undefined,
       };
     }
-    return { id: `${index}`, text: String(option ?? "") };
+    return { id: `${index}`, text: { html: String(option ?? ""), json: null } };
   });
 };
 
@@ -51,6 +64,11 @@ const normalizeQuestions = (items: any[]): Question[] =>
     question_text: resolveQuestionText(item.question_text),
     options: normalizeOptions(item.options),
     correct_answer: item.correct_answer ?? null,
+    solution: resolveQuestionText(item.solution),
+    solution_video_url: item.solution_video_url ?? null,
+    scoring_mode: item.scoring_mode ?? "all_or_nothing",
+    comprehension_passage: resolveQuestionText(item.comprehension_passage),
+    comprehension_questions: item.comprehension_questions ?? [],
     subject_id: item.subject_id ?? null,
     chapter_id: item.chapter_id ?? null,
     topic_id: item.topic_id ?? null,
@@ -66,8 +84,19 @@ const normalizeQuestions = (items: any[]): Question[] =>
     review_note: item.review_note ?? item.rejection_reason ?? null,
   }));
 
+const sortByIdAsc = (items: Question[]) => {
+  return [...items].sort((a, b) => {
+    const aNum = Number(a.id);
+    const bNum = Number(b.id);
+    if (!Number.isNaN(aNum) && !Number.isNaN(bNum)) {
+      return aNum - bNum;
+    }
+    return String(a.id).localeCompare(String(b.id));
+  });
+};
+
 export default function QuestionBankList({ filtersPlacement = "sidebar" }: { filtersPlacement?: "content" | "sidebar" }) {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const permissions = getQuestionPermissions(user?.role);
   const navigate = useNavigate();
   const location = useLocation();
@@ -75,11 +104,10 @@ export default function QuestionBankList({ filtersPlacement = "sidebar" }: { fil
 
   const [questions, setQuestions] = useState<Question[]>([]);
   const [loading, setLoading] = useState(true);
-  const [dataSource, setDataSource] = useState<"api" | "mock">("api");
 
-  const [subjects, setSubjects] = useState<CurriculumItem[]>(mockSubjects);
-  const [chapters, setChapters] = useState<CurriculumItem[]>(mockChapters);
-  const [topics, setTopics] = useState<CurriculumItem[]>(mockTopics);
+  const [subjects, setSubjects] = useState<CurriculumItem[]>([]);
+  const [chapters, setChapters] = useState<CurriculumItem[]>([]);
+  const [topics, setTopics] = useState<CurriculumItem[]>([]);
 
   const [filters, setFilters] = useState<QuestionFiltersState>({
     search: "",
@@ -97,11 +125,20 @@ export default function QuestionBankList({ filtersPlacement = "sidebar" }: { fil
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 25;
   const [total, setTotal] = useState(0);
+  const authHeaders = useMemo(
+    () => (token ? { Authorization: `Bearer ${token}` } : undefined),
+    [token]
+  );
 
   useEffect(() => {
+    if (!authHeaders) {
+      setSubjects([]);
+      return;
+    }
+
     const loadSubjects = async () => {
       try {
-        const res = await api.get("/subjects");
+        const res = await api.get("/subjects", { headers: authHeaders });
         const payload = Array.isArray(res.data)
           ? res.data
           : Array.isArray(res.data?.data)
@@ -110,17 +147,25 @@ export default function QuestionBankList({ filtersPlacement = "sidebar" }: { fil
         if (payload.length) {
           setSubjects(normalizeCurriculum(payload));
         }
-      } catch (error) {
-        setSubjects(mockSubjects);
+      } catch {
+        setSubjects([]);
       }
     };
 
     loadSubjects();
-  }, []);
+  }, [authHeaders]);
 
   useEffect(() => {
     let isMounted = true;
     const loadQuestions = async () => {
+      if (!authHeaders) {
+        if (!isMounted) return;
+        setQuestions([]);
+        setTotal(0);
+        setLoading(false);
+        return;
+      }
+
       setLoading(true);
       try {
         const params: Record<string, string | number> = {
@@ -135,17 +180,18 @@ export default function QuestionBankList({ filtersPlacement = "sidebar" }: { fil
         if (filters.type) params.question_type = filters.type;
         if (filters.status) params.status = filters.status;
 
-        const res = await api.get("/questions", { params });
+        const res = await api.get("/questions", {
+          params,
+          headers: authHeaders,
+        });
         const payload = Array.isArray(res.data?.data) ? res.data.data : [];
         if (!isMounted) return;
-        setQuestions(normalizeQuestions(payload));
+        setQuestions(sortByIdAsc(normalizeQuestions(payload)));
         setTotal(Number(res.data?.total ?? payload.length));
-        setDataSource("api");
-      } catch (error) {
+      } catch {
         if (!isMounted) return;
-        setQuestions(mockQuestions);
-        setTotal(mockQuestions.length);
-        setDataSource("mock");
+        setQuestions([]);
+        setTotal(0);
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -155,11 +201,19 @@ export default function QuestionBankList({ filtersPlacement = "sidebar" }: { fil
     return () => {
       isMounted = false;
     };
-  }, [filters, currentPage, pageSize]);
+  }, [filters, currentPage, pageSize, authHeaders]);
 
   useEffect(() => {
     let isMounted = true;
     const loadChapters = async () => {
+      if (!authHeaders) {
+        if (isMounted) {
+          setChapters([]);
+          setTopics([]);
+        }
+        return;
+      }
+
       if (!filters.subjectId) {
         if (isMounted) {
           setChapters([]);
@@ -168,7 +222,9 @@ export default function QuestionBankList({ filtersPlacement = "sidebar" }: { fil
         return;
       }
       try {
-        const res = await api.get(`/subjects/${filters.subjectId}/chapters`);
+        const res = await api.get(`/subjects/${filters.subjectId}/chapters`, {
+          headers: authHeaders,
+        });
         const payload = Array.isArray(res.data)
           ? res.data
           : Array.isArray(res.data?.data)
@@ -176,11 +232,9 @@ export default function QuestionBankList({ filtersPlacement = "sidebar" }: { fil
             : [];
         if (!isMounted) return;
         setChapters(normalizeCurriculum(payload));
-      } catch (error) {
+      } catch {
         if (!isMounted) return;
-        setChapters(
-          mockChapters.filter((chapter) => String(chapter.subject_id) === String(filters.subjectId))
-        );
+        setChapters([]);
       }
     };
 
@@ -188,17 +242,24 @@ export default function QuestionBankList({ filtersPlacement = "sidebar" }: { fil
     return () => {
       isMounted = false;
     };
-  }, [filters.subjectId]);
+  }, [filters.subjectId, authHeaders]);
 
   useEffect(() => {
     let isMounted = true;
     const loadTopics = async () => {
+      if (!authHeaders) {
+        if (isMounted) setTopics([]);
+        return;
+      }
+
       if (!filters.chapterId) {
         if (isMounted) setTopics([]);
         return;
       }
       try {
-        const res = await api.get(`/chapters/${filters.chapterId}/topics`);
+        const res = await api.get(`/chapters/${filters.chapterId}/topics`, {
+          headers: authHeaders,
+        });
         const payload = Array.isArray(res.data)
           ? res.data
           : Array.isArray(res.data?.data)
@@ -206,11 +267,9 @@ export default function QuestionBankList({ filtersPlacement = "sidebar" }: { fil
             : [];
         if (!isMounted) return;
         setTopics(normalizeCurriculum(payload));
-      } catch (error) {
+      } catch {
         if (!isMounted) return;
-        setTopics(
-          mockTopics.filter((topic) => String(topic.chapter_id) === String(filters.chapterId))
-        );
+        setTopics([]);
       }
     };
 
@@ -218,7 +277,7 @@ export default function QuestionBankList({ filtersPlacement = "sidebar" }: { fil
     return () => {
       isMounted = false;
     };
-  }, [filters.chapterId]);
+  }, [filters.chapterId, authHeaders]);
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -272,60 +331,27 @@ export default function QuestionBankList({ filtersPlacement = "sidebar" }: { fil
     [topics, filters.chapterId]
   );
 
-  const filteredQuestions = useMemo(() => {
-    if (dataSource === "api") return questions;
-    const query = filters.search.trim().toLowerCase();
-    return questions
-      .filter((question) => {
-        if (filters.subjectId && String(question.subject_id) !== filters.subjectId) return false;
-        if (filters.chapterId && String(question.chapter_id) !== filters.chapterId) return false;
-        if (filters.topicId && String(question.topic_id) !== filters.topicId) return false;
-        if (filters.difficulty && question.difficulty_level !== filters.difficulty) return false;
-        if (filters.type && question.question_type !== filters.type) return false;
-        if (filters.status && question.status !== filters.status) return false;
-        if (!query) return true;
-        const tags = question.exam_tags?.join(" ").toLowerCase() ?? "";
-        const author = question.created_by?.toLowerCase() ?? "";
-        return (
-          question.question_text.toLowerCase().includes(query) ||
-          tags.includes(query) ||
-          author.includes(query)
-        );
-      })
-      .sort((a, b) => {
-        const aNum = Number(a.id);
-        const bNum = Number(b.id);
-        if (!Number.isNaN(aNum) && !Number.isNaN(bNum)) {
-          return aNum - bNum;
-        }
-        return String(a.id).localeCompare(String(b.id));
-      });
-  }, [dataSource, filters, questions]);
+  const filteredQuestions = questions;
 
   useEffect(() => {
     setCurrentPage(1);
   }, [filters]);
 
-  const totalCount = dataSource === "api" ? total : filteredQuestions.length;
+  const totalCount = total;
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
-  const paginatedQuestions =
-    dataSource === "api"
-      ? questions
-      : filteredQuestions.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const paginatedQuestions = filteredQuestions;
 
   const handleApprove = async (question: Question) => {
-    if (dataSource === "api") {
-      try {
-        await api.post(`/questions/${question.id}/approve`);
-      } catch (error) {
-        setDataSource("mock");
-      }
+    try {
+      await api.post(`/questions/${question.id}/approve`);
+      setQuestions((prev) =>
+        prev.map((item) =>
+          item.id === question.id ? { ...item, status: "approved", review_note: null } : item
+        )
+      );
+    } catch {
+      alert("Failed to approve question.");
     }
-    setQuestions((prev) =>
-      prev.map((item) =>
-        item.id === question.id ? { ...item, status: "approved", review_note: null } : item
-      )
-    );
   };
 
   const handleReject = (question: Question) => {
@@ -336,26 +362,20 @@ export default function QuestionBankList({ filtersPlacement = "sidebar" }: { fil
 
   const confirmReject = async () => {
     if (!rejectQuestion) return;
-    if (dataSource === "api") {
-      try {
-        const reason = rejectReason.trim() || "Rejected";
-        await api.post(`/questions/${rejectQuestion.id}/reject`, { reason });
-      } catch (error) {
-        setDataSource("mock");
-      }
+    try {
+      const reason = rejectReason.trim() || "Rejected";
+      await api.post(`/questions/${rejectQuestion.id}/reject`, { reason });
+      setQuestions((prev) =>
+        prev.map((item) =>
+          item.id === rejectQuestion.id
+            ? { ...item, status: "rejected", review_note: rejectReason || "Rejected" }
+            : item
+        )
+      );
+    } catch {
+      alert("Failed to reject question.");
     }
-    setQuestions((prev) =>
-      prev.map((item) =>
-        item.id === rejectQuestion.id
-          ? { ...item, status: "rejected", review_note: rejectReason || "Rejected" }
-          : item
-      )
-    );
     setRejectModalOpen(false);
-  };
-
-  const handleView = (question: Question) => {
-    navigate(`/question-bank/${question.id}`, { state: { question } });
   };
 
   const filtersPanel = (
@@ -376,12 +396,6 @@ export default function QuestionBankList({ filtersPlacement = "sidebar" }: { fil
 
   return (
     <div className="space-y-6">
-      {dataSource === "mock" && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-          Using demo data. Connect the Question Bank API to see live questions.
-        </div>
-      )}
-
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold text-slate-900">Question Library</h2>
@@ -427,7 +441,6 @@ export default function QuestionBankList({ filtersPlacement = "sidebar" }: { fil
               key={question.id}
               question={question}
               permissions={permissions}
-              onView={handleView}
               onEdit={(item) => navigate(`/question-bank/${item.id}/edit`)}
               onDelete={(item) => navigate(`/question-bank/${item.id}/delete`)}
               onApprove={handleApprove}

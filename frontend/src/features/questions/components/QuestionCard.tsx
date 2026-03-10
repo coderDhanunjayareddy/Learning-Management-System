@@ -1,3 +1,4 @@
+import QuestionRenderer from '@/components/questions/QuestionRenderer';
 import type { Question } from '../types';
 
 type Props = {
@@ -39,13 +40,6 @@ const difficultyLabel = (difficulty: Question['difficulty_level']) => {
   return difficulty.charAt(0).toUpperCase() + difficulty.slice(1);
 };
 
-const getPreviewText = (question: Question) => {
-  if (question.question_text?.html) {
-    return question.question_text.html.replace(/<[^>]+>/g, '').trim();
-  }
-  return JSON.stringify(question.question_text ?? '').slice(0, 160);
-};
-
 export default function QuestionCard({ question, onView, onEdit, onDelete }: Props) {
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
@@ -68,7 +62,15 @@ export default function QuestionCard({ question, onView, onEdit, onDelete }: Pro
         </div>
       </div>
 
-      <p className="mt-3 line-clamp-3 text-sm text-gray-800">{getPreviewText(question)}</p>
+      <QuestionRenderer
+        question={question}
+        showMeta={false}
+        showAnswer={false}
+        showOptions={false}
+        showComprehension={false}
+        showEmptyState={false}
+        contentClassName="mt-3 line-clamp-3 text-sm text-gray-800"
+      />
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-sm text-gray-500">
         <div className="flex items-center gap-3">

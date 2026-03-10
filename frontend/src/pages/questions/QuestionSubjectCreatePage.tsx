@@ -4,6 +4,17 @@ import api from "@/lib/api";
 import QuestionBankLayout from "@/features/question-bank/components/QuestionBankLayout";
 import type { CurriculumItem } from "@/types/questionBank";
 
+const generateSubjectCode = (name: string) => {
+  const base = name
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 12);
+  const suffix = Date.now().toString(36).toUpperCase().slice(-4);
+  return `${base || "SUBJECT"}_${suffix}`.slice(0, 20);
+};
+
 export default function QuestionSubjectCreatePage() {
   const navigate = useNavigate();
   const [name, setName] = useState("");
@@ -14,7 +25,10 @@ export default function QuestionSubjectCreatePage() {
     if (!name.trim()) return;
     setLoading(true);
     try {
-      const res = await api.post("/subjects", { name: name.trim() });
+      const res = await api.post("/subjects", {
+        name: name.trim(),
+        code: generateSubjectCode(name),
+      });
       if (res.data) {
         const created: CurriculumItem = {
           id: res.data.id ?? res.data.subject_id ?? Date.now(),
@@ -23,17 +37,12 @@ export default function QuestionSubjectCreatePage() {
         navigate("/question-bank/subjects", { state: { createdSubject: created } });
         return;
       }
-    } catch (error) {
-      // fallback
+    } catch {
+      alert("Failed to create subject.");
+      return;
     } finally {
       setLoading(false);
     }
-
-    const created: CurriculumItem = {
-      id: Date.now(),
-      name: name.trim(),
-    };
-    navigate("/question-bank/subjects", { state: { createdSubject: created } });
   };
 
   return (

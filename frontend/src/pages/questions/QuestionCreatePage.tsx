@@ -3,16 +3,36 @@ import { useNavigate } from "react-router-dom";
 import api from "@/lib/api";
 import QuestionBankLayout from "@/features/question-bank/components/QuestionBankLayout";
 import QuestionForm from "@/features/question-bank/components/QuestionForm";
-import { mockChapters, mockSubjects, mockTopics } from "@/features/question-bank/data/mockQuestions";
 import type { CurriculumItem, Question } from "@/types/questionBank";
-import { useAuth } from "@/features/auth/hooks/useAuth";
+
+const normalizeQuestionText = (value: any) => {
+  if (typeof value === "string") return { html: value, json: null };
+  if (value && typeof value === "object") {
+    return { html: value.html ?? value.text ?? "", json: value.json ?? null };
+  }
+  return { html: "", json: null };
+};
+
+const normalizeOptions = (options: any) => {
+  if (!Array.isArray(options)) return [];
+  return options.map((option: any, index: number) => ({
+    id: String(option.id ?? index),
+    text: typeof option.text === "object" ? option.text : { html: option.text ?? "", json: null },
+    is_correct: option.is_correct ?? option.isCorrect ?? option.correct ?? undefined,
+  }));
+};
 
 const normalizeQuestion = (item: any): Question => ({
   id: item.id ?? item.question_id ?? `${Math.random()}`,
   question_type: item.question_type ?? "mcq_single",
-  question_text: item.question_text?.html ?? item.question_text?.text ?? item.question_text ?? "",
-  options: item.options ?? [],
+  question_text: normalizeQuestionText(item.question_text),
+  options: normalizeOptions(item.options),
   correct_answer: item.correct_answer ?? null,
+  solution: normalizeQuestionText(item.solution),
+  solution_video_url: item.solution_video_url ?? null,
+  scoring_mode: item.scoring_mode ?? "all_or_nothing",
+  comprehension_passage: normalizeQuestionText(item.comprehension_passage),
+  comprehension_questions: item.comprehension_questions ?? [],
   subject_id: item.subject_id ?? null,
   chapter_id: item.chapter_id ?? null,
   topic_id: item.topic_id ?? null,
@@ -38,11 +58,10 @@ const normalizeCurriculum = (items: any[]): CurriculumItem[] =>
 
 export default function QuestionCreatePage() {
   const navigate = useNavigate();
-  const { user } = useAuth();
 
-  const [subjects, setSubjects] = useState<CurriculumItem[]>(mockSubjects);
-  const [chapters] = useState<CurriculumItem[]>(mockChapters);
-  const [topics] = useState<CurriculumItem[]>(mockTopics);
+  const [subjects, setSubjects] = useState<CurriculumItem[]>([]);
+  const [chapters] = useState<CurriculumItem[]>([]);
+  const [topics] = useState<CurriculumItem[]>([]);
 
   useEffect(() => {
     const loadSubjects = async () => {
@@ -56,8 +75,8 @@ export default function QuestionCreatePage() {
         if (payload.length) {
           setSubjects(normalizeCurriculum(payload));
         }
-      } catch (error) {
-        setSubjects(mockSubjects);
+      } catch {
+        setSubjects([]);
       }
     };
     loadSubjects();
@@ -72,23 +91,20 @@ export default function QuestionCreatePage() {
         return;
       }
     } catch (error) {
-      // fallback to local state
+      const message =
+        typeof error === "object" && error && "response" in error
+          ? (error as { response?: { data?: { error?: unknown } } }).response?.data?.error
+          : null;
+      alert(typeof message === "string" ? message : "Failed to create question.");
+      return;
     }
-
-    const created: Question = {
-      ...payload,
-      id: Date.now(),
-      status: "draft",
-      created_at: new Date().toISOString(),
-      created_by: user?.full_name || "You",
-    };
-    navigate("/question-bank", { state: { createdQuestion: created } });
   };
 
   return (
     <QuestionBankLayout
       title="Create Question"
       description="Compose a new question for your assessment library."
+      showBack={false}
       actions={
         <button
           onClick={() => navigate("/question-bank")}

@@ -8,10 +8,31 @@ import {
   parseStringArray,
   parseStringArrayParam,
 } from '../schemas/questions.schema.js';
+import mammoth from 'mammoth';
+import { load as loadHtml } from 'cheerio';
+import {
+  Document,
+  Packer,
+  Paragraph,
+  Table,
+  TableRow,
+  TableCell,
+  TextRun,
+} from 'docx';
 
-const VALID_QUESTION_TYPES = ['mcq_single', 'mcq_multiple', 'numerical', 'true_false'];
+const VALID_QUESTION_TYPES = [
+  'mcq_single',
+  'mcq_multiple',
+  'numerical',
+  'true_false',
+  'short_answer',
+  'match_following',
+  'fill_in_blank',
+  'comprehensive',
+];
 const VALID_DIFFICULTY_LEVELS = ['easy', 'medium', 'hard'];
 const VALID_STATUSES = ['draft', 'approved', 'rejected', 'archived'];
+const VALID_SCORING_MODES = ['all_or_nothing', 'partial', 'mixed'];
 
 const isSuperAdmin = (role) => role === 'super_admin';
 const isPlatformAdmin = (role) => role === 'super_admin' || role === 'content_authorizer';
@@ -54,6 +75,13 @@ const ensureSchoolAccess = async ({ schoolId, role, userId, clientId }) => {
 };
 
 const ensureCurriculumScope = async ({ subjectId, chapterId, topicId, clientId }) => {
+  if (!subjectId && !chapterId && !topicId) return;
+  if (chapterId && !subjectId) {
+    throw new AppError('subject_id is required when chapter_id is provided', 400);
+  }
+  if (topicId && !chapterId) {
+    throw new AppError('chapter_id is required when topic_id is provided', 400);
+  }
   const subjectResult = await dbQuery(`SELECT id, client_id FROM subjects WHERE id = $1`, [subjectId]);
   if (subjectResult.rows.length === 0) throw new AppError('Subject not found', 404);
   if (clientId && subjectResult.rows[0].client_id !== clientId) {
@@ -260,6 +288,11 @@ const parseNumberField = (value, fieldName, fallback) => {
   return parsed;
 };
 
+const toDbJsonParam = (value) => {
+  if (value === undefined || value === null) return null;
+  return JSON.stringify(value);
+};
+
 const escapeHtml = (value) =>
   String(value)
     .replace(/&/g, '&amp;')
@@ -455,16 +488,28 @@ const normalizeBulkDefaults = (source) => {
 
 const applyBulkDefaults = (row, defaults) => {
   const merged = { ...row };
-  if ((merged.subject_id === undefined || merged.subject_id === '') && defaults.subject_id !== undefined) {
+  if (
+    (merged.subject_id === undefined || merged.subject_id === null || merged.subject_id === '') &&
+    defaults.subject_id !== undefined
+  ) {
     merged.subject_id = defaults.subject_id;
   }
-  if ((merged.chapter_id === undefined || merged.chapter_id === '') && defaults.chapter_id !== undefined) {
+  if (
+    (merged.chapter_id === undefined || merged.chapter_id === null || merged.chapter_id === '') &&
+    defaults.chapter_id !== undefined
+  ) {
     merged.chapter_id = defaults.chapter_id;
   }
-  if ((merged.topic_id === undefined || merged.topic_id === '') && defaults.topic_id !== undefined) {
+  if (
+    (merged.topic_id === undefined || merged.topic_id === null || merged.topic_id === '') &&
+    defaults.topic_id !== undefined
+  ) {
     merged.topic_id = defaults.topic_id;
   }
-  if ((merged.school_id === undefined || merged.school_id === '') && defaults.school_id !== undefined) {
+  if (
+    (merged.school_id === undefined || merged.school_id === null || merged.school_id === '') &&
+    defaults.school_id !== undefined
+  ) {
     merged.school_id = defaults.school_id;
   }
   return merged;
@@ -546,6 +591,303 @@ const normalizeCsvRowInput = (rawRow, defaults) => {
   });
 
   return applyBulkDefaults(normalized, defaults);
+};
+
+const BULK_DOCX_TABLE_HEADER_ALIASES = {
+  type: 'question_type',
+  question_type: 'question_type',
+  question: 'question_text',
+  question_text: 'question_text',
+  options: 'options',
+  answer: 'correct_answer',
+  ans: 'correct_answer',
+  correct_answer: 'correct_answer',
+  correct_option: 'correct_answer',
+  match_pairs: 'match_pairs',
+  blanks: 'blanks',
+  solution: 'solution',
+  difficulty: 'difficulty_level',
+  difficulty_level: 'difficulty_level',
+  'marks+': 'marks_positive',
+  marks_positive: 'marks_positive',
+  marksplus: 'marks_positive',
+  'marks-': 'marks_negative',
+  marks_negative: 'marks_negative',
+  marksminus: 'marks_negative',
+  tags: 'exam_tags',
+  exam_tags: 'exam_tags',
+  subject: 'subject',
+  subject_id: 'subject_id',
+  chapter: 'chapter',
+  chapter_id: 'chapter_id',
+  topic: 'topic',
+  topic_id: 'topic_id',
+  school_id: 'school_id',
+  status: 'status',
+  comprehensive_passage: 'comprehensive_passage',
+  comprehensive_subquestions: 'comprehensive_subquestions',
+};
+
+const BULK_PLACEHOLDER_VALUES = new Set(['-', '--', 'n/a', 'na', 'none', 'nil']);
+
+const normalizeBulkTextValue = (value) =>
+  String(value ?? '')
+    .replace(/\u00a0/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const toHtmlTextWithBreaks = (value) => {
+  const html = String(value ?? '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>\s*<p[^>]*>/gi, '\n')
+    .replace(/<\/li>\s*<li[^>]*>/gi, '\n')
+    .replace(/<\/tr>\s*<tr[^>]*>/gi, '\n');
+  const $ = loadHtml(`<div>${html}</div>`);
+  return $('div').text();
+};
+
+const toPlainBulkText = (value) => {
+  const raw = String(value ?? '');
+  if (!raw) return '';
+  if (raw.includes('<')) {
+    return normalizeBulkTextValue(toHtmlTextWithBreaks(raw));
+  }
+  return normalizeBulkTextValue(raw);
+};
+
+const isPlaceholderBulkValue = (value) => {
+  const normalized = toPlainBulkText(value).toLowerCase();
+  if (!normalized) return true;
+  return BULK_PLACEHOLDER_VALUES.has(normalized);
+};
+
+const normalizeDocxCellHtml = (value) =>
+  String(value ?? '')
+    .replace(/\u00a0/g, ' ')
+    .trim();
+
+const toRichHtmlValue = (value) => {
+  const html = normalizeDocxCellHtml(value);
+  if (!html) return null;
+  if (isPlaceholderBulkValue(html)) return null;
+  return html;
+};
+
+const parseBulkOptionText = (value) => {
+  if (isPlaceholderBulkValue(value)) return null;
+
+  const entries = toHtmlTextWithBreaks(value)
+    .split(/[\n;]+/)
+    .map((entry) => normalizeBulkTextValue(entry))
+    .map((entry) => entry.replace(/^[A-H0-9]+[\).:-]\s*/i, ''))
+    .filter((entry) => entry.length > 0)
+    .filter((entry) => !BULK_PLACEHOLDER_VALUES.has(entry.toLowerCase()));
+
+  if (entries.length === 0) return null;
+  return entries.map((text, index) => ({
+    id: `opt-${index + 1}`,
+    text,
+  }));
+};
+
+const parseBulkNumericId = (value) => {
+  const text = toPlainBulkText(value);
+  if (!text || BULK_PLACEHOLDER_VALUES.has(text.toLowerCase())) return null;
+  if (!/^\d+$/.test(text)) return null;
+  return Number.parseInt(text, 10);
+};
+
+const normalizeDocxTableAnswer = ({
+  questionType,
+  answerValue,
+  options,
+  matchPairsValue,
+  blanksValue,
+  subQuestionsValue,
+  rowNumber,
+}) => {
+  let resolvedAnswer = answerValue;
+  if (isPlaceholderBulkValue(resolvedAnswer)) {
+    if (questionType === 'match_following' && !isPlaceholderBulkValue(matchPairsValue)) {
+      resolvedAnswer = toPlainBulkText(matchPairsValue);
+    } else if (questionType === 'fill_in_blank' && !isPlaceholderBulkValue(blanksValue)) {
+      resolvedAnswer = toPlainBulkText(blanksValue);
+    } else if (questionType === 'comprehensive' && !isPlaceholderBulkValue(subQuestionsValue)) {
+      resolvedAnswer = toPlainBulkText(subQuestionsValue);
+    }
+  }
+
+  if (questionType === 'true_false') {
+    const normalized = toPlainBulkText(resolvedAnswer).toLowerCase();
+    if (normalized === 'true') return true;
+    if (normalized === 'false') return false;
+    throw new AppError(`Row ${rowNumber}: Correct Answer must be true or false`, 400);
+  }
+
+  if (questionType === 'numerical') {
+    const parsed = Number(toPlainBulkText(resolvedAnswer));
+    if (Number.isNaN(parsed)) {
+      throw new AppError(`Row ${rowNumber}: Correct Answer must be a number for numerical questions`, 400);
+    }
+    return parsed;
+  }
+
+  if (questionType === 'mcq_single') {
+    const token = toPlainBulkText(resolvedAnswer);
+    if (!token) {
+      throw new AppError(`Row ${rowNumber}: Correct Answer is required for MCQ single`, 400);
+    }
+    return mapAnswerTokenToOptionId(token, options || []) ?? token;
+  }
+
+  if (questionType === 'mcq_multiple') {
+    const tokens = toPlainBulkText(resolvedAnswer)
+      .split(/[|,;]/)
+      .map((token) => token.trim())
+      .filter((token) => token.length > 0);
+    if (tokens.length === 0) {
+      throw new AppError(`Row ${rowNumber}: Correct Answer is required for MCQ multiple`, 400);
+    }
+    const mapped = tokens
+      .map((token) => mapAnswerTokenToOptionId(token, options || []))
+      .filter(Boolean);
+    return mapped.length > 0 ? mapped : tokens;
+  }
+
+  return toPlainBulkText(resolvedAnswer);
+};
+
+const normalizeDocxTableRowInput = (rawRow, defaults, rowNumber) => {
+  const hasAnyValue = Object.values(rawRow || {}).some((value) => !isPlaceholderBulkValue(value));
+  if (!hasAnyValue) {
+    return null;
+  }
+
+  const questionType = normalizeBulkQuestionType(rawRow.question_type || 'mcq_single');
+  if (!VALID_QUESTION_TYPES.includes(questionType)) {
+    throw new AppError(`Row ${rowNumber}: Invalid question type "${toPlainBulkText(rawRow.question_type)}"`, 400);
+  }
+
+  const baseQuestionHtml = toRichHtmlValue(rawRow.question_text);
+  if (!baseQuestionHtml) {
+    throw new AppError(`Row ${rowNumber}: Question text is required`, 400);
+  }
+
+  const passageHtml = toRichHtmlValue(rawRow.comprehensive_passage);
+  const questionHtml =
+    questionType === 'comprehensive' && passageHtml
+      ? `${baseQuestionHtml}<div class="comprehension-passage">${passageHtml}</div>`
+      : baseQuestionHtml;
+
+  const options = parseBulkOptionText(rawRow.options);
+  if (questionType.startsWith('mcq') && (!options || options.length === 0)) {
+    throw new AppError(`Row ${rowNumber}: Options are required for MCQ questions`, 400);
+  }
+
+  const answerValue = toPlainBulkText(rawRow.correct_answer);
+  const correctAnswer = normalizeDocxTableAnswer({
+    questionType,
+    answerValue,
+    options,
+    matchPairsValue: rawRow.match_pairs,
+    blanksValue: rawRow.blanks,
+    subQuestionsValue: rawRow.comprehensive_subquestions,
+    rowNumber,
+  });
+
+  const prepared = applyBulkDefaults(
+    {
+      question_type: questionType,
+      question_text: questionHtml,
+      options: options || null,
+      correct_answer: correctAnswer,
+      subject_id: parseBulkNumericId(rawRow.subject_id ?? rawRow.subject),
+      chapter_id: parseBulkNumericId(rawRow.chapter_id ?? rawRow.chapter),
+      topic_id: parseBulkNumericId(rawRow.topic_id ?? rawRow.topic),
+      difficulty_level: toPlainBulkText(rawRow.difficulty_level) || 'medium',
+      exam_tags: toPlainBulkText(rawRow.exam_tags),
+      marks_positive: toPlainBulkText(rawRow.marks_positive),
+      marks_negative: toPlainBulkText(rawRow.marks_negative),
+      solution: toRichHtmlValue(rawRow.solution),
+      solution_video_url: toPlainBulkText(rawRow.solution_video_url) || null,
+      school_id: parseBulkNumericId(rawRow.school_id),
+      status: toPlainBulkText(rawRow.status) || undefined,
+    },
+    defaults
+  );
+
+  if (!prepared.subject_id || !prepared.chapter_id) {
+    throw new AppError(
+      `Row ${rowNumber}: subject_id and chapter_id are required (set in file as IDs or upload defaults)`,
+      400
+    );
+  }
+
+  return prepared;
+};
+
+const extractDocxTableRows = async (buffer, defaults) => {
+  const result = await mammoth.convertToHtml({ buffer });
+  const html = String(result?.value || '').trim();
+  if (!html.includes('<table')) {
+    return [];
+  }
+
+  const $ = loadHtml(html);
+  const rows = [];
+
+  $('table').each((_tableIndex, tableElement) => {
+    const tableRows = $(tableElement).find('tr');
+    if (tableRows.length < 2) return;
+
+    const headers = [];
+    $(tableRows[0])
+      .find('th,td')
+      .each((_headerIndex, headerCell) => {
+        const normalizedKey = normalizeBulkHeaderKey($(headerCell).text());
+        const canonicalKey = BULK_DOCX_TABLE_HEADER_ALIASES[normalizedKey] || normalizedKey;
+        headers.push(canonicalKey);
+      });
+
+    if (!headers.includes('question_text')) {
+      return;
+    }
+
+    tableRows.each((rowIndex, rowElement) => {
+      if (rowIndex === 0) return;
+      const row = {};
+
+      $(rowElement)
+        .find('td,th')
+        .each((cellIndex, cell) => {
+          const key = headers[cellIndex];
+          if (!key) return;
+          const cellHtml = normalizeDocxCellHtml($(cell).html());
+          if (
+            key === 'question_text' ||
+            key === 'options' ||
+            key === 'solution' ||
+            key === 'comprehensive_passage'
+          ) {
+            row[key] = cellHtml;
+          } else {
+            row[key] = normalizeBulkTextValue($(cell).text());
+          }
+        });
+
+      try {
+        const normalized = normalizeDocxTableRowInput(row, defaults, rowIndex + 1);
+        if (normalized) {
+          rows.push(normalized);
+        }
+      } catch (err) {
+        const message = err instanceof AppError ? err.message : 'Failed to parse row';
+        rows.push({ _bulk_error: message, _bulk_row_number: rowIndex + 1 });
+      }
+    });
+  });
+
+  return rows;
 };
 
 const mapAnswerTokenToOptionId = (token, options) => {
@@ -795,7 +1137,7 @@ const extractDocxRows = (buffer, defaults) => {
   return rows;
 };
 
-const extractBulkRowsFromFile = (file, defaults) => {
+const extractBulkRowsFromFile = async (file, defaults) => {
   const extension = getFileExtension(file?.originalname || '');
   if (extension === 'csv') {
     const csvText = file.buffer.toString('utf8');
@@ -804,6 +1146,10 @@ const extractBulkRowsFromFile = (file, defaults) => {
   }
 
   if (extension === 'docx') {
+    const tableRows = await extractDocxTableRows(file.buffer, defaults);
+    if (tableRows.length > 0) {
+      return tableRows;
+    }
     return extractDocxRows(file.buffer, defaults);
   }
 
@@ -896,10 +1242,10 @@ const insertQuestion = async (payload) => {
       payload.client_id,
       payload.school_id,
       payload.question_type,
-      payload.question_text,
-      payload.options,
-      payload.correct_answer,
-      payload.solution,
+      toDbJsonParam(payload.question_text),
+      toDbJsonParam(payload.options),
+      toDbJsonParam(payload.correct_answer),
+      toDbJsonParam(payload.solution),
       payload.solution_video_url,
       payload.subject_id,
       payload.chapter_id,
@@ -1023,181 +1369,15 @@ export const createQuestion = async (req, res) => {
     const role = req.user.role;
     const clientId = ensureClientScope(req.user.client_id ?? null, role);
     const payload = await buildQuestionInsertPayload({
-      input: req.body ?? {},
+      input: req.body,
       user: req.user,
       role,
       clientId,
     });
-    const created = await insertQuestion(payload);
-
-    res.status(201).json(created);
+    const inserted = await insertQuestion(payload);
+    res.status(201).json(inserted);
   } catch (err) {
     handleServiceError(res, err, 'Failed to create question');
-  }
-};
-
-let ensureQuestionFoldersTablePromise = null;
-
-const ensureQuestionFoldersTable = async () => {
-  if (!ensureQuestionFoldersTablePromise) {
-    ensureQuestionFoldersTablePromise = (async () => {
-      await dbQuery(
-        `
-        CREATE TABLE IF NOT EXISTS question_folders (
-          id SERIAL PRIMARY KEY,
-          client_id INTEGER REFERENCES clients(id) ON DELETE CASCADE,
-          school_id INTEGER REFERENCES schools(id) ON DELETE CASCADE,
-          name VARCHAR(255) NOT NULL,
-          description TEXT,
-          created_by INTEGER REFERENCES users(id),
-          created_at TIMESTAMPTZ DEFAULT NOW(),
-          updated_at TIMESTAMPTZ DEFAULT NOW()
-        )
-        `
-      );
-      await dbQuery(
-        `CREATE INDEX IF NOT EXISTS idx_question_folders_client ON question_folders(client_id)`
-      );
-      await dbQuery(
-        `CREATE INDEX IF NOT EXISTS idx_question_folders_school ON question_folders(school_id)`
-      );
-    })().catch((err) => {
-      ensureQuestionFoldersTablePromise = null;
-      throw err;
-    });
-  }
-
-  return ensureQuestionFoldersTablePromise;
-};
-
-const buildQuestionFolderWhere = async ({ user, paramsStartAt = 1 }) => {
-  const role = user?.role;
-  const clientId = ensureClientScope(user?.client_id ?? null, role);
-  const conditions = [];
-  const params = [];
-
-  const addParam = (value) => {
-    params.push(value);
-    return `$${paramsStartAt + params.length - 1}`;
-  };
-
-  if (clientId) {
-    conditions.push(`f.client_id = ${addParam(clientId)}`);
-  }
-
-  if (isTeacher(role) || isSchoolOwner(role)) {
-    const schoolIds = await fetchUserSchoolIds(user.id);
-    if (schoolIds.length > 0) {
-      conditions.push(`(f.school_id IS NULL OR f.school_id = ANY(${addParam(schoolIds)}))`);
-    } else {
-      conditions.push(`f.school_id IS NULL`);
-    }
-  }
-
-  return { conditions, params };
-};
-
-const normalizeFolder = (row) => ({
-  id: row.id,
-  name: row.name,
-  description: row.description ?? '',
-  question_count: Number(row.question_count ?? 0),
-  questionCount: Number(row.question_count ?? 0),
-  created_at: row.created_at,
-  updated_at: row.updated_at,
-});
-
-export const bulkUploadQuestions = async (req, res) => {
-  try {
-    if (!req.user?.id || !req.user?.role) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-
-    const role = req.user.role;
-    const clientId = ensureClientScope(req.user.client_id ?? null, role);
-    const defaults = normalizeBulkDefaults(req.body ?? {});
-    let questions = [];
-
-    if (req.file) {
-      questions = extractBulkRowsFromFile(req.file, defaults);
-    } else if (Array.isArray(req.body?.questions)) {
-      questions = req.body.questions.map((row) => applyBulkDefaults(row, defaults));
-    } else if (typeof req.body?.questions === 'string') {
-      try {
-        const parsed = JSON.parse(req.body.questions);
-        if (!Array.isArray(parsed)) {
-          throw new AppError('questions must be an array', 400);
-        }
-        questions = parsed.map((row) => applyBulkDefaults(row, defaults));
-      } catch (err) {
-        throw new AppError('questions must be a valid JSON array', 400);
-      }
-    }
-
-    if (!Array.isArray(questions) || questions.length === 0) {
-      throw new AppError('questions must be a non-empty array', 400);
-    }
-
-    if (questions.length > 500) {
-      throw new AppError('A maximum of 500 questions can be uploaded at once', 400);
-    }
-
-    const created = [];
-    const failed = [];
-
-    for (let index = 0; index < questions.length; index += 1) {
-      const row = questions[index];
-      try {
-        if (!row || typeof row !== 'object' || Array.isArray(row)) {
-          throw new AppError('Row must be an object', 400);
-        }
-
-        const payload = await buildQuestionInsertPayload({
-          input: row,
-          user: req.user,
-          role,
-          clientId,
-        });
-        const inserted = await insertQuestion(payload);
-        created.push({
-          index,
-          row_number: index + 2,
-          id: inserted.id,
-          status: inserted.status,
-        });
-      } catch (err) {
-        if (err instanceof AppError) {
-          failed.push({ index, row_number: index + 2, error: err.message });
-        } else {
-          console.error(`Bulk upload failed at row ${index}:`, err);
-          failed.push({
-            index,
-            row_number: index + 2,
-            error: 'Unexpected error while creating question',
-          });
-        }
-      }
-    }
-
-    const responsePayload = {
-      total: questions.length,
-      created_count: created.length,
-      failed_count: failed.length,
-      created,
-      failed,
-    };
-
-    if (created.length === 0 && failed.length > 0) {
-      return res.status(400).json({
-        error: failed[0].error,
-        ...responsePayload,
-      });
-    }
-
-    const successStatus = created.length > 0 ? 201 : 400;
-    res.status(successStatus).json(responsePayload);
-  } catch (err) {
-    handleServiceError(res, err, 'Failed to bulk upload questions');
   }
 };
 
@@ -1246,22 +1426,11 @@ export const updateQuestion = async (req, res) => {
       updates.question_type = req.body.question_type;
     }
 
-    if (req.body.question_text) updates.question_text = req.body.question_text;
-    if (req.body.options !== undefined) updates.options = req.body.options ?? null;
-    if (req.body.correct_answer) updates.correct_answer = req.body.correct_answer;
-    if (req.body.solution !== undefined) updates.solution = req.body.solution ?? null;
+    if (req.body.question_text !== undefined) updates.question_text = toDbJsonParam(req.body.question_text);
+    if (req.body.options !== undefined) updates.options = toDbJsonParam(req.body.options ?? null);
+    if (req.body.correct_answer !== undefined) updates.correct_answer = toDbJsonParam(req.body.correct_answer);
+    if (req.body.solution !== undefined) updates.solution = toDbJsonParam(req.body.solution ?? null);
     if (req.body.solution_video_url !== undefined) updates.solution_video_url = req.body.solution_video_url ?? null;
-
-    if (req.body.status !== undefined) {
-      const nextStatus = requireString(req.body.status, 'status');
-      if (nextStatus !== 'draft') {
-        throw new AppError('Only status "draft" is allowed', 400);
-      }
-      if (question.status !== 'rejected') {
-        throw new AppError('Only rejected questions can be moved to draft', 400);
-      }
-      updates.status = 'draft';
-    }
 
     if (req.body.subject_id || req.body.chapter_id || req.body.topic_id !== undefined) {
       const subjectId = req.body.subject_id ? parseRequiredInt(req.body.subject_id, 'subject_id') : question.subject_id;
@@ -1463,35 +1632,97 @@ export const rejectQuestion = async (req, res) => {
   }
 };
 
+const parseBooleanParam = (value, fieldName) => {
+  if (value === undefined) return undefined;
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true') return true;
+    if (normalized === 'false') return false;
+  }
+  throw new AppError(`${fieldName} must be a boolean`, 400);
+};
+
+const buildFolderAccess = async ({ user, clientId, schoolIdFilter, includeInactive }) => {
+  const role = user?.role;
+  const conditions = [];
+  const params = [];
+
+  const addParam = (value) => {
+    params.push(value);
+    return `$${params.length}`;
+  };
+
+  if (clientId) {
+    conditions.push(`f.client_id = ${addParam(clientId)}`);
+  }
+
+  if (!includeInactive) {
+    conditions.push(`f.is_active = TRUE`);
+  }
+
+  const isScopedBySchool = isTeacher(role) || isSchoolOwner(role);
+  let schoolIds = [];
+  if (isScopedBySchool) {
+    schoolIds = await fetchUserSchoolIds(user.id);
+    if (schoolIds.length > 0) {
+      conditions.push(`(f.school_id IS NULL OR f.school_id = ANY(${addParam(schoolIds)}))`);
+    } else {
+      conditions.push(`f.school_id IS NULL`);
+    }
+  }
+
+  if (schoolIdFilter !== null && schoolIdFilter !== undefined) {
+    conditions.push(`f.school_id = ${addParam(schoolIdFilter)}`);
+  }
+
+  return { conditions, params, addParam };
+};
+
 export const listQuestionFolders = async (req, res) => {
   try {
     if (!req.user?.id || !req.user?.role) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    await ensureQuestionFoldersTable();
-    const { conditions, params } = await buildQuestionFolderWhere({ user: req.user });
-    const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const role = req.user.role;
+    const clientId = ensureClientScope(req.user.client_id ?? null, role);
+    const schoolIdFilter = parseNullableInt(req.query.school_id, 'school_id');
+    const includeInactive = parseBooleanParam(req.query.include_inactive, 'include_inactive') ?? false;
+    await ensureSchoolAccess({ schoolId: schoolIdFilter, role, userId: req.user.id, clientId });
 
+    const { conditions, params, addParam } = await buildFolderAccess({
+      user: req.user,
+      clientId,
+      schoolIdFilter,
+      includeInactive,
+    });
+
+    const questionJoinConditions = [
+      `q.folder_id = f.id`,
+      `q.status <> 'archived'`,
+      `q.client_id = f.client_id`,
+    ];
+    if (isTeacher(role)) {
+      questionJoinConditions.push(`(q.status = 'approved' OR q.created_by = ${addParam(req.user.id)})`);
+    }
+
+    const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const result = await dbQuery(
       `
-      SELECT
-        f.id,
-        f.name,
-        f.description,
-        f.created_at,
-        f.updated_at,
-        0::INT AS question_count
+      SELECT f.*, COUNT(q.id) AS question_count
       FROM question_folders f
+      LEFT JOIN questions q ON ${questionJoinConditions.join(' AND ')}
       ${whereClause}
+      GROUP BY f.id
       ORDER BY f.created_at DESC
       `,
       params
     );
 
-    res.json(result.rows.map(normalizeFolder));
+    res.json(result.rows);
   } catch (err) {
-    handleServiceError(res, err, 'Failed to load folders');
+    handleServiceError(res, err, 'Failed to load question folders');
   }
 };
 
@@ -1501,35 +1732,47 @@ export const getQuestionFolderById = async (req, res) => {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    await ensureQuestionFoldersTable();
+    const role = req.user.role;
+    const clientId = ensureClientScope(req.user.client_id ?? null, role);
     const id = parseRequiredInt(req.params.id, 'id');
-    const { conditions, params } = await buildQuestionFolderWhere({
+    const includeInactive = parseBooleanParam(req.query.include_inactive, 'include_inactive') ?? false;
+
+    const { conditions, params, addParam } = await buildFolderAccess({
       user: req.user,
-      paramsStartAt: 2,
+      clientId,
+      schoolIdFilter: null,
+      includeInactive,
     });
 
-    const whereParts = [`f.id = $1`, ...conditions];
+    conditions.push(`f.id = ${addParam(id)}`);
+
+    const questionJoinConditions = [
+      `q.folder_id = f.id`,
+      `q.status <> 'archived'`,
+      `q.client_id = f.client_id`,
+    ];
+    if (isTeacher(role)) {
+      questionJoinConditions.push(`(q.status = 'approved' OR q.created_by = ${addParam(req.user.id)})`);
+    }
+
+    const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const result = await dbQuery(
       `
-      SELECT
-        f.id,
-        f.name,
-        f.description,
-        f.created_at,
-        f.updated_at,
-        0::INT AS question_count
+      SELECT f.*, COUNT(q.id) AS question_count
       FROM question_folders f
-      WHERE ${whereParts.join(' AND ')}
+      LEFT JOIN questions q ON ${questionJoinConditions.join(' AND ')}
+      ${whereClause}
+      GROUP BY f.id
       LIMIT 1
       `,
-      [id, ...params]
+      params
     );
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Folder not found' });
     }
 
-    res.json(normalizeFolder(result.rows[0]));
+    res.json(result.rows[0]);
   } catch (err) {
     handleServiceError(res, err, 'Failed to load folder');
   }
@@ -1541,25 +1784,35 @@ export const createQuestionFolder = async (req, res) => {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    await ensureQuestionFoldersTable();
     const role = req.user.role;
-    const clientId = ensureClientScope(req.user.client_id ?? null, role);
-    const name = requireString(req.body?.name, 'name');
-    const description = req.body?.description ? String(req.body.description).trim() : null;
-    const schoolId = parseNullableInt(req.body?.school_id, 'school_id');
+    let clientId = ensureClientScope(req.user.client_id ?? null, role);
+    if (!clientId) {
+      clientId = parseNullableInt(req.body.client_id, 'client_id');
+      if (!clientId) {
+        throw new AppError('client_id is required for this role', 400);
+      }
+    }
 
+    const name = requireString(req.body?.name, 'name');
+    const descriptionInput = req.body?.description;
+    const description =
+      descriptionInput === undefined || descriptionInput === null
+        ? null
+        : String(descriptionInput).trim() || null;
+
+    const schoolId = parseNullableInt(req.body?.school_id, 'school_id');
     await ensureSchoolAccess({ schoolId, role, userId: req.user.id, clientId });
 
-    const result = await dbQuery(
+    const insertResult = await dbQuery(
       `
       INSERT INTO question_folders (client_id, school_id, name, description, created_by)
       VALUES ($1, $2, $3, $4, $5)
-      RETURNING id, name, description, created_at, updated_at
+      RETURNING *
       `,
       [clientId, schoolId, name, description, req.user.id]
     );
 
-    res.status(201).json(normalizeFolder(result.rows[0]));
+    res.status(201).json(insertResult.rows[0]);
   } catch (err) {
     handleServiceError(res, err, 'Failed to create folder');
   }
@@ -1571,33 +1824,53 @@ export const updateQuestionFolder = async (req, res) => {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    await ensureQuestionFoldersTable();
+    const role = req.user.role;
+    const clientId = ensureClientScope(req.user.client_id ?? null, role);
     const id = parseRequiredInt(req.params.id, 'id');
-    const { conditions, params } = await buildQuestionFolderWhere({
-      user: req.user,
-      paramsStartAt: 2,
-    });
-    const existingWhere = [`id = $1`, ...conditions];
 
-    const existing = await dbQuery(
-      `SELECT id, school_id FROM question_folders WHERE ${existingWhere.join(' AND ')} LIMIT 1`,
-      [id, ...params]
-    );
+    const existing = await dbQuery(`SELECT * FROM question_folders WHERE id = $1`, [id]);
     if (existing.rows.length === 0) {
       return res.status(404).json({ error: 'Folder not found' });
     }
+    const folder = existing.rows[0];
+
+    if (clientId && folder.client_id !== clientId) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    if (isTeacher(role) || isSchoolOwner(role)) {
+      const schoolIds = await fetchUserSchoolIds(req.user.id);
+      if (folder.school_id && !schoolIds.includes(folder.school_id)) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+    }
 
     const updates = {};
+
     if (req.body?.name !== undefined) {
       updates.name = requireString(req.body.name, 'name');
     }
+
     if (req.body?.description !== undefined) {
+      const descriptionInput = req.body.description;
       updates.description =
-        req.body.description === null ? null : String(req.body.description).trim();
+        descriptionInput === undefined || descriptionInput === null
+          ? null
+          : String(descriptionInput).trim() || null;
+    }
+
+    if (req.body?.school_id !== undefined) {
+      const schoolId = parseNullableInt(req.body.school_id, 'school_id');
+      await ensureSchoolAccess({ schoolId, role, userId: req.user.id, clientId });
+      updates.school_id = schoolId;
+    }
+
+    if (req.body?.is_active !== undefined) {
+      updates.is_active = parseBooleanParam(req.body.is_active, 'is_active');
     }
 
     if (Object.keys(updates).length === 0) {
-      throw new AppError('No updates provided', 400);
+      return res.status(400).json({ error: 'No valid fields to update' });
     }
 
     const setClauses = [];
@@ -1609,18 +1882,231 @@ export const updateQuestionFolder = async (req, res) => {
     });
     values.push(id);
 
-    const result = await dbQuery(
-      `
-      UPDATE question_folders
-      SET ${setClauses.join(', ')}, updated_at = NOW()
-      WHERE id = $${idx}
-      RETURNING id, name, description, created_at, updated_at
-      `,
+    const updateResult = await dbQuery(
+      `UPDATE question_folders SET ${setClauses.join(', ')}, updated_at = NOW() WHERE id = $${idx} RETURNING *`,
       values
     );
 
-    res.json(normalizeFolder(result.rows[0]));
+    res.json(updateResult.rows[0]);
   } catch (err) {
     handleServiceError(res, err, 'Failed to update folder');
+  }
+};
+
+const buildTemplateRow = (cells) =>
+  new TableRow({
+    children: cells.map(
+      (value) =>
+        new TableCell({
+          children: [new Paragraph({ children: [new TextRun(String(value ?? ''))] })],
+        })
+    ),
+  });
+
+const TEMPLATE_HEADERS = [
+  'Type',
+  'Question',
+  'Options',
+  'Correct Answer',
+  'Match Pairs',
+  'Blanks',
+  'Solution',
+  'Difficulty',
+  'Marks+',
+  'Marks-',
+  'Tags',
+  'Subject',
+  'Chapter',
+  'Topic',
+  'Comprehensive Passage',
+  'Comprehensive Subquestions',
+];
+
+export const bulkUploadTemplate = async (_req, res) => {
+  try {
+    const table = new Table({
+      rows: [
+        buildTemplateRow(TEMPLATE_HEADERS),
+        buildTemplateRow([
+          'mcq_single',
+          'What is 2 + 2?',
+          '2;3;4;5',
+          'C',
+          '-',
+          '-',
+          '2 + 2 = 4.',
+          'easy',
+          '4',
+          '1',
+          'math,arithmetic',
+          'Math',
+          'Basics',
+          'Addition',
+          '-',
+          '-',
+        ]),
+      ],
+    });
+
+    const doc = new Document({
+      sections: [
+        {
+          children: [
+            new Paragraph({
+              children: [new TextRun({ text: 'Question Bank Bulk Upload Template', bold: true })],
+            }),
+            new Paragraph(''),
+            table,
+          ],
+        },
+      ],
+    });
+
+    const buffer = await Packer.toBuffer(doc);
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    );
+    res.setHeader('Content-Disposition', 'attachment; filename="question-bank-template.docx"');
+    res.send(buffer);
+  } catch (err) {
+    handleServiceError(res, err, 'Failed to generate bulk upload template');
+  }
+};
+
+let hasQuestionsFolderIdColumn = null;
+
+const checkQuestionsFolderIdColumn = async () => {
+  if (hasQuestionsFolderIdColumn !== null) {
+    return hasQuestionsFolderIdColumn;
+  }
+
+  const columnResult = await dbQuery(
+    `
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'questions'
+      AND column_name = 'folder_id'
+    LIMIT 1
+    `
+  );
+
+  hasQuestionsFolderIdColumn = columnResult.rows.length > 0;
+  return hasQuestionsFolderIdColumn;
+};
+
+const ensureBulkFolderAccess = async ({ folderId, user, role, clientId }) => {
+  if (!folderId) return null;
+
+  const result = await dbQuery(
+    `SELECT id, client_id, school_id, is_active FROM question_folders WHERE id = $1 LIMIT 1`,
+    [folderId]
+  );
+  if (result.rows.length === 0) {
+    throw new AppError('Folder not found', 404);
+  }
+
+  const folder = result.rows[0];
+  if (!folder.is_active) {
+    throw new AppError('Folder is inactive', 400);
+  }
+
+  if (clientId && folder.client_id !== clientId) {
+    throw new AppError('Access denied for folder', 403);
+  }
+
+  if (isTeacher(role) || isSchoolOwner(role)) {
+    const schoolIds = await fetchUserSchoolIds(user.id);
+    if (folder.school_id && !schoolIds.includes(folder.school_id)) {
+      throw new AppError('Access denied for folder', 403);
+    }
+  }
+
+  return folder.id;
+};
+
+export const bulkUploadQuestions = async (req, res) => {
+  try {
+    if (!req.user?.id || !req.user?.role) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    if (!req.file?.buffer) {
+      return res.status(400).json({ error: 'File is required for bulk upload.' });
+    }
+
+    const role = req.user.role;
+    const clientId = ensureClientScope(req.user.client_id ?? null, role);
+    const defaults = normalizeBulkDefaults(req.body || {});
+    const folderId = parseNullableInt(req.body?.folder_id, 'folder_id');
+
+    let selectedFolderId = null;
+    let canAssignFolder = false;
+    if (folderId) {
+      selectedFolderId = await ensureBulkFolderAccess({
+        folderId,
+        user: req.user,
+        role,
+        clientId,
+      });
+      canAssignFolder = await checkQuestionsFolderIdColumn();
+      if (!canAssignFolder) {
+        throw new AppError('This database does not support folder assignment on questions yet', 400);
+      }
+    }
+
+    const rows = await extractBulkRowsFromFile(req.file, defaults);
+    if (rows.length === 0) {
+      throw new AppError('No valid question rows found in the uploaded file', 400);
+    }
+
+    const inserted = [];
+    const errors = [];
+
+    for (let index = 0; index < rows.length; index += 1) {
+      const row = rows[index];
+      const rowNumber = index + 2;
+
+      if (row && typeof row === 'object' && row._bulk_error) {
+        const parsedRowNumber = Number(row._bulk_row_number || rowNumber);
+        errors.push({
+          row: parsedRowNumber,
+          message: String(row._bulk_error),
+        });
+        continue;
+      }
+
+      try {
+        const payload = await buildQuestionInsertPayload({
+          input: row,
+          user: req.user,
+          role,
+          clientId,
+        });
+        const created = await insertQuestion(payload);
+
+        if (selectedFolderId && canAssignFolder) {
+          await dbQuery(`UPDATE questions SET folder_id = $1 WHERE id = $2`, [selectedFolderId, created.id]);
+        }
+
+        inserted.push(created);
+      } catch (err) {
+        const message = err instanceof AppError ? err.message : 'Failed to insert question';
+        errors.push({
+          row: rowNumber,
+          message: `Row ${rowNumber}: ${message}`,
+        });
+      }
+    }
+
+    return res.json({
+      inserted: inserted.length,
+      total: rows.length,
+      errors,
+      data: inserted,
+    });
+  } catch (err) {
+    handleServiceError(res, err, 'Failed to bulk upload questions');
   }
 };

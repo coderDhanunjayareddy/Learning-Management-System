@@ -30,6 +30,10 @@ export default function QuestionFoldersPage() {
           : [];
         setFolders(payload.map(normalizeFolder));
       } catch (err: any) {
+        if (err?.response?.status === 401) {
+          navigate("/login");
+          return;
+        }
         setFolders([]);
         setError(err?.response?.data?.error || "Failed to load folders");
       } finally {
