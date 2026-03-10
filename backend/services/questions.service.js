@@ -1,5 +1,6 @@
 import { query as dbQuery } from '../repositories/db.repository.js';
 import { AppError, handleServiceError } from '../utils/errors.js';
+import AdmZip from 'adm-zip';
 import {
   parseNullableInt,
   parseRequiredInt,
@@ -257,6 +258,560 @@ const parseNumberField = (value, fieldName, fallback) => {
     throw new AppError(`${fieldName} must be a number`, 400);
   }
   return parsed;
+};
+
+const escapeHtml = (value) =>
+  String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+const decodeXmlEntities = (value) =>
+  String(value || '')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+
+const parseCsvLine = (line) => {
+  const values = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i += 1) {
+    const char = line[i];
+    if (char === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (char === ',' && !inQuotes) {
+      values.push(current);
+      current = '';
+      continue;
+    }
+    current += char;
+  }
+
+  values.push(current);
+  return values;
+};
+
+const parseCsvContent = (csvText) => {
+  const lines = String(csvText || '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .split('\n')
+    .filter((line) => line.trim().length > 0);
+
+  if (lines.length < 2) {
+    throw new AppError('CSV must include a header row and at least one data row', 400);
+  }
+
+  const headers = parseCsvLine(lines[0]).map((header, index) => {
+    const trimmed = header.trim().toLowerCase();
+    if (index === 0) {
+      return trimmed.replace(/^\uFEFF/, '');
+    }
+    return trimmed;
+  });
+  const rows = [];
+  for (let index = 1; index < lines.length; index += 1) {
+    const values = parseCsvLine(lines[index]);
+    const row = {};
+    headers.forEach((header, headerIndex) => {
+      row[header] = values[headerIndex] ?? '';
+    });
+    rows.push(row);
+  }
+
+  return rows;
+};
+
+const BULK_CSV_HEADER_ALIASES = {
+  question: 'question_text',
+  questiontext: 'question_text',
+  'question text': 'question_text',
+  type: 'question_type',
+  questiontype: 'question_type',
+  'question type': 'question_type',
+  ans: 'correct_answer',
+  answer: 'correct_answer',
+  'correct answer': 'correct_answer',
+  correctanswer: 'correct_answer',
+  'correct option': 'correct_answer',
+  correctoption: 'correct_answer',
+  subject: 'subject_id',
+  'subject id': 'subject_id',
+  chapter: 'chapter_id',
+  'chapter id': 'chapter_id',
+  topic: 'topic_id',
+  'topic id': 'topic_id',
+  school: 'school_id',
+  'school id': 'school_id',
+  difficulty: 'difficulty_level',
+  'difficulty level': 'difficulty_level',
+  tags: 'exam_tags',
+  'exam tags': 'exam_tags',
+  'option a': 'option_a',
+  'option b': 'option_b',
+  'option c': 'option_c',
+  'option d': 'option_d',
+  'option e': 'option_e',
+  'option f': 'option_f',
+  'option g': 'option_g',
+  'option h': 'option_h',
+  option1: 'option_1',
+  option2: 'option_2',
+  option3: 'option_3',
+  option4: 'option_4',
+  option5: 'option_5',
+  option6: 'option_6',
+  option7: 'option_7',
+  option8: 'option_8',
+};
+
+const normalizeBulkHeaderKey = (key) =>
+  String(key || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\uFEFF/g, '')
+    .replace(/[-\s]+/g, '_');
+
+const normalizeBulkQuestionType = (value) => {
+  const raw = String(value || '')
+    .trim()
+    .toLowerCase();
+  if (!raw) return '';
+
+  if (VALID_QUESTION_TYPES.includes(raw)) return raw;
+  if (['mcq', 'single', 'single_choice', 'singlechoice', 'single_select'].includes(raw)) {
+    return 'mcq_single';
+  }
+  if (['multiple', 'multiple_choice', 'multiplechoice', 'multi_select', 'mcq_multi'].includes(raw)) {
+    return 'mcq_multiple';
+  }
+  if (['numeric', 'integer', 'float'].includes(raw)) {
+    return 'numerical';
+  }
+  if (['truefalse', 'tf', 'boolean'].includes(raw)) {
+    return 'true_false';
+  }
+
+  return raw;
+};
+
+const getFileExtension = (filename = '') => {
+  const normalized = String(filename || '').toLowerCase();
+  const parts = normalized.split('.');
+  if (parts.length < 2) return '';
+  return parts[parts.length - 1];
+};
+
+const getImageMimeType = (filename = '') => {
+  const ext = getFileExtension(filename);
+  if (ext === 'png') return 'image/png';
+  if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
+  if (ext === 'gif') return 'image/gif';
+  if (ext === 'svg') return 'image/svg+xml';
+  if (ext === 'webp') return 'image/webp';
+  return 'application/octet-stream';
+};
+
+const normalizeBulkDefaults = (source) => {
+  const defaults = {};
+  if (source?.default_subject_id !== undefined && source.default_subject_id !== '') {
+    defaults.subject_id = source.default_subject_id;
+  } else if (source?.subject_id !== undefined && source.subject_id !== '') {
+    defaults.subject_id = source.subject_id;
+  }
+
+  if (source?.default_chapter_id !== undefined && source.default_chapter_id !== '') {
+    defaults.chapter_id = source.default_chapter_id;
+  } else if (source?.chapter_id !== undefined && source.chapter_id !== '') {
+    defaults.chapter_id = source.chapter_id;
+  }
+
+  if (source?.default_topic_id !== undefined && source.default_topic_id !== '') {
+    defaults.topic_id = source.default_topic_id;
+  } else if (source?.topic_id !== undefined && source.topic_id !== '') {
+    defaults.topic_id = source.topic_id;
+  }
+
+  if (source?.school_id !== undefined && source.school_id !== '') {
+    defaults.school_id = source.school_id;
+  }
+
+  return defaults;
+};
+
+const applyBulkDefaults = (row, defaults) => {
+  const merged = { ...row };
+  if ((merged.subject_id === undefined || merged.subject_id === '') && defaults.subject_id !== undefined) {
+    merged.subject_id = defaults.subject_id;
+  }
+  if ((merged.chapter_id === undefined || merged.chapter_id === '') && defaults.chapter_id !== undefined) {
+    merged.chapter_id = defaults.chapter_id;
+  }
+  if ((merged.topic_id === undefined || merged.topic_id === '') && defaults.topic_id !== undefined) {
+    merged.topic_id = defaults.topic_id;
+  }
+  if ((merged.school_id === undefined || merged.school_id === '') && defaults.school_id !== undefined) {
+    merged.school_id = defaults.school_id;
+  }
+  return merged;
+};
+
+const normalizeCsvRowInput = (rawRow, defaults) => {
+  const normalized = {};
+  Object.entries(rawRow || {}).forEach(([key, value]) => {
+    const originalKey = String(key).trim();
+    const normalizedKey = normalizeBulkHeaderKey(originalKey);
+    const compactKey = normalizedKey.replace(/_/g, ' ');
+    const canonicalKey =
+      BULK_CSV_HEADER_ALIASES[originalKey.toLowerCase()] ||
+      BULK_CSV_HEADER_ALIASES[compactKey] ||
+      BULK_CSV_HEADER_ALIASES[normalizedKey] ||
+      normalizedKey;
+    normalized[canonicalKey] = typeof value === 'string' ? value.trim() : value;
+  });
+
+  const optionKeys = [
+    'option_a',
+    'option_b',
+    'option_c',
+    'option_d',
+    'option_e',
+    'option_f',
+    'option_g',
+    'option_h',
+    'option_1',
+    'option_2',
+    'option_3',
+    'option_4',
+    'option_5',
+    'option_6',
+    'option_7',
+    'option_8',
+  ];
+  if (normalized.options === undefined || normalized.options === null || normalized.options === '') {
+    const optionValues = optionKeys
+      .map((optionKey) => normalized[optionKey])
+      .filter((entry) => entry !== undefined && entry !== null && String(entry).trim().length > 0)
+      .map((entry) => String(entry).trim());
+
+    if (optionValues.length > 0) {
+      const options = optionValues.map((text, index) => ({
+        id: `opt-${index + 1}`,
+        text,
+      }));
+      normalized.options = options;
+
+      if (normalized.correct_answer !== undefined && normalized.correct_answer !== null) {
+        const answerValue = String(normalized.correct_answer).trim();
+        if (answerValue.length > 0) {
+          const questionType = normalizeBulkQuestionType(normalized.question_type || 'mcq_single');
+          if (questionType === 'mcq_multiple') {
+            const tokens = answerValue
+              .split(/[|,;]/)
+              .map((token) => token.trim())
+              .filter((token) => token.length > 0);
+            normalized.correct_answer = tokens
+              .map((token) => mapAnswerTokenToOptionId(token, options) ?? token)
+              .filter((token) => token !== null);
+          } else {
+            normalized.correct_answer = mapAnswerTokenToOptionId(answerValue, options) ?? answerValue;
+          }
+        }
+      }
+    }
+  }
+
+  if (!normalized.question_type || String(normalized.question_type).trim().length === 0) {
+    normalized.question_type = 'mcq_single';
+  } else {
+    normalized.question_type = normalizeBulkQuestionType(normalized.question_type);
+  }
+
+  optionKeys.forEach((optionKey) => {
+    delete normalized[optionKey];
+  });
+
+  return applyBulkDefaults(normalized, defaults);
+};
+
+const mapAnswerTokenToOptionId = (token, options) => {
+  const normalized = String(token || '').trim().toUpperCase();
+  if (!normalized) return null;
+
+  if (/^\d+$/.test(normalized)) {
+    const index = Number.parseInt(normalized, 10) - 1;
+    return options[index]?.id ?? null;
+  }
+
+  if (/^[A-Z]$/.test(normalized)) {
+    const index = normalized.charCodeAt(0) - 65;
+    return options[index]?.id ?? null;
+  }
+
+  const byText = options.find(
+    (option) => String(option.text || '').trim().toLowerCase() === String(token).trim().toLowerCase()
+  );
+  return byText?.id ?? null;
+};
+
+const finalizeDocxQuestion = (question, defaults, rowNumber) => {
+  if (!question || !question.question_text) {
+    return null;
+  }
+
+  const options = (question.options || []).map((option, index) => ({
+    id: option.id || `opt-${index + 1}`,
+    text: option.text,
+  }));
+
+  const questionType = normalizeBulkQuestionType(question.question_type || 'mcq_single');
+  const answerRaw = question.correct_answer;
+  let correctAnswer = answerRaw;
+  if (questionType === 'true_false') {
+    const answerValue = String(answerRaw || '').trim().toLowerCase();
+    correctAnswer = answerValue === 'true';
+  } else if (questionType === 'numerical') {
+    correctAnswer = Number(answerRaw);
+  } else if (questionType === 'mcq_single') {
+    correctAnswer = mapAnswerTokenToOptionId(answerRaw, options) ?? String(answerRaw || '').trim();
+  } else if (questionType === 'mcq_multiple') {
+    const tokens = String(answerRaw || '')
+      .split(/[|,;]/)
+      .map((token) => token.trim())
+      .filter((token) => token.length > 0);
+    const mapped = tokens
+      .map((token) => mapAnswerTokenToOptionId(token, options))
+      .filter(Boolean);
+    correctAnswer = mapped.length > 0 ? mapped : tokens;
+  }
+
+  const prepared = applyBulkDefaults(
+    {
+      question_type: questionType,
+      question_text: question.question_text,
+      options: options.length > 0 ? options : null,
+      correct_answer: correctAnswer,
+      subject_id: question.subject_id,
+      chapter_id: question.chapter_id,
+      topic_id: question.topic_id,
+      difficulty_level: question.difficulty_level || 'medium',
+      exam_tags: question.exam_tags || [],
+      marks_positive: question.marks_positive ?? 4,
+      marks_negative: question.marks_negative ?? 0,
+      solution: question.solution ?? null,
+      solution_video_url: question.solution_video_url ?? null,
+      school_id: question.school_id ?? null,
+      status: question.status ?? undefined,
+    },
+    defaults
+  );
+
+  if (!prepared.subject_id || !prepared.chapter_id) {
+    throw new AppError(
+      `Row ${rowNumber}: subject_id and chapter_id are required (set in file or upload defaults)`,
+      400
+    );
+  }
+  return prepared;
+};
+
+const extractDocxRows = (buffer, defaults) => {
+  const zip = new AdmZip(buffer);
+  const documentEntry = zip.getEntry('word/document.xml');
+  if (!documentEntry) {
+    throw new AppError('Invalid Word file: document.xml missing', 400);
+  }
+
+  const relsEntry = zip.getEntry('word/_rels/document.xml.rels');
+  const relationshipMap = {};
+  if (relsEntry) {
+    const relsXml = relsEntry.getData().toString('utf8');
+    const relMatches = relsXml.matchAll(/<Relationship[^>]*Id="([^"]+)"[^>]*Target="([^"]+)"[^>]*\/>/g);
+    for (const match of relMatches) {
+      relationshipMap[match[1]] = match[2];
+    }
+  }
+
+  const documentXml = documentEntry.getData().toString('utf8');
+  const paragraphMatches = documentXml.match(/<w:p[\s\S]*?<\/w:p>/g) || [];
+  if (paragraphMatches.length === 0) {
+    throw new AppError('Word file has no readable paragraph content', 400);
+  }
+
+  const rows = [];
+  let globalMeta = {};
+  let current = null;
+
+  const pushCurrent = () => {
+    if (!current) return;
+    const normalized = finalizeDocxQuestion(current, defaults, rows.length + 2);
+    if (normalized) rows.push(normalized);
+    current = null;
+  };
+
+  paragraphMatches.forEach((paragraphXml) => {
+    const plainText = decodeXmlEntities(
+      Array.from(paragraphXml.matchAll(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g))
+        .map((match) => match[1])
+        .join('')
+    ).trim();
+
+    const htmlParts = [];
+    if (plainText) {
+      htmlParts.push(escapeHtml(plainText));
+    }
+
+    const equationText = decodeXmlEntities(
+      Array.from(paragraphXml.matchAll(/<m:t[^>]*>([\s\S]*?)<\/m:t>/g))
+        .map((match) => match[1])
+        .join('')
+    ).trim();
+    if (paragraphXml.includes('<m:oMath')) {
+      htmlParts.push(`<span class="math-equation">${escapeHtml(equationText || '[Equation]')}</span>`);
+    }
+
+    const imageMatches = paragraphXml.matchAll(/r:embed="([^"]+)"/g);
+    for (const imageMatch of imageMatches) {
+      const relId = imageMatch[1];
+      const target = relationshipMap[relId];
+      if (!target) continue;
+      const normalizedTarget = target.replace(/^\/+/, '');
+      const imageEntry = zip.getEntry(`word/${normalizedTarget}`);
+      if (!imageEntry) continue;
+      const base64 = imageEntry.getData().toString('base64');
+      const filename = normalizedTarget.split('/').pop() || 'image';
+      const mimeType = getImageMimeType(filename);
+      htmlParts.push(`<img src="data:${mimeType};base64,${base64}" alt="${escapeHtml(filename)}" />`);
+    }
+
+    const paragraphHtml = htmlParts.join(' ').trim();
+    if (!plainText && !paragraphHtml) return;
+
+    const metaMatch = plainText.match(
+      /^(subject_id|chapter_id|topic_id|difficulty_level|marks_positive|marks_negative|exam_tags|status|school_id)\s*:\s*(.+)$/i
+    );
+    if (!current && metaMatch) {
+      const key = metaMatch[1].toLowerCase();
+      const value = metaMatch[2].trim();
+      if (key === 'exam_tags') {
+        globalMeta.exam_tags = value
+          .split(',')
+          .map((tag) => tag.trim())
+          .filter((tag) => tag.length > 0);
+      } else {
+        globalMeta[key] = value;
+      }
+      return;
+    }
+
+    const questionMatch =
+      plainText.match(/^question(?:\s+\d+)?\s*[:.-]\s*(.*)$/i) ||
+      plainText.match(/^q(?:\s+\d+)?\s*[:.-]\s*(.*)$/i) ||
+      plainText.match(/^\d+\s*[\).:-]\s*(.+)$/i);
+    if (questionMatch) {
+      pushCurrent();
+      current = {
+        ...globalMeta,
+        question_type: 'mcq_single',
+        question_text: questionMatch[1] ? `<p>${escapeHtml(questionMatch[1])}</p>` : '',
+        options: [],
+      };
+      if (!current.question_text && paragraphHtml) {
+        current.question_text = `<p>${paragraphHtml}</p>`;
+      }
+      return;
+    }
+
+    if (!current) {
+      return;
+    }
+
+    const typeMatch = plainText.match(/^type\s*:\s*(.+)$/i);
+    if (typeMatch) {
+      current.question_type = typeMatch[1].trim();
+      return;
+    }
+
+    if (metaMatch) {
+      const key = metaMatch[1].toLowerCase();
+      const value = metaMatch[2].trim();
+      if (key === 'exam_tags') {
+        current.exam_tags = value
+          .split(',')
+          .map((tag) => tag.trim())
+          .filter((tag) => tag.length > 0);
+      } else {
+        current[key] = value;
+      }
+      return;
+    }
+
+    const optionMatch = plainText.match(/^([A-H])[\).:-]\s*(.*)$/i);
+    if (optionMatch) {
+      const optionHtml = paragraphHtml.replace(/^[A-H][\).:-]\s*/i, '').trim();
+      const optionText = optionHtml || escapeHtml(optionMatch[2] || '').trim();
+      if (!optionText) return;
+      current.options.push({
+        id: `opt-${current.options.length + 1}`,
+        text: optionText,
+      });
+      return;
+    }
+
+    const answerMatch = plainText.match(
+      /^(answer|ans|correct_answer|correct answer|correct option)\s*[:.-]\s*(.+)$/i
+    );
+    if (answerMatch) {
+      current.correct_answer = answerMatch[2].trim();
+      return;
+    }
+
+    current.question_text = `${current.question_text || ''}<p>${paragraphHtml || escapeHtml(plainText)}</p>`;
+  });
+
+  pushCurrent();
+
+  if (rows.length === 0) {
+    throw new AppError(
+      'No questions found in Word file. Use "Question:", option lines like "A) ...", and "Answer:"',
+      400
+    );
+  }
+
+  return rows;
+};
+
+const extractBulkRowsFromFile = (file, defaults) => {
+  const extension = getFileExtension(file?.originalname || '');
+  if (extension === 'csv') {
+    const csvText = file.buffer.toString('utf8');
+    const parsedRows = parseCsvContent(csvText);
+    return parsedRows.map((row) => normalizeCsvRowInput(row, defaults));
+  }
+
+  if (extension === 'docx') {
+    return extractDocxRows(file.buffer, defaults);
+  }
+
+  if (extension === 'doc') {
+    throw new AppError('Legacy .doc is not supported. Please upload .docx instead.', 400);
+  }
+
+  throw new AppError('Unsupported file type. Allowed: .csv, .docx', 400);
 };
 
 const buildQuestionInsertPayload = async ({ input, user, role, clientId }) => {
@@ -560,7 +1115,24 @@ export const bulkUploadQuestions = async (req, res) => {
 
     const role = req.user.role;
     const clientId = ensureClientScope(req.user.client_id ?? null, role);
-    const questions = req.body?.questions;
+    const defaults = normalizeBulkDefaults(req.body ?? {});
+    let questions = [];
+
+    if (req.file) {
+      questions = extractBulkRowsFromFile(req.file, defaults);
+    } else if (Array.isArray(req.body?.questions)) {
+      questions = req.body.questions.map((row) => applyBulkDefaults(row, defaults));
+    } else if (typeof req.body?.questions === 'string') {
+      try {
+        const parsed = JSON.parse(req.body.questions);
+        if (!Array.isArray(parsed)) {
+          throw new AppError('questions must be an array', 400);
+        }
+        questions = parsed.map((row) => applyBulkDefaults(row, defaults));
+      } catch (err) {
+        throw new AppError('questions must be a valid JSON array', 400);
+      }
+    }
 
     if (!Array.isArray(questions) || questions.length === 0) {
       throw new AppError('questions must be a non-empty array', 400);
@@ -589,27 +1161,41 @@ export const bulkUploadQuestions = async (req, res) => {
         const inserted = await insertQuestion(payload);
         created.push({
           index,
+          row_number: index + 2,
           id: inserted.id,
           status: inserted.status,
         });
       } catch (err) {
         if (err instanceof AppError) {
-          failed.push({ index, error: err.message });
+          failed.push({ index, row_number: index + 2, error: err.message });
         } else {
           console.error(`Bulk upload failed at row ${index}:`, err);
-          failed.push({ index, error: 'Unexpected error while creating question' });
+          failed.push({
+            index,
+            row_number: index + 2,
+            error: 'Unexpected error while creating question',
+          });
         }
       }
     }
 
-    const successStatus = created.length > 0 ? 201 : 400;
-    res.status(successStatus).json({
+    const responsePayload = {
       total: questions.length,
       created_count: created.length,
       failed_count: failed.length,
       created,
       failed,
-    });
+    };
+
+    if (created.length === 0 && failed.length > 0) {
+      return res.status(400).json({
+        error: failed[0].error,
+        ...responsePayload,
+      });
+    }
+
+    const successStatus = created.length > 0 ? 201 : 400;
+    res.status(successStatus).json(responsePayload);
   } catch (err) {
     handleServiceError(res, err, 'Failed to bulk upload questions');
   }
