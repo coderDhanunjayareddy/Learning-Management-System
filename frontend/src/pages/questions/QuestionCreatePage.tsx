@@ -33,6 +33,8 @@ const normalizeQuestion = (item: any): Question => ({
   scoring_mode: item.scoring_mode ?? "all_or_nothing",
   comprehension_passage: normalizeQuestionText(item.comprehension_passage),
   comprehension_questions: item.comprehension_questions ?? [],
+  program_id: item.program_id ?? null,
+  grade_id: item.grade_id ?? null,
   subject_id: item.subject_id ?? null,
   chapter_id: item.chapter_id ?? null,
   topic_id: item.topic_id ?? null,
@@ -59,27 +61,29 @@ const normalizeCurriculum = (items: any[]): CurriculumItem[] =>
 export default function QuestionCreatePage() {
   const navigate = useNavigate();
 
+  const [programs, setPrograms] = useState<CurriculumItem[]>([]);
+  const [grades] = useState<CurriculumItem[]>([]);
   const [subjects, setSubjects] = useState<CurriculumItem[]>([]);
   const [chapters] = useState<CurriculumItem[]>([]);
   const [topics] = useState<CurriculumItem[]>([]);
 
   useEffect(() => {
-    const loadSubjects = async () => {
+    const loadPrograms = async () => {
       try {
-        const res = await api.get("/subjects");
+        const res = await api.get("/programs");
         const payload = Array.isArray(res.data)
           ? res.data
           : Array.isArray(res.data?.data)
             ? res.data.data
             : [];
         if (payload.length) {
-          setSubjects(normalizeCurriculum(payload));
+          setPrograms(normalizeCurriculum(payload));
         }
       } catch {
-        setSubjects([]);
+        setPrograms([]);
       }
     };
-    loadSubjects();
+    loadPrograms();
   }, []);
 
   const handleSave = async (payload: Omit<Question, "id">) => {
@@ -116,6 +120,8 @@ export default function QuestionCreatePage() {
     >
       <QuestionForm
         variant="page"
+        programs={programs}
+        grades={grades}
         subjects={subjects}
         chapters={chapters}
         topics={topics}

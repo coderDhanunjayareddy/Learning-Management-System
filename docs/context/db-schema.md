@@ -12,6 +12,8 @@ Scope: PostgreSQL schema + migration steps up through v1.1 (multi-tenant feature
 - student_attempts: SCORM tracking per user/content_item. Fields include attempt_no, score_raw, completion_status, suspend_data, total_time, started_at, finished_at. Unique (user_id, content_item_id, attempt_no).
 - certificates: per user + course. Unique (user_id, course_id).
 - community_content: client activity posts with UUID id, school_name, area, state, date, session, title, description, media jsonb, created_by (users.id).
+- programs: question-bank program master per client. Fields: id, client_id, name, code, is_active, created_at, updated_at.
+- grades: question-bank grade master under program. Fields: id, program_id, grade_number, is_active, created_at, updated_at.
 
 ## Multi-Tenant / Organization Model (v1.1 migration)
 - clients: organizations (name, slug, timezone, settings, is_active).
@@ -33,6 +35,8 @@ Scope: PostgreSQL schema + migration steps up through v1.1 (multi-tenant feature
 - users.id -> enrollments.user_id (1:many), courses.id -> enrollments.course_id (1:many)
 - users.id -> student_attempts.user_id (1:many), content_items.id -> student_attempts.content_item_id (1:many)
 - users.id + courses.id -> certificates (1 per pair)
+- programs.id -> grades.program_id (1:many)
+- grades.id -> subjects.grade_id (1:many)
 - clients.id -> schools.client_id, batches.client_id, role_permissions.client_id, audit_logs.client_id
 - schools.id -> school_memberships.school_id, batches.school_id
 - users.id -> school_memberships.user_id, batch_members.user_id
@@ -42,6 +46,7 @@ Scope: PostgreSQL schema + migration steps up through v1.1 (multi-tenant feature
 - User roles: super_admin, content_authorizer, client_admin, school_owner, teacher, student.
 - user_has_permission(p_user_id, p_permission) checks client-specific permissions first, then global defaults.
 - Default permissions inserted for each role (global entries where client_id is NULL).
+- New curriculum permissions: `programs.read/create/update/delete`, `grades.read/create/update/delete`.
 
 ## Triggers and Functions
 - update_timestamp() updates updated_at on rows.

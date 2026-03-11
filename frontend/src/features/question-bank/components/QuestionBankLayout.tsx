@@ -20,6 +20,8 @@ const roleDashboardMap: Record<string, string> = {
 
 const navItems = [
   { label: "Questions", to: "/question-bank" },
+  { label: "Programs", to: "/question-bank/programs" },
+  { label: "Grades", to: "/question-bank/grades" },
   { label: "Subjects", to: "/question-bank/subjects" },
   { label: "Chapters", to: "/question-bank/chapters" },
   { label: "Topics", to: "/question-bank/topics" },

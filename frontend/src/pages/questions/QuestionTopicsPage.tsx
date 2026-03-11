@@ -4,19 +4,47 @@ import api from "@/lib/api";
 import QuestionBankLayout from "@/features/question-bank/components/QuestionBankLayout";
 import type { CurriculumItem } from "@/types/questionBank";
 
+const toArray = (payload: any): any[] =>
+  Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : [];
+
 const normalizeCurriculum = (items: any[]): CurriculumItem[] =>
   items
     .map((item) => ({
-      id: item.id ?? item.topic_id ?? item.chapter_id ?? item.subject_id,
-      name: item.name ?? item.title ?? "Untitled",
+      id: item.id ?? item.program_id ?? item.grade_id ?? item.subject_id ?? item.chapter_id ?? item.topic_id,
+      name:
+        item.name ??
+        item.title ??
+        (item.grade_number !== undefined && item.grade_number !== null
+          ? `Grade ${item.grade_number}`
+          : "Untitled"),
+      program_id: item.program_id ?? null,
+      grade_id: item.grade_id ?? null,
+      grade_number: item.grade_number ?? null,
       subject_id: item.subject_id ?? null,
       chapter_id: item.chapter_id ?? null,
     }))
     .filter((item) => item.id !== undefined && item.id !== null);
 
-const parseQuery = (searchParams: URLSearchParams) => ({
-  subjectId: searchParams.get("subject_id") ?? "",
-  chapterId: searchParams.get("chapter_id") ?? "",
+const buildHierarchyQuery = (
+  programId: string,
+  gradeId: string,
+  subjectId: string,
+  chapterId: string
+) => {
+  const params = new URLSearchParams();
+  if (programId) params.set("program_id", programId);
+  if (gradeId) params.set("grade_id", gradeId);
+  if (subjectId) params.set("subject_id", subjectId);
+  if (chapterId) params.set("chapter_id", chapterId);
+  const query = params.toString();
+  return query ? `?${query}` : "";
+};
+
+const parseQuery = (params: URLSearchParams) => ({
+  programId: params.get("program_id") ?? "",
+  gradeId: params.get("grade_id") ?? "",
+  subjectId: params.get("subject_id") ?? "",
+  chapterId: params.get("chapter_id") ?? "",
 });
 
 export default function QuestionTopicsPage() {
@@ -25,12 +53,20 @@ export default function QuestionTopicsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const initialQuery = parseQuery(searchParams);
 
+  const [programs, setPrograms] = useState<CurriculumItem[]>([]);
+  const [grades, setGrades] = useState<CurriculumItem[]>([]);
   const [subjects, setSubjects] = useState<CurriculumItem[]>([]);
   const [chapters, setChapters] = useState<CurriculumItem[]>([]);
   const [topics, setTopics] = useState<CurriculumItem[]>([]);
+
+  const [selectedProgramId, setSelectedProgramId] = useState(initialQuery.programId);
+  const [selectedGradeId, setSelectedGradeId] = useState(initialQuery.gradeId);
   const [selectedSubjectId, setSelectedSubjectId] = useState(initialQuery.subjectId);
   const [selectedChapterId, setSelectedChapterId] = useState(initialQuery.chapterId);
-  const [loadingSubjects, setLoadingSubjects] = useState(true);
+
+  const [loadingPrograms, setLoadingPrograms] = useState(true);
+  const [loadingGrades, setLoadingGrades] = useState(false);
+  const [loadingSubjects, setLoadingSubjects] = useState(false);
   const [loadingChapters, setLoadingChapters] = useState(false);
   const [loadingTopics, setLoadingTopics] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,33 +94,111 @@ export default function QuestionTopicsPage() {
   }, [location.pathname, location.search, location.state, navigate, selectedChapterId]);
 
   useEffect(() => {
+    const loadPrograms = async () => {
+      setLoadingPrograms(true);
+      setError(null);
+      try {
+        const res = await api.get("/programs");
+        const normalized = normalizeCurriculum(toArray(res.data));
+        setPrograms(normalized);
+
+        if (selectedProgramId && !normalized.some((item) => String(item.id) === selectedProgramId)) {
+          setSelectedProgramId("");
+          setSelectedGradeId("");
+          setSelectedSubjectId("");
+          setSelectedChapterId("");
+        }
+      } catch (err: any) {
+        setPrograms([]);
+        setError(err?.response?.data?.error || "Failed to load programs");
+      } finally {
+        setLoadingPrograms(false);
+      }
+    };
+    loadPrograms();
+  }, []);
+
+  useEffect(() => {
+    if (!selectedProgramId) {
+      setGrades([]);
+      setSelectedGradeId("");
+      setSubjects([]);
+      setSelectedSubjectId("");
+      setChapters([]);
+      setSelectedChapterId("");
+      setTopics([]);
+      return;
+    }
+
+    const loadGrades = async () => {
+      setLoadingGrades(true);
+      setError(null);
+      try {
+        const res = await api.get(`/programs/${selectedProgramId}/grades`);
+        const normalized = normalizeCurriculum(toArray(res.data));
+        setGrades(normalized);
+
+        if (selectedGradeId && !normalized.some((item) => String(item.id) === selectedGradeId)) {
+          setSelectedGradeId("");
+          setSubjects([]);
+          setSelectedSubjectId("");
+          setChapters([]);
+          setSelectedChapterId("");
+          setTopics([]);
+        }
+      } catch (err: any) {
+        setGrades([]);
+        setSelectedGradeId("");
+        setSubjects([]);
+        setSelectedSubjectId("");
+        setChapters([]);
+        setSelectedChapterId("");
+        setTopics([]);
+        setError(err?.response?.data?.error || "Failed to load grades");
+      } finally {
+        setLoadingGrades(false);
+      }
+    };
+    loadGrades();
+  }, [selectedProgramId]);
+
+  useEffect(() => {
+    if (!selectedGradeId) {
+      setSubjects([]);
+      setSelectedSubjectId("");
+      setChapters([]);
+      setSelectedChapterId("");
+      setTopics([]);
+      return;
+    }
+
     const loadSubjects = async () => {
       setLoadingSubjects(true);
       setError(null);
       try {
-        const res = await api.get("/subjects");
-        const payload = Array.isArray(res.data)
-          ? res.data
-          : Array.isArray(res.data?.data)
-          ? res.data.data
-          : [];
-        const normalized = normalizeCurriculum(payload);
+        const res = await api.get(`/grades/${selectedGradeId}/subjects`);
+        const normalized = normalizeCurriculum(toArray(res.data));
         setSubjects(normalized);
 
-        if (!selectedSubjectId && normalized.length > 0) {
-          const nextSubject = String(normalized[0].id);
-          setSelectedSubjectId(nextSubject);
-          setSearchParams({ subject_id: nextSubject });
+        if (selectedSubjectId && !normalized.some((item) => String(item.id) === selectedSubjectId)) {
+          setSelectedSubjectId("");
+          setChapters([]);
+          setSelectedChapterId("");
+          setTopics([]);
         }
       } catch (err: any) {
         setSubjects([]);
+        setSelectedSubjectId("");
+        setChapters([]);
+        setSelectedChapterId("");
+        setTopics([]);
         setError(err?.response?.data?.error || "Failed to load subjects");
       } finally {
         setLoadingSubjects(false);
       }
     };
     loadSubjects();
-  }, [setSearchParams]);
+  }, [selectedGradeId]);
 
   useEffect(() => {
     if (!selectedSubjectId) {
@@ -99,24 +213,16 @@ export default function QuestionTopicsPage() {
       setError(null);
       try {
         const res = await api.get(`/subjects/${selectedSubjectId}/chapters`);
-        const payload = Array.isArray(res.data)
-          ? res.data
-          : Array.isArray(res.data?.data)
-          ? res.data.data
-          : [];
-        const normalized = normalizeCurriculum(payload);
+        const normalized = normalizeCurriculum(toArray(res.data));
         setChapters(normalized);
 
-        if (!selectedChapterId && normalized.length > 0) {
-          const nextChapter = String(normalized[0].id);
-          setSelectedChapterId(nextChapter);
-          setSearchParams({ subject_id: selectedSubjectId, chapter_id: nextChapter });
-        } else if (selectedChapterId && !normalized.some((item) => String(item.id) === selectedChapterId)) {
+        if (selectedChapterId && !normalized.some((item) => String(item.id) === selectedChapterId)) {
           setSelectedChapterId("");
-          setSearchParams({ subject_id: selectedSubjectId });
+          setTopics([]);
         }
       } catch (err: any) {
         setChapters([]);
+        setSelectedChapterId("");
         setTopics([]);
         setError(err?.response?.data?.error || "Failed to load chapters");
       } finally {
@@ -124,7 +230,7 @@ export default function QuestionTopicsPage() {
       }
     };
     loadChapters();
-  }, [selectedSubjectId, setSearchParams]);
+  }, [selectedSubjectId]);
 
   useEffect(() => {
     if (!selectedChapterId) {
@@ -137,12 +243,7 @@ export default function QuestionTopicsPage() {
       setError(null);
       try {
         const res = await api.get(`/chapters/${selectedChapterId}/topics`);
-        const payload = Array.isArray(res.data)
-          ? res.data
-          : Array.isArray(res.data?.data)
-          ? res.data.data
-          : [];
-        setTopics(normalizeCurriculum(payload));
+        setTopics(normalizeCurriculum(toArray(res.data)));
       } catch (err: any) {
         setTopics([]);
         setError(err?.response?.data?.error || "Failed to load topics");
@@ -153,12 +254,29 @@ export default function QuestionTopicsPage() {
     loadTopics();
   }, [selectedChapterId]);
 
+  useEffect(() => {
+    const params: Record<string, string> = {};
+    if (selectedProgramId) params.program_id = selectedProgramId;
+    if (selectedGradeId) params.grade_id = selectedGradeId;
+    if (selectedSubjectId) params.subject_id = selectedSubjectId;
+    if (selectedChapterId) params.chapter_id = selectedChapterId;
+    setSearchParams(params);
+  }, [selectedProgramId, selectedGradeId, selectedSubjectId, selectedChapterId, setSearchParams]);
+
+  const selectedProgramName = useMemo(
+    () => programs.find((item) => String(item.id) === selectedProgramId)?.name ?? "Selected Program",
+    [programs, selectedProgramId]
+  );
+  const selectedGradeName = useMemo(
+    () => grades.find((item) => String(item.id) === selectedGradeId)?.name ?? "Selected Grade",
+    [grades, selectedGradeId]
+  );
   const selectedSubjectName = useMemo(
-    () => subjects.find((subject) => String(subject.id) === selectedSubjectId)?.name ?? "Selected Subject",
-    [selectedSubjectId, subjects]
+    () => subjects.find((item) => String(item.id) === selectedSubjectId)?.name ?? "Selected Subject",
+    [subjects, selectedSubjectId]
   );
   const selectedChapterName = useMemo(
-    () => chapters.find((chapter) => String(chapter.id) === selectedChapterId)?.name ?? "Selected Chapter",
+    () => chapters.find((item) => String(item.id) === selectedChapterId)?.name ?? "Selected Chapter",
     [chapters, selectedChapterId]
   );
 
@@ -170,7 +288,12 @@ export default function QuestionTopicsPage() {
         <button
           onClick={() =>
             navigate(
-              `/question-bank/topics/new${selectedChapterId ? `?subject_id=${selectedSubjectId}&chapter_id=${selectedChapterId}` : ""}`
+              `/question-bank/topics/new${buildHierarchyQuery(
+                selectedProgramId,
+                selectedGradeId,
+                selectedSubjectId,
+                selectedChapterId
+              )}`
             )
           }
           disabled={!selectedChapterId}
@@ -189,21 +312,61 @@ export default function QuestionTopicsPage() {
 
         <div className="grid gap-4 md:grid-cols-2">
           <div>
+            <label className="text-xs font-semibold text-slate-500">Program</label>
+            <select
+              value={selectedProgramId}
+              onChange={(event) => {
+                setSelectedProgramId(event.target.value);
+                setSelectedGradeId("");
+                setSelectedSubjectId("");
+                setSelectedChapterId("");
+                setTopics([]);
+              }}
+              disabled={loadingPrograms}
+              className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none disabled:bg-slate-100"
+            >
+              <option value="">Select program</option>
+              {programs.map((program) => (
+                <option key={program.id} value={String(program.id)}>
+                  {program.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-slate-500">Grade</label>
+            <select
+              value={selectedGradeId}
+              onChange={(event) => {
+                setSelectedGradeId(event.target.value);
+                setSelectedSubjectId("");
+                setSelectedChapterId("");
+                setTopics([]);
+              }}
+              disabled={!selectedProgramId || loadingGrades}
+              className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none disabled:bg-slate-100"
+            >
+              <option value="">Select grade</option>
+              {grades.map((grade) => (
+                <option key={grade.id} value={String(grade.id)}>
+                  {grade.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
             <label className="text-xs font-semibold text-slate-500">Subject</label>
             <select
               value={selectedSubjectId}
               onChange={(event) => {
-                const nextSubject = event.target.value;
-                setSelectedSubjectId(nextSubject);
+                setSelectedSubjectId(event.target.value);
                 setSelectedChapterId("");
                 setTopics([]);
-                if (nextSubject) {
-                  setSearchParams({ subject_id: nextSubject });
-                } else {
-                  setSearchParams({});
-                }
               }}
-              className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+              disabled={!selectedGradeId || loadingSubjects}
+              className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none disabled:bg-slate-100"
             >
               <option value="">Select subject</option>
               {subjects.map((subject) => (
@@ -219,17 +382,10 @@ export default function QuestionTopicsPage() {
             <select
               value={selectedChapterId}
               onChange={(event) => {
-                const nextChapter = event.target.value;
-                setSelectedChapterId(nextChapter);
-                if (selectedSubjectId && nextChapter) {
-                  setSearchParams({ subject_id: selectedSubjectId, chapter_id: nextChapter });
-                } else if (selectedSubjectId) {
-                  setSearchParams({ subject_id: selectedSubjectId });
-                } else {
-                  setSearchParams({});
-                }
+                setSelectedChapterId(event.target.value);
+                setTopics([]);
               }}
-              disabled={!selectedSubjectId}
+              disabled={!selectedSubjectId || loadingChapters}
               className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none disabled:bg-slate-100"
             >
               <option value="">Select chapter</option>
@@ -242,7 +398,7 @@ export default function QuestionTopicsPage() {
           </div>
         </div>
 
-        {loadingSubjects || loadingChapters || loadingTopics ? (
+        {loadingPrograms || loadingGrades || loadingSubjects || loadingChapters || loadingTopics ? (
           <div className="mt-4 text-sm text-slate-500">Loading topics...</div>
         ) : (
           <div className="mt-4 space-y-3">
@@ -256,11 +412,20 @@ export default function QuestionTopicsPage() {
                     <div>
                       <div className="text-sm font-semibold text-slate-900">{topic.name}</div>
                       <div className="text-xs text-slate-500">
-                        ID: {topic.id} • {selectedSubjectName} / {selectedChapterName}
+                        ID: {topic.id} | {selectedProgramName} | {selectedGradeName} | {selectedSubjectName} | {selectedChapterName}
                       </div>
                     </div>
                     <button
-                      onClick={() => navigate(`/question-bank/topics/${topic.id}/edit`)}
+                      onClick={() =>
+                        navigate(
+                          `/question-bank/topics/${topic.id}/edit${buildHierarchyQuery(
+                            selectedProgramId,
+                            selectedGradeId,
+                            selectedSubjectId,
+                            selectedChapterId
+                          )}`
+                        )
+                      }
                       className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
                     >
                       Edit
@@ -275,7 +440,7 @@ export default function QuestionTopicsPage() {
               </>
             ) : (
               <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
-                Select a chapter to view topics.
+                Select program, grade, subject, and chapter to view topics.
               </div>
             )}
           </div>

@@ -74,18 +74,45 @@ const ensureSchoolAccess = async ({ schoolId, role, userId, clientId }) => {
   return schoolId;
 };
 
-const ensureCurriculumScope = async ({ subjectId, chapterId, topicId, clientId }) => {
-  if (!subjectId && !chapterId && !topicId) return;
+const ensureCurriculumScope = async ({
+  programId = null,
+  gradeId = null,
+  subjectId,
+  chapterId,
+  topicId,
+  clientId,
+}) => {
+  if (!programId && !gradeId && !subjectId && !chapterId && !topicId) return;
+  if (programId && !gradeId) {
+    throw new AppError('grade_id is required when program_id is provided', 400);
+  }
+  if (gradeId && !subjectId) {
+    throw new AppError('subject_id is required when grade_id is provided', 400);
+  }
   if (chapterId && !subjectId) {
     throw new AppError('subject_id is required when chapter_id is provided', 400);
   }
   if (topicId && !chapterId) {
     throw new AppError('chapter_id is required when topic_id is provided', 400);
   }
-  const subjectResult = await dbQuery(`SELECT id, client_id FROM subjects WHERE id = $1`, [subjectId]);
+  const subjectResult = await dbQuery(
+    `
+    SELECT s.id, s.client_id, s.grade_id, g.program_id
+    FROM subjects s
+    LEFT JOIN grades g ON g.id = s.grade_id
+    WHERE s.id = $1
+    `,
+    [subjectId]
+  );
   if (subjectResult.rows.length === 0) throw new AppError('Subject not found', 404);
   if (clientId && subjectResult.rows[0].client_id !== clientId) {
     throw new AppError('Subject does not belong to this client', 403);
+  }
+  if (gradeId && Number(subjectResult.rows[0].grade_id) !== Number(gradeId)) {
+    throw new AppError('Subject does not belong to the grade', 400);
+  }
+  if (programId && Number(subjectResult.rows[0].program_id) !== Number(programId)) {
+    throw new AppError('Grade does not belong to the program', 400);
   }
 
   const chapterResult = await dbQuery(
@@ -181,6 +208,29 @@ const buildQuestionWhere = async ({ user, query, includeArchived = false }) => {
 
   const topicId = parseNullableInt(query.topic_id, 'topic_id');
   if (topicId) conditions.push(`q.topic_id = ${addParam(topicId)}`);
+
+  const gradeId = parseNullableInt(query.grade_id, 'grade_id');
+  if (gradeId) {
+    conditions.push(
+      `EXISTS (
+        SELECT 1
+        FROM subjects s
+        WHERE s.id = q.subject_id AND s.grade_id = ${addParam(gradeId)}
+      )`
+    );
+  }
+
+  const programId = parseNullableInt(query.program_id, 'program_id');
+  if (programId) {
+    conditions.push(
+      `EXISTS (
+        SELECT 1
+        FROM subjects s
+        JOIN grades g ON g.id = s.grade_id
+        WHERE s.id = q.subject_id AND g.program_id = ${addParam(programId)}
+      )`
+    );
+  }
 
   if (query.question_type) {
     const type = String(query.question_type);
@@ -384,6 +434,10 @@ const BULK_CSV_HEADER_ALIASES = {
   correctoption: 'correct_answer',
   subject: 'subject_id',
   'subject id': 'subject_id',
+  program: 'program_id',
+  'program id': 'program_id',
+  grade: 'grade_id',
+  'grade id': 'grade_id',
   chapter: 'chapter_id',
   'chapter id': 'chapter_id',
   topic: 'topic_id',
@@ -394,6 +448,9 @@ const BULK_CSV_HEADER_ALIASES = {
   'difficulty level': 'difficulty_level',
   tags: 'exam_tags',
   'exam tags': 'exam_tags',
+  category: 'category',
+  catagory: 'category',
+  comprehensive_subquestions: 'category',
   'option a': 'option_a',
   'option b': 'option_b',
   'option c': 'option_c',
@@ -461,6 +518,18 @@ const getImageMimeType = (filename = '') => {
 
 const normalizeBulkDefaults = (source) => {
   const defaults = {};
+  if (source?.default_program_id !== undefined && source.default_program_id !== '') {
+    defaults.program_id = source.default_program_id;
+  } else if (source?.program_id !== undefined && source.program_id !== '') {
+    defaults.program_id = source.program_id;
+  }
+
+  if (source?.default_grade_id !== undefined && source.default_grade_id !== '') {
+    defaults.grade_id = source.default_grade_id;
+  } else if (source?.grade_id !== undefined && source.grade_id !== '') {
+    defaults.grade_id = source.grade_id;
+  }
+
   if (source?.default_subject_id !== undefined && source.default_subject_id !== '') {
     defaults.subject_id = source.default_subject_id;
   } else if (source?.subject_id !== undefined && source.subject_id !== '') {
@@ -488,6 +557,18 @@ const normalizeBulkDefaults = (source) => {
 
 const applyBulkDefaults = (row, defaults) => {
   const merged = { ...row };
+  if (
+    (merged.program_id === undefined || merged.program_id === null || merged.program_id === '') &&
+    defaults.program_id !== undefined
+  ) {
+    merged.program_id = defaults.program_id;
+  }
+  if (
+    (merged.grade_id === undefined || merged.grade_id === null || merged.grade_id === '') &&
+    defaults.grade_id !== undefined
+  ) {
+    merged.grade_id = defaults.grade_id;
+  }
   if (
     (merged.subject_id === undefined || merged.subject_id === null || merged.subject_id === '') &&
     defaults.subject_id !== undefined
@@ -618,14 +699,22 @@ const BULK_DOCX_TABLE_HEADER_ALIASES = {
   exam_tags: 'exam_tags',
   subject: 'subject',
   subject_id: 'subject_id',
+  program: 'program',
+  program_id: 'program_id',
+  grade: 'grade',
+  grade_id: 'grade_id',
   chapter: 'chapter',
   chapter_id: 'chapter_id',
   topic: 'topic',
   topic_id: 'topic_id',
   school_id: 'school_id',
   status: 'status',
-  comprehensive_passage: 'comprehensive_passage',
-  comprehensive_subquestions: 'comprehensive_subquestions',
+  comprehensive_passage: 'comprehension_passage',
+  comprehension_passage: 'comprehension_passage',
+  comprehensive_subquestions: 'category',
+  comprehension_questions: 'comprehension_questions',
+  category: 'category',
+  catagory: 'category',
 };
 
 const BULK_PLACEHOLDER_VALUES = new Set(['-', '--', 'n/a', 'na', 'none', 'nil']);
@@ -773,11 +862,7 @@ const normalizeDocxTableRowInput = (rawRow, defaults, rowNumber) => {
     throw new AppError(`Row ${rowNumber}: Question text is required`, 400);
   }
 
-  const passageHtml = toRichHtmlValue(rawRow.comprehensive_passage);
-  const questionHtml =
-    questionType === 'comprehensive' && passageHtml
-      ? `${baseQuestionHtml}<div class="comprehension-passage">${passageHtml}</div>`
-      : baseQuestionHtml;
+  const passageHtml = toRichHtmlValue(rawRow.comprehension_passage);
 
   const options = parseBulkOptionText(rawRow.options);
   if (questionType.startsWith('mcq') && (!options || options.length === 0)) {
@@ -798,14 +883,20 @@ const normalizeDocxTableRowInput = (rawRow, defaults, rowNumber) => {
   const prepared = applyBulkDefaults(
     {
       question_type: questionType,
-      question_text: questionHtml,
+      question_text: baseQuestionHtml,
       options: options || null,
       correct_answer: correctAnswer,
-      subject_id: parseBulkNumericId(rawRow.subject_id ?? rawRow.subject),
-      chapter_id: parseBulkNumericId(rawRow.chapter_id ?? rawRow.chapter),
-      topic_id: parseBulkNumericId(rawRow.topic_id ?? rawRow.topic),
+      program_id: toPlainBulkText(rawRow.program_id ?? rawRow.program) || null,
+      grade_id: toPlainBulkText(rawRow.grade_id ?? rawRow.grade) || null,
+      subject_id: toPlainBulkText(rawRow.subject_id ?? rawRow.subject) || null,
+      chapter_id: toPlainBulkText(rawRow.chapter_id ?? rawRow.chapter) || null,
+      topic_id: toPlainBulkText(rawRow.topic_id ?? rawRow.topic) || null,
       difficulty_level: toPlainBulkText(rawRow.difficulty_level) || 'medium',
-      exam_tags: toPlainBulkText(rawRow.exam_tags),
+      exam_tags:
+        toPlainBulkText(rawRow.exam_tags || rawRow.tags || rawRow.category || rawRow.catagory) || '',
+      category: toPlainBulkText(rawRow.category || rawRow.catagory) || null,
+      comprehension_passage: passageHtml,
+      comprehension_questions: rawRow.comprehension_questions ?? null,
       marks_positive: toPlainBulkText(rawRow.marks_positive),
       marks_negative: toPlainBulkText(rawRow.marks_negative),
       solution: toRichHtmlValue(rawRow.solution),
@@ -818,7 +909,7 @@ const normalizeDocxTableRowInput = (rawRow, defaults, rowNumber) => {
 
   if (!prepared.subject_id || !prepared.chapter_id) {
     throw new AppError(
-      `Row ${rowNumber}: subject_id and chapter_id are required (set in file as IDs or upload defaults)`,
+      `Row ${rowNumber}: subject and chapter are required (IDs or names supported)`,
       400
     );
   }
@@ -867,7 +958,7 @@ const extractDocxTableRows = async (buffer, defaults) => {
             key === 'question_text' ||
             key === 'options' ||
             key === 'solution' ||
-            key === 'comprehensive_passage'
+            key === 'comprehension_passage'
           ) {
             row[key] = cellHtml;
           } else {
@@ -910,6 +1001,349 @@ const mapAnswerTokenToOptionId = (token, options) => {
   return byText?.id ?? null;
 };
 
+const isBlankValue = (value) =>
+  value === undefined || value === null || (typeof value === 'string' && value.trim().length === 0);
+
+const parseBulkEntityReference = (value) => {
+  if (isBlankValue(value)) {
+    return { provided: false, id: null, text: null };
+  }
+
+  const normalized = String(value).trim();
+  if (/^\d+$/.test(normalized)) {
+    return { provided: true, id: Number.parseInt(normalized, 10), text: null };
+  }
+
+  return { provided: true, id: null, text: normalized };
+};
+
+const parseGradeNumberToken = (value) => {
+  if (isBlankValue(value)) return null;
+  const match = String(value).trim().match(/(\d+)/);
+  if (!match) return null;
+  return Number.parseInt(match[1], 10);
+};
+
+const resolveProgramReference = async ({ value, clientId }) => {
+  const parsed = parseBulkEntityReference(value);
+  if (!parsed.provided) {
+    return null;
+  }
+
+  if (parsed.id !== null) {
+    const idParams = [parsed.id];
+    let idSql = `SELECT id FROM programs WHERE id = $1`;
+    if (clientId) {
+      idParams.push(clientId);
+      idSql += ` AND client_id = $2`;
+    }
+    const byId = await dbQuery(idSql, idParams);
+    if (byId.rows.length === 0) {
+      throw new AppError(`Program not found for value "${value}"`, 404);
+    }
+    return byId.rows[0].id;
+  }
+
+  const nameParams = [parsed.text];
+  let nameSql = `
+    SELECT id
+    FROM programs
+    WHERE (LOWER(name) = LOWER($1) OR LOWER(code) = LOWER($1))
+  `;
+  if (clientId) {
+    nameParams.push(clientId);
+    nameSql += ` AND client_id = $2`;
+  }
+  nameSql += ` ORDER BY id LIMIT 2`;
+
+  const byName = await dbQuery(nameSql, nameParams);
+  if (byName.rows.length === 0) {
+    throw new AppError(`Program not found for value "${value}"`, 404);
+  }
+  if (byName.rows.length > 1) {
+    throw new AppError(`Multiple programs match "${value}". Use program_id to disambiguate`, 400);
+  }
+
+  return byName.rows[0].id;
+};
+
+const resolveGradeReference = async ({ value, programId, clientId }) => {
+  const parsed = parseBulkEntityReference(value);
+  if (!parsed.provided) {
+    return { id: null, programId: programId ?? null };
+  }
+
+  if (parsed.id !== null) {
+    const idParams = [parsed.id];
+    let idSql = `
+      SELECT g.id, g.program_id
+      FROM grades g
+      JOIN programs p ON p.id = g.program_id
+      WHERE g.id = $1
+    `;
+    if (clientId) {
+      idParams.push(clientId);
+      idSql += ` AND p.client_id = $2`;
+    }
+    const byId = await dbQuery(idSql, idParams);
+    if (byId.rows.length === 0) {
+      throw new AppError(`Grade not found for value "${value}"`, 404);
+    }
+    const grade = byId.rows[0];
+    if (programId && Number(grade.program_id) !== Number(programId)) {
+      throw new AppError('Grade does not belong to the provided program', 400);
+    }
+    return { id: grade.id, programId: grade.program_id };
+  }
+
+  const parsedGradeNumber = parseGradeNumberToken(parsed.text);
+  if (parsedGradeNumber === null) {
+    throw new AppError(`Grade "${value}" must be a grade number (for example: 6 or Grade 6)`, 400);
+  }
+
+  const nameParams = [parsedGradeNumber];
+  let nameSql = `
+    SELECT g.id, g.program_id
+    FROM grades g
+    JOIN programs p ON p.id = g.program_id
+    WHERE g.grade_number = $1
+  `;
+  if (programId) {
+    nameParams.push(programId);
+    nameSql += ` AND g.program_id = $${nameParams.length}`;
+  }
+  if (clientId) {
+    nameParams.push(clientId);
+    nameSql += ` AND p.client_id = $${nameParams.length}`;
+  }
+  nameSql += ` ORDER BY g.id LIMIT 2`;
+
+  const byName = await dbQuery(nameSql, nameParams);
+  if (byName.rows.length === 0) {
+    throw new AppError(`Grade not found for value "${value}"`, 404);
+  }
+  if (byName.rows.length > 1) {
+    throw new AppError(
+      `Multiple grades match "${value}". Provide program/program_id or exact grade_id`,
+      400
+    );
+  }
+
+  return { id: byName.rows[0].id, programId: byName.rows[0].program_id };
+};
+
+const resolveSubjectReference = async ({ value, gradeId, programId, clientId, required = false }) => {
+  const parsed = parseBulkEntityReference(value);
+  if (!parsed.provided) {
+    if (required) {
+      throw new AppError('subject_id (or subject name) is required', 400);
+    }
+    return { id: null, gradeId: gradeId ?? null, programId: programId ?? null };
+  }
+
+  if (parsed.id !== null) {
+    const idParams = [parsed.id];
+    let idSql = `
+      SELECT s.id, s.grade_id, g.program_id, s.client_id
+      FROM subjects s
+      LEFT JOIN grades g ON g.id = s.grade_id
+      WHERE s.id = $1
+    `;
+    if (clientId) {
+      idParams.push(clientId);
+      idSql += ` AND s.client_id = $2`;
+    }
+    const byId = await dbQuery(idSql, idParams);
+    if (byId.rows.length === 0) {
+      throw new AppError(`Subject not found for value "${value}"`, 404);
+    }
+    const subject = byId.rows[0];
+    if (gradeId && Number(subject.grade_id) !== Number(gradeId)) {
+      throw new AppError('Subject does not belong to the provided grade', 400);
+    }
+    if (programId && Number(subject.program_id) !== Number(programId)) {
+      throw new AppError('Subject does not belong to the provided program', 400);
+    }
+    return { id: subject.id, gradeId: subject.grade_id ?? gradeId ?? null, programId: subject.program_id ?? programId ?? null };
+  }
+
+  const nameParams = [parsed.text];
+  let nameSql = `
+    SELECT s.id, s.grade_id, g.program_id
+    FROM subjects s
+    LEFT JOIN grades g ON g.id = s.grade_id
+    WHERE (LOWER(s.name) = LOWER($1) OR LOWER(s.code) = LOWER($1))
+  `;
+  if (gradeId) {
+    nameParams.push(gradeId);
+    nameSql += ` AND s.grade_id = $${nameParams.length}`;
+  }
+  if (clientId) {
+    nameParams.push(clientId);
+    nameSql += ` AND s.client_id = $${nameParams.length}`;
+  }
+  nameSql += ` ORDER BY s.id LIMIT 2`;
+
+  const byName = await dbQuery(nameSql, nameParams);
+  if (byName.rows.length === 0) {
+    throw new AppError(`Subject not found for value "${value}"`, 404);
+  }
+  if (byName.rows.length > 1) {
+    throw new AppError(
+      `Multiple subjects match "${value}". Provide grade/grade_id or exact subject_id`,
+      400
+    );
+  }
+
+  const subject = byName.rows[0];
+  if (programId && Number(subject.program_id) !== Number(programId)) {
+    throw new AppError('Subject does not belong to the provided program', 400);
+  }
+  return { id: subject.id, gradeId: subject.grade_id ?? gradeId ?? null, programId: subject.program_id ?? programId ?? null };
+};
+
+const resolveChapterReference = async ({ value, subjectId, clientId, required = false }) => {
+  const parsed = parseBulkEntityReference(value);
+  if (!parsed.provided) {
+    if (required) {
+      throw new AppError('chapter_id (or chapter name/number) is required', 400);
+    }
+    return { id: null, subjectId: subjectId ?? null };
+  }
+
+  if (parsed.id !== null) {
+    const idParams = [parsed.id];
+    let idSql = `
+      SELECT c.id, c.subject_id, s.client_id
+      FROM chapters c
+      JOIN subjects s ON s.id = c.subject_id
+      WHERE c.id = $1
+    `;
+    if (clientId) {
+      idParams.push(clientId);
+      idSql += ` AND s.client_id = $2`;
+    }
+    const byId = await dbQuery(idSql, idParams);
+    if (byId.rows.length === 0) {
+      throw new AppError(`Chapter not found for value "${value}"`, 404);
+    }
+    const chapter = byId.rows[0];
+    if (subjectId && Number(chapter.subject_id) !== Number(subjectId)) {
+      throw new AppError('Chapter does not belong to the provided subject', 400);
+    }
+    return { id: chapter.id, subjectId: chapter.subject_id };
+  }
+
+  if (!subjectId) {
+    throw new AppError('subject_id is required when chapter is provided by name/number', 400);
+  }
+
+  const parsedChapterNumber = parseGradeNumberToken(parsed.text);
+  const nameParams = [subjectId, parsed.text];
+  let nameSql = `
+    SELECT c.id, c.subject_id
+    FROM chapters c
+    JOIN subjects s ON s.id = c.subject_id
+    WHERE c.subject_id = $1
+      AND LOWER(c.name) = LOWER($2)
+  `;
+  if (parsedChapterNumber !== null) {
+    nameParams.push(parsedChapterNumber);
+    nameSql = `
+      SELECT c.id, c.subject_id
+      FROM chapters c
+      JOIN subjects s ON s.id = c.subject_id
+      WHERE c.subject_id = $1
+        AND (LOWER(c.name) = LOWER($2) OR c.chapter_number = $3)
+    `;
+  }
+  if (clientId) {
+    nameParams.push(clientId);
+    nameSql += ` AND s.client_id = $${nameParams.length}`;
+  }
+  nameSql += ` ORDER BY c.id LIMIT 2`;
+
+  const byName = await dbQuery(nameSql, nameParams);
+  if (byName.rows.length === 0) {
+    throw new AppError(`Chapter not found for value "${value}"`, 404);
+  }
+  if (byName.rows.length > 1) {
+    throw new AppError(`Multiple chapters match "${value}". Use chapter_id to disambiguate`, 400);
+  }
+  return { id: byName.rows[0].id, subjectId: byName.rows[0].subject_id };
+};
+
+const resolveTopicReference = async ({ value, chapterId, clientId }) => {
+  const parsed = parseBulkEntityReference(value);
+  if (!parsed.provided) {
+    return { id: null, chapterId: chapterId ?? null };
+  }
+
+  if (parsed.id !== null) {
+    const idParams = [parsed.id];
+    let idSql = `
+      SELECT t.id, t.chapter_id, s.client_id
+      FROM topics t
+      JOIN chapters c ON c.id = t.chapter_id
+      JOIN subjects s ON s.id = c.subject_id
+      WHERE t.id = $1
+    `;
+    if (clientId) {
+      idParams.push(clientId);
+      idSql += ` AND s.client_id = $2`;
+    }
+    const byId = await dbQuery(idSql, idParams);
+    if (byId.rows.length === 0) {
+      throw new AppError(`Topic not found for value "${value}"`, 404);
+    }
+    const topic = byId.rows[0];
+    if (chapterId && Number(topic.chapter_id) !== Number(chapterId)) {
+      throw new AppError('Topic does not belong to the provided chapter', 400);
+    }
+    return { id: topic.id, chapterId: topic.chapter_id };
+  }
+
+  if (!chapterId) {
+    throw new AppError('chapter_id is required when topic is provided by name/number', 400);
+  }
+
+  const parsedTopicNumber = parseGradeNumberToken(parsed.text);
+  const nameParams = [chapterId, parsed.text];
+  let nameSql = `
+    SELECT t.id, t.chapter_id
+    FROM topics t
+    JOIN chapters c ON c.id = t.chapter_id
+    JOIN subjects s ON s.id = c.subject_id
+    WHERE t.chapter_id = $1
+      AND LOWER(t.name) = LOWER($2)
+  `;
+  if (parsedTopicNumber !== null) {
+    nameParams.push(parsedTopicNumber);
+    nameSql = `
+      SELECT t.id, t.chapter_id
+      FROM topics t
+      JOIN chapters c ON c.id = t.chapter_id
+      JOIN subjects s ON s.id = c.subject_id
+      WHERE t.chapter_id = $1
+        AND (LOWER(t.name) = LOWER($2) OR t.topic_number = $3)
+    `;
+  }
+  if (clientId) {
+    nameParams.push(clientId);
+    nameSql += ` AND s.client_id = $${nameParams.length}`;
+  }
+  nameSql += ` ORDER BY t.id LIMIT 2`;
+
+  const byName = await dbQuery(nameSql, nameParams);
+  if (byName.rows.length === 0) {
+    throw new AppError(`Topic not found for value "${value}"`, 404);
+  }
+  if (byName.rows.length > 1) {
+    throw new AppError(`Multiple topics match "${value}". Use topic_id to disambiguate`, 400);
+  }
+  return { id: byName.rows[0].id, chapterId: byName.rows[0].chapter_id };
+};
+
 const finalizeDocxQuestion = (question, defaults, rowNumber) => {
   if (!question || !question.question_text) {
     return null;
@@ -947,6 +1381,8 @@ const finalizeDocxQuestion = (question, defaults, rowNumber) => {
       question_text: question.question_text,
       options: options.length > 0 ? options : null,
       correct_answer: correctAnswer,
+      program_id: question.program_id,
+      grade_id: question.grade_id,
       subject_id: question.subject_id,
       chapter_id: question.chapter_id,
       topic_id: question.topic_id,
@@ -1044,7 +1480,7 @@ const extractDocxRows = (buffer, defaults) => {
     if (!plainText && !paragraphHtml) return;
 
     const metaMatch = plainText.match(
-      /^(subject_id|chapter_id|topic_id|difficulty_level|marks_positive|marks_negative|exam_tags|status|school_id)\s*:\s*(.+)$/i
+      /^(program_id|grade_id|subject_id|chapter_id|topic_id|difficulty_level|marks_positive|marks_negative|exam_tags|status|school_id)\s*:\s*(.+)$/i
     );
     if (!current && metaMatch) {
       const key = metaMatch[1].toLowerCase();
@@ -1176,19 +1612,55 @@ const buildQuestionInsertPayload = async ({ input, user, role, clientId }) => {
   }
   const questionText = typeof questionTextInput === 'string' ? questionTextInput.trim() : questionTextInput;
 
-  const correctAnswerRaw = coerceLooseValue(input.correct_answer);
-  if (
+  let correctAnswerRaw = coerceLooseValue(input.correct_answer);
+  const missingCorrectAnswer =
     correctAnswerRaw === undefined ||
     correctAnswerRaw === null ||
-    (typeof correctAnswerRaw === 'string' && !correctAnswerRaw.trim())
-  ) {
+    (typeof correctAnswerRaw === 'string' && !correctAnswerRaw.trim());
+  if (questionType === 'comprehensive' && missingCorrectAnswer) {
+    correctAnswerRaw = {};
+  } else if (missingCorrectAnswer) {
     throw new AppError('correct_answer is required', 400);
   }
+  if (questionType === 'comprehensive' && typeof correctAnswerRaw === 'string' && isPlaceholderBulkValue(correctAnswerRaw)) {
+    correctAnswerRaw = {};
+  }
 
-  const subjectId = parseRequiredInt(input.subject_id, 'subject_id');
-  const chapterId = parseRequiredInt(input.chapter_id, 'chapter_id');
-  const topicId = parseNullableInt(input.topic_id, 'topic_id');
-  await ensureCurriculumScope({ subjectId, chapterId, topicId, clientId });
+  const resolvedProgramId = await resolveProgramReference({
+    value: input.program_id ?? input.program,
+    clientId,
+  });
+  const resolvedGrade = await resolveGradeReference({
+    value: input.grade_id ?? input.grade,
+    programId: resolvedProgramId,
+    clientId,
+  });
+  const resolvedSubject = await resolveSubjectReference({
+    value: input.subject_id ?? input.subject,
+    gradeId: resolvedGrade.id,
+    programId: resolvedProgramId ?? resolvedGrade.programId,
+    clientId,
+    required: true,
+  });
+  const resolvedChapter = await resolveChapterReference({
+    value: input.chapter_id ?? input.chapter,
+    subjectId: resolvedSubject.id,
+    clientId,
+    required: true,
+  });
+  const resolvedTopic = await resolveTopicReference({
+    value: input.topic_id ?? input.topic,
+    chapterId: resolvedChapter.id,
+    clientId,
+  });
+
+  const programId = resolvedProgramId ?? resolvedGrade.programId ?? resolvedSubject.programId ?? null;
+  const gradeId = resolvedGrade.id ?? resolvedSubject.gradeId ?? null;
+  const subjectId = resolvedSubject.id;
+  const chapterId = resolvedChapter.id;
+  const topicId = resolvedTopic.id;
+
+  await ensureCurriculumScope({ programId, gradeId, subjectId, chapterId, topicId, clientId });
 
   const schoolId = parseNullableInt(input.school_id, 'school_id');
   await ensureSchoolAccess({ schoolId, role, userId: user.id, clientId });
@@ -1207,6 +1679,33 @@ const buildQuestionInsertPayload = async ({ input, user, role, clientId }) => {
     throw new AppError('options are required for MCQ questions', 400);
   }
 
+  const comprehensionPassage =
+    questionType === 'comprehensive'
+      ? input.comprehension_passage ?? input.comprehensive_passage ?? null
+      : null;
+  const comprehensionQuestions =
+    questionType === 'comprehensive'
+      ? Array.isArray(input.comprehension_questions)
+        ? input.comprehension_questions
+        : []
+      : null;
+  const hasComprehensionPassage =
+    comprehensionPassage !== null &&
+    comprehensionPassage !== undefined &&
+    !(
+      typeof comprehensionPassage === 'string' &&
+      comprehensionPassage.trim().length === 0
+    ) &&
+    !(
+      typeof comprehensionPassage === 'object' &&
+      comprehensionPassage &&
+      'html' in comprehensionPassage &&
+      String(comprehensionPassage.html ?? '').trim().length === 0
+    );
+  if (questionType === 'comprehensive' && !hasComprehensionPassage) {
+    throw new AppError('comprehension_passage is required for comprehensive questions', 400);
+  }
+
   return {
     client_id: clientId,
     school_id: schoolId,
@@ -1216,11 +1715,13 @@ const buildQuestionInsertPayload = async ({ input, user, role, clientId }) => {
     correct_answer: correctAnswerRaw,
     solution: input.solution ?? null,
     solution_video_url: input.solution_video_url ?? null,
+    comprehension_passage: comprehensionPassage,
+    comprehension_questions: comprehensionQuestions,
     subject_id: subjectId,
     chapter_id: chapterId,
     topic_id: topicId,
     difficulty_level: difficulty,
-    exam_tags: parseExamTagsInput(input.exam_tags),
+    exam_tags: parseExamTagsInput(input.exam_tags ?? input.category ?? input.catagory),
     marks_positive: parseNumberField(input.marks_positive, 'marks_positive', 4),
     marks_negative: parseNumberField(input.marks_negative, 'marks_negative', 0),
     status,
@@ -1228,38 +1729,109 @@ const buildQuestionInsertPayload = async ({ input, user, role, clientId }) => {
   };
 };
 
-const insertQuestion = async (payload) => {
-  const insertResult = await dbQuery(
+let questionSchemaSupportCache = null;
+
+const getQuestionSchemaSupport = async () => {
+  if (questionSchemaSupportCache) {
+    return questionSchemaSupportCache;
+  }
+
+  const result = await dbQuery(
     `
-    INSERT INTO questions
-    (client_id, school_id, question_type, question_text, options, correct_answer, solution,
-     solution_video_url, subject_id, chapter_id, topic_id, difficulty_level, exam_tags,
-     marks_positive, marks_negative, status, created_by)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
-    RETURNING *
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'questions'
+      AND column_name = ANY($1::text[])
     `,
-    [
-      payload.client_id,
-      payload.school_id,
-      payload.question_type,
-      toDbJsonParam(payload.question_text),
-      toDbJsonParam(payload.options),
-      toDbJsonParam(payload.correct_answer),
-      toDbJsonParam(payload.solution),
-      payload.solution_video_url,
-      payload.subject_id,
-      payload.chapter_id,
-      payload.topic_id,
-      payload.difficulty_level,
-      payload.exam_tags,
-      payload.marks_positive,
-      payload.marks_negative,
-      payload.status,
-      payload.created_by,
-    ]
+    [['comprehension_passage', 'comprehension_questions']]
   );
 
-  return insertResult.rows[0];
+  const existingColumns = new Set(result.rows.map((row) => row.column_name));
+  questionSchemaSupportCache = {
+    hasComprehensionPassage: existingColumns.has('comprehension_passage'),
+    hasComprehensionQuestions: existingColumns.has('comprehension_questions'),
+  };
+  return questionSchemaSupportCache;
+};
+
+const insertQuestion = async (payload) => {
+  const schemaSupport = await getQuestionSchemaSupport();
+  const columns = [
+    'client_id',
+    'school_id',
+    'question_type',
+    'question_text',
+    'options',
+    'correct_answer',
+    'solution',
+    'solution_video_url',
+  ];
+  const values = [
+    payload.client_id,
+    payload.school_id,
+    payload.question_type,
+    toDbJsonParam(payload.question_text),
+    toDbJsonParam(payload.options),
+    toDbJsonParam(payload.correct_answer),
+    toDbJsonParam(payload.solution),
+    payload.solution_video_url,
+  ];
+
+  if (schemaSupport.hasComprehensionPassage) {
+    columns.push('comprehension_passage');
+    values.push(toDbJsonParam(payload.comprehension_passage));
+  }
+  if (schemaSupport.hasComprehensionQuestions) {
+    columns.push('comprehension_questions');
+    values.push(toDbJsonParam(payload.comprehension_questions));
+  }
+
+  columns.push(
+    'subject_id',
+    'chapter_id',
+    'topic_id',
+    'difficulty_level',
+    'exam_tags',
+    'marks_positive',
+    'marks_negative',
+    'status',
+    'created_by'
+  );
+  values.push(
+    payload.subject_id,
+    payload.chapter_id,
+    payload.topic_id,
+    payload.difficulty_level,
+    payload.exam_tags,
+    payload.marks_positive,
+    payload.marks_negative,
+    payload.status,
+    payload.created_by
+  );
+
+  const placeholders = values.map((_, index) => `$${index + 1}`).join(',');
+  const insertResult = await dbQuery(
+    `
+    INSERT INTO questions (${columns.join(', ')})
+    VALUES (${placeholders})
+    RETURNING id
+    `,
+    values
+  );
+
+  const insertedId = insertResult.rows[0].id;
+  const fullResult = await dbQuery(
+    `
+    SELECT q.*, s.grade_id, g.program_id
+    FROM questions q
+    LEFT JOIN subjects s ON s.id = q.subject_id
+    LEFT JOIN grades g ON g.id = s.grade_id
+    WHERE q.id = $1
+    `,
+    [insertedId]
+  );
+  return fullResult.rows[0];
 };
 
 export const listQuestions = async (req, res) => {
@@ -1287,8 +1859,10 @@ export const listQuestions = async (req, res) => {
     const listParams = [...params, pageSize, offset];
     const listResult = await dbQuery(
       `
-      SELECT q.*
+      SELECT q.*, s.grade_id, g.program_id
       FROM questions q
+      LEFT JOIN subjects s ON s.id = q.subject_id
+      LEFT JOIN grades g ON g.id = s.grade_id
       ${whereClause}
       ORDER BY q.created_at DESC
       LIMIT $${listParams.length - 1} OFFSET $${listParams.length}
@@ -1343,8 +1917,10 @@ export const getQuestionById = async (req, res) => {
     conditions.push(`q.status <> 'archived'`);
 
     const query = `
-      SELECT q.*
+      SELECT q.*, s.grade_id, g.program_id
       FROM questions q
+      LEFT JOIN subjects s ON s.id = q.subject_id
+      LEFT JOIN grades g ON g.id = s.grade_id
       WHERE ${conditions.join(' AND ')}
       LIMIT 1
     `;
@@ -1431,12 +2007,41 @@ export const updateQuestion = async (req, res) => {
     if (req.body.correct_answer !== undefined) updates.correct_answer = toDbJsonParam(req.body.correct_answer);
     if (req.body.solution !== undefined) updates.solution = toDbJsonParam(req.body.solution ?? null);
     if (req.body.solution_video_url !== undefined) updates.solution_video_url = req.body.solution_video_url ?? null;
+    if (req.body.comprehension_passage !== undefined) {
+      updates.comprehension_passage = toDbJsonParam(req.body.comprehension_passage ?? null);
+    } else if (req.body.comprehensive_passage !== undefined) {
+      updates.comprehension_passage = toDbJsonParam(req.body.comprehensive_passage ?? null);
+    }
+    if (req.body.comprehension_questions !== undefined) {
+      updates.comprehension_questions = toDbJsonParam(req.body.comprehension_questions ?? null);
+    } else if (req.body.comprehensive_subquestions !== undefined) {
+      updates.comprehension_questions = toDbJsonParam(req.body.comprehensive_subquestions ?? null);
+    }
+    const schemaSupport = await getQuestionSchemaSupport();
+    if (!schemaSupport.hasComprehensionPassage) {
+      delete updates.comprehension_passage;
+    }
+    if (!schemaSupport.hasComprehensionQuestions) {
+      delete updates.comprehension_questions;
+    }
 
-    if (req.body.subject_id || req.body.chapter_id || req.body.topic_id !== undefined) {
+    if (
+      req.body.program_id !== undefined ||
+      req.body.grade_id !== undefined ||
+      req.body.subject_id !== undefined ||
+      req.body.chapter_id !== undefined ||
+      req.body.topic_id !== undefined
+    ) {
+      const programId = req.body.program_id !== undefined
+        ? parseNullableInt(req.body.program_id, 'program_id')
+        : null;
+      const gradeId = req.body.grade_id !== undefined
+        ? parseNullableInt(req.body.grade_id, 'grade_id')
+        : null;
       const subjectId = req.body.subject_id ? parseRequiredInt(req.body.subject_id, 'subject_id') : question.subject_id;
       const chapterId = req.body.chapter_id ? parseRequiredInt(req.body.chapter_id, 'chapter_id') : question.chapter_id;
       const topicId = req.body.topic_id !== undefined ? parseNullableInt(req.body.topic_id, 'topic_id') : question.topic_id;
-      await ensureCurriculumScope({ subjectId, chapterId, topicId, clientId });
+      await ensureCurriculumScope({ programId, gradeId, subjectId, chapterId, topicId, clientId });
       updates.subject_id = subjectId;
       updates.chapter_id = chapterId;
       updates.topic_id = topicId;
@@ -1470,11 +2075,21 @@ export const updateQuestion = async (req, res) => {
     values.push(id);
 
     const updateResult = await dbQuery(
-      `UPDATE questions SET ${setClauses.join(', ')}, updated_at = NOW() WHERE id = $${idx} RETURNING *`,
+      `UPDATE questions SET ${setClauses.join(', ')}, updated_at = NOW() WHERE id = $${idx} RETURNING id`,
       values
     );
 
-    res.json(updateResult.rows[0]);
+    const fullResult = await dbQuery(
+      `
+      SELECT q.*, s.grade_id, g.program_id
+      FROM questions q
+      LEFT JOIN subjects s ON s.id = q.subject_id
+      LEFT JOIN grades g ON g.id = s.grade_id
+      WHERE q.id = $1
+      `,
+      [updateResult.rows[0].id]
+    );
+    res.json(fullResult.rows[0]);
   } catch (err) {
     handleServiceError(res, err, 'Failed to update question');
   }
@@ -1915,11 +2530,13 @@ const TEMPLATE_HEADERS = [
   'Marks+',
   'Marks-',
   'Tags',
+  'Program',
+  'Grade',
   'Subject',
   'Chapter',
   'Topic',
   'Comprehensive Passage',
-  'Comprehensive Subquestions',
+  'Category',
 ];
 
 export const bulkUploadTemplate = async (_req, res) => {
@@ -1939,11 +2556,13 @@ export const bulkUploadTemplate = async (_req, res) => {
           '4',
           '1',
           'math,arithmetic',
+          'Catalyst',
+          '6',
           'Math',
           'Basics',
           'Addition',
           '-',
-          '-',
+          'direct question',
         ]),
       ],
     });

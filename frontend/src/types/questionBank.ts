@@ -79,6 +79,8 @@ export interface Question {
   scoring_mode?: ScoringMode;
   comprehension_passage?: RichTextValue | null;
   comprehension_questions?: ComprehensiveQuestion[];
+  program_id?: string | number | null;
+  grade_id?: string | number | null;
   subject_id?: string | number | null;
   chapter_id?: string | number | null;
   topic_id?: string | number | null;
@@ -95,6 +97,10 @@ export interface Question {
 export interface CurriculumItem {
   id: string | number;
   name: string;
+  code?: string | null;
+  program_id?: string | number | null;
+  grade_id?: string | number | null;
+  grade_number?: string | number | null;
   subject_id?: string | number | null;
   chapter_id?: string | number | null;
 }

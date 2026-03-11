@@ -49,6 +49,12 @@ import QuestionCreatePage from '@/pages/questions/QuestionCreatePage';
 import QuestionEditPage from '@/pages/questions/QuestionEditPage';
 import QuestionDeletePage from '@/pages/questions/QuestionDeletePage';
 import QuestionBulkUploadPage from '@/pages/questions/QuestionBulkUploadPage';
+import QuestionProgramsPage from '@/pages/questions/QuestionProgramsPage';
+import QuestionProgramCreatePage from '@/pages/questions/QuestionProgramCreatePage';
+import QuestionProgramEditPage from '@/pages/questions/QuestionProgramEditPage';
+import QuestionGradesPage from '@/pages/questions/QuestionGradesPage';
+import QuestionGradeCreatePage from '@/pages/questions/QuestionGradeCreatePage';
+import QuestionGradeEditPage from '@/pages/questions/QuestionGradeEditPage';
 import QuestionSubjectsPage from '@/pages/questions/QuestionSubjectsPage';
 import QuestionSubjectCreatePage from '@/pages/questions/QuestionSubjectCreatePage';
 import QuestionSubjectEditPage from '@/pages/questions/QuestionSubjectEditPage';
@@ -168,6 +174,12 @@ export default function AppRoutes() {
         <Route path="/question-bank/:id/edit" element={<QuestionEditPage />} />
         <Route path="/question-bank/:id/delete" element={<QuestionDeletePage />} />
         <Route path="/question-bank/bulk-upload" element={<QuestionBulkUploadPage />} />
+        <Route path="/question-bank/programs" element={<QuestionProgramsPage />} />
+        <Route path="/question-bank/programs/new" element={<QuestionProgramCreatePage />} />
+        <Route path="/question-bank/programs/:id/edit" element={<QuestionProgramEditPage />} />
+        <Route path="/question-bank/grades" element={<QuestionGradesPage />} />
+        <Route path="/question-bank/grades/new" element={<QuestionGradeCreatePage />} />
+        <Route path="/question-bank/grades/:id/edit" element={<QuestionGradeEditPage />} />
         <Route path="/question-bank/subjects" element={<QuestionSubjectsPage />} />
         <Route path="/question-bank/subjects/new" element={<QuestionSubjectCreatePage />} />
         <Route path="/question-bank/subjects/:id/edit" element={<QuestionSubjectEditPage />} />
