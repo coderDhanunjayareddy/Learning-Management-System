@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import api from "@/lib/api";
 import QuestionBankLayout from "@/features/question-bank/components/QuestionBankLayout";
-import { mockSubjects } from "@/features/question-bank/data/mockQuestions";
 import type { CurriculumItem } from "@/types/questionBank";
 
 const normalizeCurriculum = (items: any[]): CurriculumItem[] =>
@@ -18,7 +17,7 @@ const normalizeCurriculum = (items: any[]): CurriculumItem[] =>
 export default function QuestionSubjectsPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [subjects, setSubjects] = useState<CurriculumItem[]>(mockSubjects);
+  const [subjects, setSubjects] = useState<CurriculumItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -55,8 +54,8 @@ export default function QuestionSubjectsPage() {
         if (payload.length) {
           setSubjects(normalizeCurriculum(payload));
         }
-      } catch (error) {
-        setSubjects(mockSubjects);
+      } catch {
+        setSubjects([]);
       } finally {
         setLoading(false);
       }

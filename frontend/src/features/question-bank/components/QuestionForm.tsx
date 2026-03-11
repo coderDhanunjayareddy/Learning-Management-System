@@ -14,6 +14,7 @@ import type {
   ScoringMode,
 } from "@/types/questionBank";
 import RichTextEditor from "@/components/ui/RichTextEditor";
+import api from "@/lib/api";
 
 interface QuestionFormProps {
   open?: boolean;
@@ -53,6 +54,16 @@ const makeDefaultOptions = () =>
 
 const makeDefaultMatchSide = () =>
   Array.from({ length: 4 }).map(() => ({ id: makeId(), text: emptyRichText() }));
+
+const normalizeCurriculum = (items: any[]): CurriculumItem[] =>
+  items
+    .map((item) => ({
+      id: item.id ?? item.subject_id ?? item.chapter_id ?? item.topic_id,
+      name: item.name ?? item.title ?? item.subject_name ?? "Untitled",
+      subject_id: item.subject_id ?? item.subjectId ?? null,
+      chapter_id: item.chapter_id ?? item.chapterId ?? null,
+    }))
+    .filter((item) => item.id !== undefined && item.id !== null);
 
 const normalizeOptionsArray = (options: any) => {
   if (!Array.isArray(options)) return [];
@@ -110,15 +121,84 @@ export default function QuestionForm({
   const [marksNegative, setMarksNegative] = useState(1);
   const [tags, setTags] = useState("");
   const [scoringMode, setScoringMode] = useState<ScoringMode>("all_or_nothing");
+  const [dynamicChapters, setDynamicChapters] = useState<CurriculumItem[]>([]);
+  const [dynamicTopics, setDynamicTopics] = useState<CurriculumItem[]>([]);
 
   const availableChapters = useMemo(
-    () => chapters.filter((chapter) => !subjectId || String(chapter.subject_id) === subjectId),
-    [chapters, subjectId]
+    () => {
+      const source = subjectId ? dynamicChapters : chapters;
+      return source.filter((chapter) => !subjectId || String(chapter.subject_id) === subjectId);
+    },
+    [chapters, dynamicChapters, subjectId]
   );
   const availableTopics = useMemo(
-    () => topics.filter((topic) => !chapterId || String(topic.chapter_id) === chapterId),
-    [topics, chapterId]
+    () => {
+      const source = chapterId ? dynamicTopics : topics;
+      return source.filter((topic) => !chapterId || String(topic.chapter_id) === chapterId);
+    },
+    [chapterId, dynamicTopics, topics]
   );
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadChapters = async () => {
+      if (!subjectId) {
+        if (isMounted) {
+          setDynamicChapters([]);
+          setDynamicTopics([]);
+        }
+        return;
+      }
+      try {
+        const res = await api.get(`/subjects/${subjectId}/chapters`);
+        const payload = Array.isArray(res.data)
+          ? res.data
+          : Array.isArray(res.data?.data)
+            ? res.data.data
+            : [];
+        if (!isMounted) return;
+        setDynamicChapters(normalizeCurriculum(payload));
+      } catch {
+        if (!isMounted) return;
+        setDynamicChapters([]);
+        setDynamicTopics([]);
+      }
+    };
+
+    loadChapters();
+    return () => {
+      isMounted = false;
+    };
+  }, [subjectId]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadTopics = async () => {
+      if (!chapterId) {
+        if (isMounted) setDynamicTopics([]);
+        return;
+      }
+      try {
+        const res = await api.get(`/chapters/${chapterId}/topics`);
+        const payload = Array.isArray(res.data)
+          ? res.data
+          : Array.isArray(res.data?.data)
+            ? res.data.data
+            : [];
+        if (!isMounted) return;
+        setDynamicTopics(normalizeCurriculum(payload));
+      } catch {
+        if (!isMounted) return;
+        setDynamicTopics([]);
+      }
+    };
+
+    loadTopics();
+    return () => {
+      isMounted = false;
+    };
+  }, [chapterId]);
+
   useEffect(() => {
     if (!open) return;
     if (initialQuestion) {
@@ -346,6 +426,15 @@ export default function QuestionForm({
 
   const handleSave = (event: React.FormEvent) => {
     event.preventDefault();
+    if (!subjectId) {
+      alert("Subject is required.");
+      return;
+    }
+    if (!chapterId) {
+      alert("Chapter is required.");
+      return;
+    }
+
     if (!stripHtml(questionText)) {
       alert("Question text is required.");
       return;
@@ -358,7 +447,28 @@ export default function QuestionForm({
       alert("All options must have text.");
       return;
     }
-
+    if (questionType === "mcq_single" && !correctAnswer) {
+      alert("Select the correct option.");
+      return;
+    }
+    if (questionType === "mcq_multiple" && (!Array.isArray(correctAnswer) || correctAnswer.length === 0)) {
+      alert("Select at least one correct option.");
+      return;
+    }
+    if (questionType === "short_answer") {
+      const answers = shortAnswers
+        .split(",")
+        .map((ans) => ans.trim())
+        .filter(Boolean);
+      if (answers.length === 0) {
+        alert("Add at least one short answer.");
+        return;
+      }
+    }
+    if (questionType === "match_following" && matchPairs.length === 0) {
+      alert("Add at least one match pair.");
+      return;
+    }
     if (questionType === "comprehensive" && (!stripHtml(comprehensionPassage) || comprehensionQuestions.length === 0)) {
       alert("Comprehensive questions need a passage and at least one sub-question.");
       return;
@@ -368,6 +478,17 @@ export default function QuestionForm({
       .split(",")
       .map((tag) => tag.trim())
       .filter(Boolean);
+    const normalizedFillBlanks = fillBlanks
+      .map((blank) => ({
+        ...blank,
+        answers: blank.answers.map((answer) => answer.trim()).filter(Boolean),
+      }))
+      .filter((blank) => blank.answers.length > 0);
+
+    if (questionType === "fill_in_blank" && normalizedFillBlanks.length === 0) {
+      alert("Add at least one blank with one or more answers.");
+      return;
+    }
 
     let finalOptions: QuestionOption[] | MatchFollowingOptions | undefined = undefined;
     let finalCorrectAnswer: CorrectAnswer = null;
@@ -418,7 +539,7 @@ export default function QuestionForm({
     }
 
     if (questionType === "fill_in_blank") {
-      finalCorrectAnswer = { blanks: fillBlanks };
+      finalCorrectAnswer = { blanks: normalizedFillBlanks };
     }
 
     if (questionType === "comprehensive") {
@@ -722,7 +843,9 @@ export default function QuestionForm({
       {questionType === "fill_in_blank" && (
         <div>
           <label className="text-xs font-semibold text-slate-500">Blanks</label>
-          <p className="text-xs text-slate-400">Use placeholders like {{blank1}} in the question text.</p>
+          <p className="text-xs text-slate-400">
+            Use placeholders like {"{{blank1}}"} in the question text.
+          </p>
           <div className="mt-2 space-y-2">
             {fillBlanks.map((blank, index) => (
               <div key={blank.id} className="flex items-center gap-2">

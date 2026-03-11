@@ -32,6 +32,13 @@ const clearToken = () => {
   applyToken(null);
 };
 
+const redirectToLogin = () => {
+  if (typeof window === 'undefined') return;
+  if (window.location.pathname !== '/login') {
+    window.location.replace('/login');
+  }
+};
+
 // Add auth token to requests
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
@@ -116,6 +123,8 @@ api.interceptors.response.use(
         originalRequest.headers.Authorization = `Bearer ${newToken}`;
         return api(originalRequest);
       }
+
+      redirectToLogin();
     }
     return Promise.reject(error);
   }

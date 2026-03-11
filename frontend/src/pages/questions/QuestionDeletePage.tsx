@@ -3,7 +3,6 @@ import { useNavigate, useParams } from "react-router-dom";
 import api from "@/lib/api";
 import QuestionBankLayout from "@/features/question-bank/components/QuestionBankLayout";
 import QuestionPreview from "@/features/question-bank/components/QuestionPreview";
-import { mockQuestions } from "@/features/question-bank/data/mockQuestions";
 import type { Question } from "@/types/questionBank";
 
 const normalizeQuestionText = (value: any) => {
@@ -62,9 +61,8 @@ export default function QuestionDeletePage() {
         const res = await api.get(`/questions/${id}`);
         if (!res.data) throw new Error("Missing data");
         setQuestion(normalizeQuestion(res.data));
-      } catch (error) {
-        const fallback = mockQuestions.find((item) => String(item.id) === String(id)) ?? null;
-        setQuestion(fallback);
+      } catch {
+        setQuestion(null);
       } finally {
         setLoading(false);
       }
@@ -77,12 +75,13 @@ export default function QuestionDeletePage() {
     setDeleting(true);
     try {
       await api.delete(`/questions/${id}`);
-    } catch (error) {
-      // fallback to local delete
+      navigate("/question-bank", { state: { deletedQuestionId: id } });
+    } catch {
+      alert("Failed to delete question.");
+      return;
     } finally {
       setDeleting(false);
     }
-    navigate("/question-bank", { state: { deletedQuestionId: id } });
   };
 
   return (

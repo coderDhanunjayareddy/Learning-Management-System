@@ -19,14 +19,14 @@ export default function ProtectedRoute({
   children: React.ReactNode;
   allowedRoles: Role[];
 }) {
-  const { user, loading } = useAuth();
+  const { user, token, loading } = useAuth();
 
   if (loading) {
     return <Spinner />;
   }
 
 
-  if (!user || !allowedRoles.includes(user.role)) {
+  if (!token || !user) {
     return <Navigate to="/login" replace />;
   }
 

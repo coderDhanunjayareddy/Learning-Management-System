@@ -159,7 +159,6 @@ export default function AppRoutes() {
               'content_authorizer',
               'school_owner',
               'teacher',
-              'student',
             ]}
           />
         }

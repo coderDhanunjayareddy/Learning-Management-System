@@ -3,7 +3,6 @@ import { useNavigate, useParams } from "react-router-dom";
 import api from "@/lib/api";
 import QuestionBankLayout from "@/features/question-bank/components/QuestionBankLayout";
 import QuestionForm from "@/features/question-bank/components/QuestionForm";
-import { mockChapters, mockQuestions, mockSubjects, mockTopics } from "@/features/question-bank/data/mockQuestions";
 import type { CurriculumItem, Question } from "@/types/questionBank";
 
 const normalizeQuestionText = (value: any) => {
@@ -63,9 +62,9 @@ export default function QuestionEditPage() {
   const [question, setQuestion] = useState<Question | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const [subjects, setSubjects] = useState<CurriculumItem[]>(mockSubjects);
-  const [chapters] = useState<CurriculumItem[]>(mockChapters);
-  const [topics] = useState<CurriculumItem[]>(mockTopics);
+  const [subjects, setSubjects] = useState<CurriculumItem[]>([]);
+  const [chapters] = useState<CurriculumItem[]>([]);
+  const [topics] = useState<CurriculumItem[]>([]);
 
   useEffect(() => {
     const loadSubjects = async () => {
@@ -79,8 +78,8 @@ export default function QuestionEditPage() {
         if (payload.length) {
           setSubjects(normalizeCurriculum(payload));
         }
-      } catch (error) {
-        setSubjects(mockSubjects);
+      } catch {
+        setSubjects([]);
       }
     };
     loadSubjects();
@@ -94,9 +93,8 @@ export default function QuestionEditPage() {
         const res = await api.get(`/questions/${id}`);
         if (!res.data) throw new Error("Missing data");
         setQuestion(normalizeQuestion(res.data));
-      } catch (error) {
-        const fallback = mockQuestions.find((item) => String(item.id) === String(id)) ?? null;
-        setQuestion(fallback);
+      } catch {
+        setQuestion(null);
       } finally {
         setLoading(false);
       }
@@ -111,9 +109,9 @@ export default function QuestionEditPage() {
       const updated = res.data ? normalizeQuestion(res.data) : { ...payload, id };
       navigate(`/question-bank`, { state: { updatedQuestion: updated } });
       return;
-    } catch (error) {
-      const updated = { ...payload, id };
-      navigate(`/question-bank`, { state: { updatedQuestion: updated } });
+    } catch {
+      alert("Failed to update question.");
+      return;
     }
   };
 

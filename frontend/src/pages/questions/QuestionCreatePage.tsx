@@ -3,9 +3,7 @@ import { useNavigate } from "react-router-dom";
 import api from "@/lib/api";
 import QuestionBankLayout from "@/features/question-bank/components/QuestionBankLayout";
 import QuestionForm from "@/features/question-bank/components/QuestionForm";
-import { mockChapters, mockSubjects, mockTopics } from "@/features/question-bank/data/mockQuestions";
 import type { CurriculumItem, Question } from "@/types/questionBank";
-import { useAuth } from "@/features/auth/hooks/useAuth";
 
 const normalizeQuestionText = (value: any) => {
   if (typeof value === "string") return { html: value, json: null };
@@ -60,11 +58,10 @@ const normalizeCurriculum = (items: any[]): CurriculumItem[] =>
 
 export default function QuestionCreatePage() {
   const navigate = useNavigate();
-  const { user } = useAuth();
 
-  const [subjects, setSubjects] = useState<CurriculumItem[]>(mockSubjects);
-  const [chapters] = useState<CurriculumItem[]>(mockChapters);
-  const [topics] = useState<CurriculumItem[]>(mockTopics);
+  const [subjects, setSubjects] = useState<CurriculumItem[]>([]);
+  const [chapters] = useState<CurriculumItem[]>([]);
+  const [topics] = useState<CurriculumItem[]>([]);
 
   useEffect(() => {
     const loadSubjects = async () => {
@@ -78,8 +75,8 @@ export default function QuestionCreatePage() {
         if (payload.length) {
           setSubjects(normalizeCurriculum(payload));
         }
-      } catch (error) {
-        setSubjects(mockSubjects);
+      } catch {
+        setSubjects([]);
       }
     };
     loadSubjects();
@@ -94,17 +91,13 @@ export default function QuestionCreatePage() {
         return;
       }
     } catch (error) {
-      // fallback to local state
+      const message =
+        typeof error === "object" && error && "response" in error
+          ? (error as { response?: { data?: { error?: unknown } } }).response?.data?.error
+          : null;
+      alert(typeof message === "string" ? message : "Failed to create question.");
+      return;
     }
-
-    const created: Question = {
-      ...payload,
-      id: Date.now(),
-      status: "draft",
-      created_at: new Date().toISOString(),
-      created_by: user?.full_name || "You",
-    };
-    navigate("/question-bank", { state: { createdQuestion: created } });
   };
 
   return (

@@ -2,13 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import api from "@/lib/api";
 import QuestionBankLayout from "@/features/question-bank/components/QuestionBankLayout";
-import { mockChapters, mockSubjects, mockTopics } from "@/features/question-bank/data/mockQuestions";
+import type { CurriculumItem } from "@/types/questionBank";
 import type { QuestionFolder } from "@/types/questionFolder";
 
-const normalizeFolder = (item: any): QuestionFolder => ({
-  id: item.id,
-  name: item.name ?? "Untitled Folder",
-  description: item.description ?? "",
+const normalizeFolder = (item: Record<string, unknown>): QuestionFolder => ({
+  id: (item.id as string | number) ?? "",
+  name: typeof item.name === "string" ? item.name : "Untitled Folder",
+  description: typeof item.description === "string" ? item.description : "",
   questionCount: Number(item.questionCount ?? item.question_count ?? 0),
 });
 
@@ -18,9 +18,9 @@ export default function QuestionBulkUploadPage() {
   const [bulkFile, setBulkFile] = useState<File | null>(null);
   const [selectedFolder, setSelectedFolder] = useState("");
   const [folderOptions, setFolderOptions] = useState<QuestionFolder[]>([]);
-  const [subjects, setSubjects] = useState(mockSubjects);
-  const [chapters, setChapters] = useState(mockChapters);
-  const [topics, setTopics] = useState(mockTopics);
+  const [subjects, setSubjects] = useState<CurriculumItem[]>([]);
+  const [chapters, setChapters] = useState<CurriculumItem[]>([]);
+  const [topics, setTopics] = useState<CurriculumItem[]>([]);
   const [subjectId, setSubjectId] = useState("");
   const [chapterId, setChapterId] = useState("");
   const [topicId, setTopicId] = useState("");
@@ -39,8 +39,8 @@ export default function QuestionBulkUploadPage() {
         if (payload.length) {
           setSubjects(payload);
         }
-      } catch (error) {
-        setSubjects(mockSubjects);
+      } catch {
+        setSubjects([]);
       }
     };
     loadSubjects();
@@ -61,8 +61,8 @@ export default function QuestionBulkUploadPage() {
             ? res.data.data
             : [];
         setChapters(payload);
-      } catch (error) {
-        setChapters(mockChapters.filter((chapter) => String(chapter.subject_id) === String(subjectId)));
+      } catch {
+        setChapters([]);
       }
     };
     loadChapters();
@@ -82,8 +82,8 @@ export default function QuestionBulkUploadPage() {
             ? res.data.data
             : [];
         setTopics(payload);
-      } catch (error) {
-        setTopics(mockTopics.filter((topic) => String(topic.chapter_id) === String(chapterId)));
+      } catch {
+        setTopics([]);
       }
     };
     loadTopics();
@@ -104,7 +104,7 @@ export default function QuestionBulkUploadPage() {
             ? res.data.data
             : [];
         setFolderOptions(payload.map(normalizeFolder));
-      } catch (err) {
+      } catch {
         setFolderOptions([]);
       }
     };
@@ -137,7 +137,7 @@ export default function QuestionBulkUploadPage() {
           headers: { "Content-Type": "multipart/form-data" },
         });
         if (res.data?.errors?.length) {
-          setUploadErrors(res.data.errors.map((err: any) => err.message ?? String(err)));
+          setUploadErrors(res.data.errors.map((err: { message?: string }) => err.message ?? String(err)));
         } else {
           alert(`Uploaded ${res.data?.inserted ?? 0} questions successfully.`);
           navigate("/question-bank");
@@ -145,8 +145,12 @@ export default function QuestionBulkUploadPage() {
       } else {
         alert("CSV/XLSX upload will be supported next. Please upload a .docx file.");
       }
-    } catch (error: any) {
-      setUploadErrors([error?.response?.data?.error || "Failed to upload file."]);
+    } catch (error) {
+      const message =
+        typeof error === "object" && error && "response" in error
+          ? (error as { response?: { data?: { error?: unknown } } }).response?.data?.error
+          : null;
+      setUploadErrors([typeof message === "string" ? message : "Failed to upload file."]);
     } finally {
       setUploading(false);
       setBulkFile(null);
@@ -164,7 +168,7 @@ export default function QuestionBulkUploadPage() {
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
-    } catch (error) {
+    } catch {
       alert("Failed to download template.");
     }
   };
@@ -356,7 +360,7 @@ export default function QuestionBulkUploadPage() {
               className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
             >
               <option value="">Select subject</option>
-              {subjects.map((subject: any) => (
+              {subjects.map((subject) => (
                 <option key={subject.id} value={subject.id}>
                   {subject.name}
                 </option>
@@ -373,7 +377,7 @@ export default function QuestionBulkUploadPage() {
               className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
             >
               <option value="">Select chapter</option>
-              {chapters.map((chapter: any) => (
+              {chapters.map((chapter) => (
                 <option key={chapter.id} value={chapter.id}>
                   {chapter.name}
                 </option>
@@ -387,7 +391,7 @@ export default function QuestionBulkUploadPage() {
               className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
             >
               <option value="">Select topic</option>
-              {topics.map((topic: any) => (
+              {topics.map((topic) => (
                 <option key={topic.id} value={topic.id}>
                   {topic.name}
                 </option>

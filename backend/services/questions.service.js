@@ -1,5 +1,6 @@
 import { query as dbQuery } from '../repositories/db.repository.js';
 import { AppError, handleServiceError } from '../utils/errors.js';
+import AdmZip from 'adm-zip';
 import {
   parseNullableInt,
   parseRequiredInt,
@@ -287,6 +288,878 @@ const parseNumberField = (value, fieldName, fallback) => {
   return parsed;
 };
 
+const toDbJsonParam = (value) => {
+  if (value === undefined || value === null) return null;
+  return JSON.stringify(value);
+};
+
+const escapeHtml = (value) =>
+  String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+const decodeXmlEntities = (value) =>
+  String(value || '')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+
+const parseCsvLine = (line) => {
+  const values = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i += 1) {
+    const char = line[i];
+    if (char === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (char === ',' && !inQuotes) {
+      values.push(current);
+      current = '';
+      continue;
+    }
+    current += char;
+  }
+
+  values.push(current);
+  return values;
+};
+
+const parseCsvContent = (csvText) => {
+  const lines = String(csvText || '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .split('\n')
+    .filter((line) => line.trim().length > 0);
+
+  if (lines.length < 2) {
+    throw new AppError('CSV must include a header row and at least one data row', 400);
+  }
+
+  const headers = parseCsvLine(lines[0]).map((header, index) => {
+    const trimmed = header.trim().toLowerCase();
+    if (index === 0) {
+      return trimmed.replace(/^\uFEFF/, '');
+    }
+    return trimmed;
+  });
+  const rows = [];
+  for (let index = 1; index < lines.length; index += 1) {
+    const values = parseCsvLine(lines[index]);
+    const row = {};
+    headers.forEach((header, headerIndex) => {
+      row[header] = values[headerIndex] ?? '';
+    });
+    rows.push(row);
+  }
+
+  return rows;
+};
+
+const BULK_CSV_HEADER_ALIASES = {
+  question: 'question_text',
+  questiontext: 'question_text',
+  'question text': 'question_text',
+  type: 'question_type',
+  questiontype: 'question_type',
+  'question type': 'question_type',
+  ans: 'correct_answer',
+  answer: 'correct_answer',
+  'correct answer': 'correct_answer',
+  correctanswer: 'correct_answer',
+  'correct option': 'correct_answer',
+  correctoption: 'correct_answer',
+  subject: 'subject_id',
+  'subject id': 'subject_id',
+  chapter: 'chapter_id',
+  'chapter id': 'chapter_id',
+  topic: 'topic_id',
+  'topic id': 'topic_id',
+  school: 'school_id',
+  'school id': 'school_id',
+  difficulty: 'difficulty_level',
+  'difficulty level': 'difficulty_level',
+  tags: 'exam_tags',
+  'exam tags': 'exam_tags',
+  'option a': 'option_a',
+  'option b': 'option_b',
+  'option c': 'option_c',
+  'option d': 'option_d',
+  'option e': 'option_e',
+  'option f': 'option_f',
+  'option g': 'option_g',
+  'option h': 'option_h',
+  option1: 'option_1',
+  option2: 'option_2',
+  option3: 'option_3',
+  option4: 'option_4',
+  option5: 'option_5',
+  option6: 'option_6',
+  option7: 'option_7',
+  option8: 'option_8',
+};
+
+const normalizeBulkHeaderKey = (key) =>
+  String(key || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\uFEFF/g, '')
+    .replace(/[-\s]+/g, '_');
+
+const normalizeBulkQuestionType = (value) => {
+  const raw = String(value || '')
+    .trim()
+    .toLowerCase();
+  if (!raw) return '';
+
+  if (VALID_QUESTION_TYPES.includes(raw)) return raw;
+  if (['mcq', 'single', 'single_choice', 'singlechoice', 'single_select'].includes(raw)) {
+    return 'mcq_single';
+  }
+  if (['multiple', 'multiple_choice', 'multiplechoice', 'multi_select', 'mcq_multi'].includes(raw)) {
+    return 'mcq_multiple';
+  }
+  if (['numeric', 'integer', 'float'].includes(raw)) {
+    return 'numerical';
+  }
+  if (['truefalse', 'tf', 'boolean'].includes(raw)) {
+    return 'true_false';
+  }
+
+  return raw;
+};
+
+const getFileExtension = (filename = '') => {
+  const normalized = String(filename || '').toLowerCase();
+  const parts = normalized.split('.');
+  if (parts.length < 2) return '';
+  return parts[parts.length - 1];
+};
+
+const getImageMimeType = (filename = '') => {
+  const ext = getFileExtension(filename);
+  if (ext === 'png') return 'image/png';
+  if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
+  if (ext === 'gif') return 'image/gif';
+  if (ext === 'svg') return 'image/svg+xml';
+  if (ext === 'webp') return 'image/webp';
+  return 'application/octet-stream';
+};
+
+const normalizeBulkDefaults = (source) => {
+  const defaults = {};
+  if (source?.default_subject_id !== undefined && source.default_subject_id !== '') {
+    defaults.subject_id = source.default_subject_id;
+  } else if (source?.subject_id !== undefined && source.subject_id !== '') {
+    defaults.subject_id = source.subject_id;
+  }
+
+  if (source?.default_chapter_id !== undefined && source.default_chapter_id !== '') {
+    defaults.chapter_id = source.default_chapter_id;
+  } else if (source?.chapter_id !== undefined && source.chapter_id !== '') {
+    defaults.chapter_id = source.chapter_id;
+  }
+
+  if (source?.default_topic_id !== undefined && source.default_topic_id !== '') {
+    defaults.topic_id = source.default_topic_id;
+  } else if (source?.topic_id !== undefined && source.topic_id !== '') {
+    defaults.topic_id = source.topic_id;
+  }
+
+  if (source?.school_id !== undefined && source.school_id !== '') {
+    defaults.school_id = source.school_id;
+  }
+
+  return defaults;
+};
+
+const applyBulkDefaults = (row, defaults) => {
+  const merged = { ...row };
+  if (
+    (merged.subject_id === undefined || merged.subject_id === null || merged.subject_id === '') &&
+    defaults.subject_id !== undefined
+  ) {
+    merged.subject_id = defaults.subject_id;
+  }
+  if (
+    (merged.chapter_id === undefined || merged.chapter_id === null || merged.chapter_id === '') &&
+    defaults.chapter_id !== undefined
+  ) {
+    merged.chapter_id = defaults.chapter_id;
+  }
+  if (
+    (merged.topic_id === undefined || merged.topic_id === null || merged.topic_id === '') &&
+    defaults.topic_id !== undefined
+  ) {
+    merged.topic_id = defaults.topic_id;
+  }
+  if (
+    (merged.school_id === undefined || merged.school_id === null || merged.school_id === '') &&
+    defaults.school_id !== undefined
+  ) {
+    merged.school_id = defaults.school_id;
+  }
+  return merged;
+};
+
+const normalizeCsvRowInput = (rawRow, defaults) => {
+  const normalized = {};
+  Object.entries(rawRow || {}).forEach(([key, value]) => {
+    const originalKey = String(key).trim();
+    const normalizedKey = normalizeBulkHeaderKey(originalKey);
+    const compactKey = normalizedKey.replace(/_/g, ' ');
+    const canonicalKey =
+      BULK_CSV_HEADER_ALIASES[originalKey.toLowerCase()] ||
+      BULK_CSV_HEADER_ALIASES[compactKey] ||
+      BULK_CSV_HEADER_ALIASES[normalizedKey] ||
+      normalizedKey;
+    normalized[canonicalKey] = typeof value === 'string' ? value.trim() : value;
+  });
+
+  const optionKeys = [
+    'option_a',
+    'option_b',
+    'option_c',
+    'option_d',
+    'option_e',
+    'option_f',
+    'option_g',
+    'option_h',
+    'option_1',
+    'option_2',
+    'option_3',
+    'option_4',
+    'option_5',
+    'option_6',
+    'option_7',
+    'option_8',
+  ];
+  if (normalized.options === undefined || normalized.options === null || normalized.options === '') {
+    const optionValues = optionKeys
+      .map((optionKey) => normalized[optionKey])
+      .filter((entry) => entry !== undefined && entry !== null && String(entry).trim().length > 0)
+      .map((entry) => String(entry).trim());
+
+    if (optionValues.length > 0) {
+      const options = optionValues.map((text, index) => ({
+        id: `opt-${index + 1}`,
+        text,
+      }));
+      normalized.options = options;
+
+      if (normalized.correct_answer !== undefined && normalized.correct_answer !== null) {
+        const answerValue = String(normalized.correct_answer).trim();
+        if (answerValue.length > 0) {
+          const questionType = normalizeBulkQuestionType(normalized.question_type || 'mcq_single');
+          if (questionType === 'mcq_multiple') {
+            const tokens = answerValue
+              .split(/[|,;]/)
+              .map((token) => token.trim())
+              .filter((token) => token.length > 0);
+            normalized.correct_answer = tokens
+              .map((token) => mapAnswerTokenToOptionId(token, options) ?? token)
+              .filter((token) => token !== null);
+          } else {
+            normalized.correct_answer = mapAnswerTokenToOptionId(answerValue, options) ?? answerValue;
+          }
+        }
+      }
+    }
+  }
+
+  if (!normalized.question_type || String(normalized.question_type).trim().length === 0) {
+    normalized.question_type = 'mcq_single';
+  } else {
+    normalized.question_type = normalizeBulkQuestionType(normalized.question_type);
+  }
+
+  optionKeys.forEach((optionKey) => {
+    delete normalized[optionKey];
+  });
+
+  return applyBulkDefaults(normalized, defaults);
+};
+
+const BULK_DOCX_TABLE_HEADER_ALIASES = {
+  type: 'question_type',
+  question_type: 'question_type',
+  question: 'question_text',
+  question_text: 'question_text',
+  options: 'options',
+  answer: 'correct_answer',
+  ans: 'correct_answer',
+  correct_answer: 'correct_answer',
+  correct_option: 'correct_answer',
+  match_pairs: 'match_pairs',
+  blanks: 'blanks',
+  solution: 'solution',
+  difficulty: 'difficulty_level',
+  difficulty_level: 'difficulty_level',
+  'marks+': 'marks_positive',
+  marks_positive: 'marks_positive',
+  marksplus: 'marks_positive',
+  'marks-': 'marks_negative',
+  marks_negative: 'marks_negative',
+  marksminus: 'marks_negative',
+  tags: 'exam_tags',
+  exam_tags: 'exam_tags',
+  subject: 'subject',
+  subject_id: 'subject_id',
+  chapter: 'chapter',
+  chapter_id: 'chapter_id',
+  topic: 'topic',
+  topic_id: 'topic_id',
+  school_id: 'school_id',
+  status: 'status',
+  comprehensive_passage: 'comprehensive_passage',
+  comprehensive_subquestions: 'comprehensive_subquestions',
+};
+
+const BULK_PLACEHOLDER_VALUES = new Set(['-', '--', 'n/a', 'na', 'none', 'nil']);
+
+const normalizeBulkTextValue = (value) =>
+  String(value ?? '')
+    .replace(/\u00a0/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const toHtmlTextWithBreaks = (value) => {
+  const html = String(value ?? '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>\s*<p[^>]*>/gi, '\n')
+    .replace(/<\/li>\s*<li[^>]*>/gi, '\n')
+    .replace(/<\/tr>\s*<tr[^>]*>/gi, '\n');
+  const $ = loadHtml(`<div>${html}</div>`);
+  return $('div').text();
+};
+
+const toPlainBulkText = (value) => {
+  const raw = String(value ?? '');
+  if (!raw) return '';
+  if (raw.includes('<')) {
+    return normalizeBulkTextValue(toHtmlTextWithBreaks(raw));
+  }
+  return normalizeBulkTextValue(raw);
+};
+
+const isPlaceholderBulkValue = (value) => {
+  const normalized = toPlainBulkText(value).toLowerCase();
+  if (!normalized) return true;
+  return BULK_PLACEHOLDER_VALUES.has(normalized);
+};
+
+const normalizeDocxCellHtml = (value) =>
+  String(value ?? '')
+    .replace(/\u00a0/g, ' ')
+    .trim();
+
+const toRichHtmlValue = (value) => {
+  const html = normalizeDocxCellHtml(value);
+  if (!html) return null;
+  if (isPlaceholderBulkValue(html)) return null;
+  return html;
+};
+
+const parseBulkOptionText = (value) => {
+  if (isPlaceholderBulkValue(value)) return null;
+
+  const entries = toHtmlTextWithBreaks(value)
+    .split(/[\n;]+/)
+    .map((entry) => normalizeBulkTextValue(entry))
+    .map((entry) => entry.replace(/^[A-H0-9]+[\).:-]\s*/i, ''))
+    .filter((entry) => entry.length > 0)
+    .filter((entry) => !BULK_PLACEHOLDER_VALUES.has(entry.toLowerCase()));
+
+  if (entries.length === 0) return null;
+  return entries.map((text, index) => ({
+    id: `opt-${index + 1}`,
+    text,
+  }));
+};
+
+const parseBulkNumericId = (value) => {
+  const text = toPlainBulkText(value);
+  if (!text || BULK_PLACEHOLDER_VALUES.has(text.toLowerCase())) return null;
+  if (!/^\d+$/.test(text)) return null;
+  return Number.parseInt(text, 10);
+};
+
+const normalizeDocxTableAnswer = ({
+  questionType,
+  answerValue,
+  options,
+  matchPairsValue,
+  blanksValue,
+  subQuestionsValue,
+  rowNumber,
+}) => {
+  let resolvedAnswer = answerValue;
+  if (isPlaceholderBulkValue(resolvedAnswer)) {
+    if (questionType === 'match_following' && !isPlaceholderBulkValue(matchPairsValue)) {
+      resolvedAnswer = toPlainBulkText(matchPairsValue);
+    } else if (questionType === 'fill_in_blank' && !isPlaceholderBulkValue(blanksValue)) {
+      resolvedAnswer = toPlainBulkText(blanksValue);
+    } else if (questionType === 'comprehensive' && !isPlaceholderBulkValue(subQuestionsValue)) {
+      resolvedAnswer = toPlainBulkText(subQuestionsValue);
+    }
+  }
+
+  if (questionType === 'true_false') {
+    const normalized = toPlainBulkText(resolvedAnswer).toLowerCase();
+    if (normalized === 'true') return true;
+    if (normalized === 'false') return false;
+    throw new AppError(`Row ${rowNumber}: Correct Answer must be true or false`, 400);
+  }
+
+  if (questionType === 'numerical') {
+    const parsed = Number(toPlainBulkText(resolvedAnswer));
+    if (Number.isNaN(parsed)) {
+      throw new AppError(`Row ${rowNumber}: Correct Answer must be a number for numerical questions`, 400);
+    }
+    return parsed;
+  }
+
+  if (questionType === 'mcq_single') {
+    const token = toPlainBulkText(resolvedAnswer);
+    if (!token) {
+      throw new AppError(`Row ${rowNumber}: Correct Answer is required for MCQ single`, 400);
+    }
+    return mapAnswerTokenToOptionId(token, options || []) ?? token;
+  }
+
+  if (questionType === 'mcq_multiple') {
+    const tokens = toPlainBulkText(resolvedAnswer)
+      .split(/[|,;]/)
+      .map((token) => token.trim())
+      .filter((token) => token.length > 0);
+    if (tokens.length === 0) {
+      throw new AppError(`Row ${rowNumber}: Correct Answer is required for MCQ multiple`, 400);
+    }
+    const mapped = tokens
+      .map((token) => mapAnswerTokenToOptionId(token, options || []))
+      .filter(Boolean);
+    return mapped.length > 0 ? mapped : tokens;
+  }
+
+  return toPlainBulkText(resolvedAnswer);
+};
+
+const normalizeDocxTableRowInput = (rawRow, defaults, rowNumber) => {
+  const hasAnyValue = Object.values(rawRow || {}).some((value) => !isPlaceholderBulkValue(value));
+  if (!hasAnyValue) {
+    return null;
+  }
+
+  const questionType = normalizeBulkQuestionType(rawRow.question_type || 'mcq_single');
+  if (!VALID_QUESTION_TYPES.includes(questionType)) {
+    throw new AppError(`Row ${rowNumber}: Invalid question type "${toPlainBulkText(rawRow.question_type)}"`, 400);
+  }
+
+  const baseQuestionHtml = toRichHtmlValue(rawRow.question_text);
+  if (!baseQuestionHtml) {
+    throw new AppError(`Row ${rowNumber}: Question text is required`, 400);
+  }
+
+  const passageHtml = toRichHtmlValue(rawRow.comprehensive_passage);
+  const questionHtml =
+    questionType === 'comprehensive' && passageHtml
+      ? `${baseQuestionHtml}<div class="comprehension-passage">${passageHtml}</div>`
+      : baseQuestionHtml;
+
+  const options = parseBulkOptionText(rawRow.options);
+  if (questionType.startsWith('mcq') && (!options || options.length === 0)) {
+    throw new AppError(`Row ${rowNumber}: Options are required for MCQ questions`, 400);
+  }
+
+  const answerValue = toPlainBulkText(rawRow.correct_answer);
+  const correctAnswer = normalizeDocxTableAnswer({
+    questionType,
+    answerValue,
+    options,
+    matchPairsValue: rawRow.match_pairs,
+    blanksValue: rawRow.blanks,
+    subQuestionsValue: rawRow.comprehensive_subquestions,
+    rowNumber,
+  });
+
+  const prepared = applyBulkDefaults(
+    {
+      question_type: questionType,
+      question_text: questionHtml,
+      options: options || null,
+      correct_answer: correctAnswer,
+      subject_id: parseBulkNumericId(rawRow.subject_id ?? rawRow.subject),
+      chapter_id: parseBulkNumericId(rawRow.chapter_id ?? rawRow.chapter),
+      topic_id: parseBulkNumericId(rawRow.topic_id ?? rawRow.topic),
+      difficulty_level: toPlainBulkText(rawRow.difficulty_level) || 'medium',
+      exam_tags: toPlainBulkText(rawRow.exam_tags),
+      marks_positive: toPlainBulkText(rawRow.marks_positive),
+      marks_negative: toPlainBulkText(rawRow.marks_negative),
+      solution: toRichHtmlValue(rawRow.solution),
+      solution_video_url: toPlainBulkText(rawRow.solution_video_url) || null,
+      school_id: parseBulkNumericId(rawRow.school_id),
+      status: toPlainBulkText(rawRow.status) || undefined,
+    },
+    defaults
+  );
+
+  if (!prepared.subject_id || !prepared.chapter_id) {
+    throw new AppError(
+      `Row ${rowNumber}: subject_id and chapter_id are required (set in file as IDs or upload defaults)`,
+      400
+    );
+  }
+
+  return prepared;
+};
+
+const extractDocxTableRows = async (buffer, defaults) => {
+  const result = await mammoth.convertToHtml({ buffer });
+  const html = String(result?.value || '').trim();
+  if (!html.includes('<table')) {
+    return [];
+  }
+
+  const $ = loadHtml(html);
+  const rows = [];
+
+  $('table').each((_tableIndex, tableElement) => {
+    const tableRows = $(tableElement).find('tr');
+    if (tableRows.length < 2) return;
+
+    const headers = [];
+    $(tableRows[0])
+      .find('th,td')
+      .each((_headerIndex, headerCell) => {
+        const normalizedKey = normalizeBulkHeaderKey($(headerCell).text());
+        const canonicalKey = BULK_DOCX_TABLE_HEADER_ALIASES[normalizedKey] || normalizedKey;
+        headers.push(canonicalKey);
+      });
+
+    if (!headers.includes('question_text')) {
+      return;
+    }
+
+    tableRows.each((rowIndex, rowElement) => {
+      if (rowIndex === 0) return;
+      const row = {};
+
+      $(rowElement)
+        .find('td,th')
+        .each((cellIndex, cell) => {
+          const key = headers[cellIndex];
+          if (!key) return;
+          const cellHtml = normalizeDocxCellHtml($(cell).html());
+          if (
+            key === 'question_text' ||
+            key === 'options' ||
+            key === 'solution' ||
+            key === 'comprehensive_passage'
+          ) {
+            row[key] = cellHtml;
+          } else {
+            row[key] = normalizeBulkTextValue($(cell).text());
+          }
+        });
+
+      try {
+        const normalized = normalizeDocxTableRowInput(row, defaults, rowIndex + 1);
+        if (normalized) {
+          rows.push(normalized);
+        }
+      } catch (err) {
+        const message = err instanceof AppError ? err.message : 'Failed to parse row';
+        rows.push({ _bulk_error: message, _bulk_row_number: rowIndex + 1 });
+      }
+    });
+  });
+
+  return rows;
+};
+
+const mapAnswerTokenToOptionId = (token, options) => {
+  const normalized = String(token || '').trim().toUpperCase();
+  if (!normalized) return null;
+
+  if (/^\d+$/.test(normalized)) {
+    const index = Number.parseInt(normalized, 10) - 1;
+    return options[index]?.id ?? null;
+  }
+
+  if (/^[A-Z]$/.test(normalized)) {
+    const index = normalized.charCodeAt(0) - 65;
+    return options[index]?.id ?? null;
+  }
+
+  const byText = options.find(
+    (option) => String(option.text || '').trim().toLowerCase() === String(token).trim().toLowerCase()
+  );
+  return byText?.id ?? null;
+};
+
+const finalizeDocxQuestion = (question, defaults, rowNumber) => {
+  if (!question || !question.question_text) {
+    return null;
+  }
+
+  const options = (question.options || []).map((option, index) => ({
+    id: option.id || `opt-${index + 1}`,
+    text: option.text,
+  }));
+
+  const questionType = normalizeBulkQuestionType(question.question_type || 'mcq_single');
+  const answerRaw = question.correct_answer;
+  let correctAnswer = answerRaw;
+  if (questionType === 'true_false') {
+    const answerValue = String(answerRaw || '').trim().toLowerCase();
+    correctAnswer = answerValue === 'true';
+  } else if (questionType === 'numerical') {
+    correctAnswer = Number(answerRaw);
+  } else if (questionType === 'mcq_single') {
+    correctAnswer = mapAnswerTokenToOptionId(answerRaw, options) ?? String(answerRaw || '').trim();
+  } else if (questionType === 'mcq_multiple') {
+    const tokens = String(answerRaw || '')
+      .split(/[|,;]/)
+      .map((token) => token.trim())
+      .filter((token) => token.length > 0);
+    const mapped = tokens
+      .map((token) => mapAnswerTokenToOptionId(token, options))
+      .filter(Boolean);
+    correctAnswer = mapped.length > 0 ? mapped : tokens;
+  }
+
+  const prepared = applyBulkDefaults(
+    {
+      question_type: questionType,
+      question_text: question.question_text,
+      options: options.length > 0 ? options : null,
+      correct_answer: correctAnswer,
+      subject_id: question.subject_id,
+      chapter_id: question.chapter_id,
+      topic_id: question.topic_id,
+      difficulty_level: question.difficulty_level || 'medium',
+      exam_tags: question.exam_tags || [],
+      marks_positive: question.marks_positive ?? 4,
+      marks_negative: question.marks_negative ?? 0,
+      solution: question.solution ?? null,
+      solution_video_url: question.solution_video_url ?? null,
+      school_id: question.school_id ?? null,
+      status: question.status ?? undefined,
+    },
+    defaults
+  );
+
+  if (!prepared.subject_id || !prepared.chapter_id) {
+    throw new AppError(
+      `Row ${rowNumber}: subject_id and chapter_id are required (set in file or upload defaults)`,
+      400
+    );
+  }
+  return prepared;
+};
+
+const extractDocxRows = (buffer, defaults) => {
+  const zip = new AdmZip(buffer);
+  const documentEntry = zip.getEntry('word/document.xml');
+  if (!documentEntry) {
+    throw new AppError('Invalid Word file: document.xml missing', 400);
+  }
+
+  const relsEntry = zip.getEntry('word/_rels/document.xml.rels');
+  const relationshipMap = {};
+  if (relsEntry) {
+    const relsXml = relsEntry.getData().toString('utf8');
+    const relMatches = relsXml.matchAll(/<Relationship[^>]*Id="([^"]+)"[^>]*Target="([^"]+)"[^>]*\/>/g);
+    for (const match of relMatches) {
+      relationshipMap[match[1]] = match[2];
+    }
+  }
+
+  const documentXml = documentEntry.getData().toString('utf8');
+  const paragraphMatches = documentXml.match(/<w:p[\s\S]*?<\/w:p>/g) || [];
+  if (paragraphMatches.length === 0) {
+    throw new AppError('Word file has no readable paragraph content', 400);
+  }
+
+  const rows = [];
+  let globalMeta = {};
+  let current = null;
+
+  const pushCurrent = () => {
+    if (!current) return;
+    const normalized = finalizeDocxQuestion(current, defaults, rows.length + 2);
+    if (normalized) rows.push(normalized);
+    current = null;
+  };
+
+  paragraphMatches.forEach((paragraphXml) => {
+    const plainText = decodeXmlEntities(
+      Array.from(paragraphXml.matchAll(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g))
+        .map((match) => match[1])
+        .join('')
+    ).trim();
+
+    const htmlParts = [];
+    if (plainText) {
+      htmlParts.push(escapeHtml(plainText));
+    }
+
+    const equationText = decodeXmlEntities(
+      Array.from(paragraphXml.matchAll(/<m:t[^>]*>([\s\S]*?)<\/m:t>/g))
+        .map((match) => match[1])
+        .join('')
+    ).trim();
+    if (paragraphXml.includes('<m:oMath')) {
+      htmlParts.push(`<span class="math-equation">${escapeHtml(equationText || '[Equation]')}</span>`);
+    }
+
+    const imageMatches = paragraphXml.matchAll(/r:embed="([^"]+)"/g);
+    for (const imageMatch of imageMatches) {
+      const relId = imageMatch[1];
+      const target = relationshipMap[relId];
+      if (!target) continue;
+      const normalizedTarget = target.replace(/^\/+/, '');
+      const imageEntry = zip.getEntry(`word/${normalizedTarget}`);
+      if (!imageEntry) continue;
+      const base64 = imageEntry.getData().toString('base64');
+      const filename = normalizedTarget.split('/').pop() || 'image';
+      const mimeType = getImageMimeType(filename);
+      htmlParts.push(`<img src="data:${mimeType};base64,${base64}" alt="${escapeHtml(filename)}" />`);
+    }
+
+    const paragraphHtml = htmlParts.join(' ').trim();
+    if (!plainText && !paragraphHtml) return;
+
+    const metaMatch = plainText.match(
+      /^(subject_id|chapter_id|topic_id|difficulty_level|marks_positive|marks_negative|exam_tags|status|school_id)\s*:\s*(.+)$/i
+    );
+    if (!current && metaMatch) {
+      const key = metaMatch[1].toLowerCase();
+      const value = metaMatch[2].trim();
+      if (key === 'exam_tags') {
+        globalMeta.exam_tags = value
+          .split(',')
+          .map((tag) => tag.trim())
+          .filter((tag) => tag.length > 0);
+      } else {
+        globalMeta[key] = value;
+      }
+      return;
+    }
+
+    const questionMatch =
+      plainText.match(/^question(?:\s+\d+)?\s*[:.-]\s*(.*)$/i) ||
+      plainText.match(/^q(?:\s+\d+)?\s*[:.-]\s*(.*)$/i) ||
+      plainText.match(/^\d+\s*[\).:-]\s*(.+)$/i);
+    if (questionMatch) {
+      pushCurrent();
+      current = {
+        ...globalMeta,
+        question_type: 'mcq_single',
+        question_text: questionMatch[1] ? `<p>${escapeHtml(questionMatch[1])}</p>` : '',
+        options: [],
+      };
+      if (!current.question_text && paragraphHtml) {
+        current.question_text = `<p>${paragraphHtml}</p>`;
+      }
+      return;
+    }
+
+    if (!current) {
+      return;
+    }
+
+    const typeMatch = plainText.match(/^type\s*:\s*(.+)$/i);
+    if (typeMatch) {
+      current.question_type = typeMatch[1].trim();
+      return;
+    }
+
+    if (metaMatch) {
+      const key = metaMatch[1].toLowerCase();
+      const value = metaMatch[2].trim();
+      if (key === 'exam_tags') {
+        current.exam_tags = value
+          .split(',')
+          .map((tag) => tag.trim())
+          .filter((tag) => tag.length > 0);
+      } else {
+        current[key] = value;
+      }
+      return;
+    }
+
+    const optionMatch = plainText.match(/^([A-H])[\).:-]\s*(.*)$/i);
+    if (optionMatch) {
+      const optionHtml = paragraphHtml.replace(/^[A-H][\).:-]\s*/i, '').trim();
+      const optionText = optionHtml || escapeHtml(optionMatch[2] || '').trim();
+      if (!optionText) return;
+      current.options.push({
+        id: `opt-${current.options.length + 1}`,
+        text: optionText,
+      });
+      return;
+    }
+
+    const answerMatch = plainText.match(
+      /^(answer|ans|correct_answer|correct answer|correct option)\s*[:.-]\s*(.+)$/i
+    );
+    if (answerMatch) {
+      current.correct_answer = answerMatch[2].trim();
+      return;
+    }
+
+    current.question_text = `${current.question_text || ''}<p>${paragraphHtml || escapeHtml(plainText)}</p>`;
+  });
+
+  pushCurrent();
+
+  if (rows.length === 0) {
+    throw new AppError(
+      'No questions found in Word file. Use "Question:", option lines like "A) ...", and "Answer:"',
+      400
+    );
+  }
+
+  return rows;
+};
+
+const extractBulkRowsFromFile = async (file, defaults) => {
+  const extension = getFileExtension(file?.originalname || '');
+  if (extension === 'csv') {
+    const csvText = file.buffer.toString('utf8');
+    const parsedRows = parseCsvContent(csvText);
+    return parsedRows.map((row) => normalizeCsvRowInput(row, defaults));
+  }
+
+  if (extension === 'docx') {
+    const tableRows = await extractDocxTableRows(file.buffer, defaults);
+    if (tableRows.length > 0) {
+      return tableRows;
+    }
+    return extractDocxRows(file.buffer, defaults);
+  }
+
+  if (extension === 'doc') {
+    throw new AppError('Legacy .doc is not supported. Please upload .docx instead.', 400);
+  }
+
+  throw new AppError('Unsupported file type. Allowed: .csv, .docx', 400);
+};
+
 const buildQuestionInsertPayload = async ({ input, user, role, clientId }) => {
   const questionType = requireString(input.question_type, 'question_type');
   if (!VALID_QUESTION_TYPES.includes(questionType)) {
@@ -369,10 +1242,10 @@ const insertQuestion = async (payload) => {
       payload.client_id,
       payload.school_id,
       payload.question_type,
-      payload.question_text,
-      payload.options,
-      payload.correct_answer,
-      payload.solution,
+      toDbJsonParam(payload.question_text),
+      toDbJsonParam(payload.options),
+      toDbJsonParam(payload.correct_answer),
+      toDbJsonParam(payload.solution),
       payload.solution_video_url,
       payload.subject_id,
       payload.chapter_id,
@@ -495,109 +1368,16 @@ export const createQuestion = async (req, res) => {
 
     const role = req.user.role;
     const clientId = ensureClientScope(req.user.client_id ?? null, role);
-
-    const questionType = requireString(req.body.question_type, 'question_type');
-    if (!VALID_QUESTION_TYPES.includes(questionType)) {
-      throw new AppError('Invalid question_type', 400);
-    }
-
-    const questionText = req.body.question_text;
-    if (!questionText) {
-      throw new AppError('question_text is required', 400);
-    }
-
-    const correctAnswer = req.body.correct_answer;
-    if (!correctAnswer) {
-      throw new AppError('correct_answer is required', 400);
-    }
-
-    const subjectId = parseRequiredInt(req.body.subject_id, 'subject_id');
-    const chapterId = parseRequiredInt(req.body.chapter_id, 'chapter_id');
-    const topicId = parseNullableInt(req.body.topic_id, 'topic_id');
-
-    await ensureCurriculumScope({ subjectId, chapterId, topicId, clientId });
-
-    const schoolId = parseNullableInt(req.body.school_id, 'school_id');
-    await ensureSchoolAccess({ schoolId, role, userId: req.user.id, clientId });
-
-    const difficulty = req.body.difficulty_level || 'medium';
-    if (!VALID_DIFFICULTY_LEVELS.includes(difficulty)) {
-      throw new AppError('Invalid difficulty_level', 400);
-    }
-
-    const statusInput = req.body.status ? String(req.body.status) : null;
-    const status =
-      isTeacher(role) ? 'draft' : statusInput && VALID_STATUSES.includes(statusInput) ? statusInput : 'draft';
-
-    const payload = {
-      client_id: clientId,
-      school_id: schoolId,
-      question_type: questionType,
-      question_text: questionText,
-      options: req.body.options ?? null,
-      correct_answer: correctAnswer,
-      solution: req.body.solution ?? null,
-      solution_video_url: req.body.solution_video_url ?? null,
-      subject_id: subjectId,
-      chapter_id: chapterId,
-      topic_id: topicId,
-      difficulty_level: difficulty,
-      exam_tags: parseStringArray(req.body.exam_tags, 'exam_tags'),
-      marks_positive: req.body.marks_positive ?? 4,
-      marks_negative: req.body.marks_negative ?? 0,
-      status,
-      created_by: req.user.id,
-    };
-
-    if (questionType.startsWith('mcq') && (!payload.options || payload.options.length === 0)) {
-      throw new AppError('options are required for MCQ questions', 400);
-    }
-
-    if (questionType === 'comprehensive') {
-      if (!payload.comprehension_passage) {
-        throw new AppError('comprehension_passage is required for comprehensive questions', 400);
-      }
-      if (!Array.isArray(rawComprehensionQuestions) || rawComprehensionQuestions.length === 0) {
-        throw new AppError('comprehension_questions are required for comprehensive questions', 400);
-      }
-    }
-
-    payload.options = toJsonParam(payload.options);
-    payload.comprehension_questions = toJsonParam(payload.comprehension_questions);
-
-    const insertResult = await dbQuery(
-      `
-      INSERT INTO questions
-      (client_id, school_id, question_type, question_text, options, correct_answer, solution,
-       solution_video_url, subject_id, chapter_id, topic_id, difficulty_level, exam_tags,
-       marks_positive, marks_negative, status, created_by)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
-      RETURNING *
-      `,
-      [
-        payload.client_id,
-        payload.school_id,
-        payload.question_type,
-        payload.question_text,
-        payload.options,
-        payload.correct_answer,
-        payload.solution,
-        payload.solution_video_url,
-        payload.subject_id,
-        payload.chapter_id,
-        payload.topic_id,
-        payload.difficulty_level,
-        payload.exam_tags,
-        payload.marks_positive,
-        payload.marks_negative,
-        payload.status,
-        payload.created_by,
-      ]
-    );
-
-    res.status(201).json(insertResult.rows[0]);
+    const payload = await buildQuestionInsertPayload({
+      input: req.body,
+      user: req.user,
+      role,
+      clientId,
+    });
+    const inserted = await insertQuestion(payload);
+    res.status(201).json(inserted);
   } catch (err) {
-    handleServiceError(res, err, 'Failed to bulk upload questions');
+    handleServiceError(res, err, 'Failed to create question');
   }
 };
 
@@ -646,10 +1426,10 @@ export const updateQuestion = async (req, res) => {
       updates.question_type = req.body.question_type;
     }
 
-    if (req.body.question_text !== undefined) updates.question_text = req.body.question_text;
-    if (req.body.options !== undefined) updates.options = toJsonParam(req.body.options ?? null);
-    if (req.body.correct_answer !== undefined) updates.correct_answer = req.body.correct_answer;
-    if (req.body.solution !== undefined) updates.solution = req.body.solution ?? null;
+    if (req.body.question_text !== undefined) updates.question_text = toDbJsonParam(req.body.question_text);
+    if (req.body.options !== undefined) updates.options = toDbJsonParam(req.body.options ?? null);
+    if (req.body.correct_answer !== undefined) updates.correct_answer = toDbJsonParam(req.body.correct_answer);
+    if (req.body.solution !== undefined) updates.solution = toDbJsonParam(req.body.solution ?? null);
     if (req.body.solution_video_url !== undefined) updates.solution_video_url = req.body.solution_video_url ?? null;
 
     if (req.body.subject_id || req.body.chapter_id || req.body.topic_id !== undefined) {
@@ -1194,6 +1974,58 @@ export const bulkUploadTemplate = async (_req, res) => {
   }
 };
 
+let hasQuestionsFolderIdColumn = null;
+
+const checkQuestionsFolderIdColumn = async () => {
+  if (hasQuestionsFolderIdColumn !== null) {
+    return hasQuestionsFolderIdColumn;
+  }
+
+  const columnResult = await dbQuery(
+    `
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'questions'
+      AND column_name = 'folder_id'
+    LIMIT 1
+    `
+  );
+
+  hasQuestionsFolderIdColumn = columnResult.rows.length > 0;
+  return hasQuestionsFolderIdColumn;
+};
+
+const ensureBulkFolderAccess = async ({ folderId, user, role, clientId }) => {
+  if (!folderId) return null;
+
+  const result = await dbQuery(
+    `SELECT id, client_id, school_id, is_active FROM question_folders WHERE id = $1 LIMIT 1`,
+    [folderId]
+  );
+  if (result.rows.length === 0) {
+    throw new AppError('Folder not found', 404);
+  }
+
+  const folder = result.rows[0];
+  if (!folder.is_active) {
+    throw new AppError('Folder is inactive', 400);
+  }
+
+  if (clientId && folder.client_id !== clientId) {
+    throw new AppError('Access denied for folder', 403);
+  }
+
+  if (isTeacher(role) || isSchoolOwner(role)) {
+    const schoolIds = await fetchUserSchoolIds(user.id);
+    if (folder.school_id && !schoolIds.includes(folder.school_id)) {
+      throw new AppError('Access denied for folder', 403);
+    }
+  }
+
+  return folder.id;
+};
+
 export const bulkUploadQuestions = async (req, res) => {
   try {
     if (!req.user?.id || !req.user?.role) {
@@ -1204,10 +2036,75 @@ export const bulkUploadQuestions = async (req, res) => {
       return res.status(400).json({ error: 'File is required for bulk upload.' });
     }
 
-    return res.status(501).json({
-      error: 'Bulk upload is not implemented yet.',
-      inserted: 0,
-      errors: [{ message: 'Bulk upload parser is pending implementation.' }],
+    const role = req.user.role;
+    const clientId = ensureClientScope(req.user.client_id ?? null, role);
+    const defaults = normalizeBulkDefaults(req.body || {});
+    const folderId = parseNullableInt(req.body?.folder_id, 'folder_id');
+
+    let selectedFolderId = null;
+    let canAssignFolder = false;
+    if (folderId) {
+      selectedFolderId = await ensureBulkFolderAccess({
+        folderId,
+        user: req.user,
+        role,
+        clientId,
+      });
+      canAssignFolder = await checkQuestionsFolderIdColumn();
+      if (!canAssignFolder) {
+        throw new AppError('This database does not support folder assignment on questions yet', 400);
+      }
+    }
+
+    const rows = await extractBulkRowsFromFile(req.file, defaults);
+    if (rows.length === 0) {
+      throw new AppError('No valid question rows found in the uploaded file', 400);
+    }
+
+    const inserted = [];
+    const errors = [];
+
+    for (let index = 0; index < rows.length; index += 1) {
+      const row = rows[index];
+      const rowNumber = index + 2;
+
+      if (row && typeof row === 'object' && row._bulk_error) {
+        const parsedRowNumber = Number(row._bulk_row_number || rowNumber);
+        errors.push({
+          row: parsedRowNumber,
+          message: String(row._bulk_error),
+        });
+        continue;
+      }
+
+      try {
+        const payload = await buildQuestionInsertPayload({
+          input: row,
+          user: req.user,
+          role,
+          clientId,
+        });
+        const created = await insertQuestion(payload);
+
+        if (selectedFolderId && canAssignFolder) {
+          await dbQuery(`UPDATE questions SET folder_id = $1 WHERE id = $2`, [selectedFolderId, created.id]);
+        }
+
+        inserted.push(created);
+      } catch (err) {
+        const message = err instanceof AppError ? err.message : 'Failed to insert question';
+        errors.push({
+          row: rowNumber,
+          message: `Row ${rowNumber}: ${message}`,
+        });
+      }
+    }
+
+    return res.json({
+      inserted: inserted.length,
+      total: rows.length,
+      errors,
+      data: inserted,
     });
   } catch (err) {
     handleServiceError(res, err, 'Failed to bulk upload questions');
