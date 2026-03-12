@@ -1,12 +1,11 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import SidebarNav from "@/components/layout/SidebarNav";
 import { getDashboardTheme } from "@/components/layout/dashboardTheme";
 import spectropyLogo from "/logo.png";
-import gvjbLogo from "/gvjb.png";
-import { RiHome2Line, RiFileList3Line } from "react-icons/ri";
+import { RiFileList3Line } from "react-icons/ri";
 
 interface QuestionBankShellProps {
   title: string;
@@ -18,35 +17,40 @@ interface QuestionBankShellProps {
 const roleConfig = {
   super_admin: {
     label: "Super Admin",
-    dashboardPath: "/superadmin/dashboard",
     profilePath: "",
   },
   client_admin: {
     label: "Admin",
-    dashboardPath: "/admin/dashboard",
     profilePath: "/admin/profile",
   },
   content_authorizer: {
     label: "Content Authorizer",
-    dashboardPath: "/content-authorizer/dashboard",
     profilePath: "/content-authorizer/profile",
   },
   school_owner: {
     label: "School Owner",
-    dashboardPath: "/school-owner/dashboard",
     profilePath: "/school-owner/profile",
   },
   teacher: {
     label: "Teacher",
-    dashboardPath: "/teacher/dashboard",
     profilePath: "/teacher/profile",
   },
   student: {
     label: "Student",
-    dashboardPath: "/student/dashboard",
     profilePath: "",
   },
 } as const;
+
+const questionBankTabs = [
+  { key: "questions", label: "Questions", to: "/question-bank" },
+  { key: "programs", label: "Programs", to: "/question-bank/programs" },
+  { key: "grades", label: "Grades", to: "/question-bank/grades" },
+  { key: "subjects", label: "Subjects", to: "/question-bank/subjects" },
+  { key: "chapters", label: "Chapters", to: "/question-bank/chapters" },
+  { key: "topics", label: "Topics", to: "/question-bank/topics" },
+  { key: "folders", label: "Folders", to: "/question-bank/folders" },
+  { key: "bulk-upload", label: "Bulk Upload", to: "/question-bank/bulk-upload" },
+] as const;
 
 export default function QuestionBankShell({
   title,
@@ -54,46 +58,37 @@ export default function QuestionBankShell({
   children,
   headerAction,
 }: QuestionBankShellProps) {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  const isClientTenant = Boolean(user?.client_id);
-  const brandLogo = isClientTenant ? gvjbLogo : spectropyLogo;
-  const brandName = isClientTenant ? "GVB" : "Spectropy";
-  const theme = getDashboardTheme(isClientTenant);
+  const brandLogo = spectropyLogo;
+  const brandName = "Spectropy";
+  const theme = getDashboardTheme(false);
 
   const roleKey = (user?.role ?? "student") as keyof typeof roleConfig;
   const config = roleConfig[roleKey];
   const userFullName = user?.full_name || config.label;
   const userEmail = user?.email || "";
 
-  const navItems = [
-    {
-      key: "dashboard",
-      label: "Dashboard",
-      icon: <RiHome2Line />,
-      active: false,
-      onClick: () => navigate(config.dashboardPath),
-    },
-    {
-      key: "question-bank",
-      label: "Question Bank",
-      icon: <RiFileList3Line />,
-      active: true,
-      onClick: () => navigate("/question-bank"),
-    },
-  ];
+  const isTabActive = (to: string) =>
+    to === "/question-bank"
+      ? location.pathname === to
+      : location.pathname === to || location.pathname.startsWith(`${to}/`);
 
-  const handleLogout = async () => {
-    await logout();
-    navigate("/login", { replace: true });
-  };
+  const navItems = questionBankTabs.map((tab) => ({
+    key: tab.key,
+    label: tab.label,
+    icon: <RiFileList3Line />,
+    active: isTabActive(tab.to),
+    onClick: () => navigate(tab.to),
+  }));
 
   return (
     <DashboardLayout
-      shellClass={theme.shellClass}
-      layoutClass={theme.layoutClass}
+      shellClass={`${theme.shellClass} h-screen overflow-hidden`}
+      layoutClass={`${theme.layoutClass} h-screen overflow-hidden`}
       sidebarOpen={sidebarOpen}
       onSidebarClose={() => setSidebarOpen(false)}
       contentClassName="p-0"
@@ -101,15 +96,12 @@ export default function QuestionBankShell({
         <SidebarNav
           brandLogo={brandLogo}
           brandName={brandName}
-          title={config.label}
+          title="Question Bank"
+          brandTag={config.label}
           navItems={navItems}
           userInfo={{ name: userFullName, email: userEmail }}
-          onProfileClick={
-            config.profilePath
-              ? () => navigate(config.profilePath)
-              : undefined
-          }
-          onLogout={handleLogout}
+          showUserInfo={false}
+          showLogout={false}
           sidebarOpen={sidebarOpen}
           onClose={() => setSidebarOpen(false)}
           theme={theme}

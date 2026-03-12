@@ -26,7 +26,7 @@ export default function QuestionBankPage() {
         </div>
       }
     >
-      <QuestionBankList filtersPlacement="sidebar" />
+      <QuestionBankList filtersPlacement="content" />
     </QuestionBankLayout>
   );
 }

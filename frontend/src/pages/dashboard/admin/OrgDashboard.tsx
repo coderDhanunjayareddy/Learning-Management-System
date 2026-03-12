@@ -1,8 +1,17 @@
 ﻿import { useEffect, useState } from 'react';
 import api from '@/lib/api';
+import type { ReactNode } from 'react';
 import { useAuth } from '@/features/auth/hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
 import BulkSetup from './BulkSetup';
+import spectropyLogo from '/logo.png';
+import { RiFileList3Line } from 'react-icons/ri';
+import { BiBookOpen } from 'react-icons/bi';
+import { PiUsersBold, PiChatsCircleBold } from 'react-icons/pi';
+import { HiOutlineBuildingOffice2 } from 'react-icons/hi2';
+import DashboardLayout from '@/components/layout/DashboardLayout';
+import SidebarNav, { type SidebarNavItem } from '@/components/layout/SidebarNav';
+import { getDashboardTheme } from '@/components/layout/dashboardTheme';
 
 type TabKey = 'schools' | 'schoolMembers' | 'batches' | 'batchMembers' | 'roles' | 'users' | 'bulkSetup';
 
@@ -44,9 +53,15 @@ interface User {
   is_active: boolean;
 }
 
+type ClientUser = {
+  logo?: string;
+  client_name?: string;
+};
+
 export default function OrgDashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<TabKey>('schools');
   const [schools, setSchools] = useState<School[]>([]);
   const [batches, setBatches] = useState<Batch[]>([]);
@@ -169,49 +184,104 @@ export default function OrgDashboard() {
     { key: 'users', label: 'Users', roles: ['super_admin', 'client_admin', 'school_owner'] },
     { key: 'bulkSetup', label: 'Bulk Upload', roles: ['super_admin', 'client_admin', 'school_owner'] },
   ];
+  const clientUser = user as (typeof user & ClientUser) | null;
+  const theme = getDashboardTheme(false);
+  const brandLogo = clientUser?.logo || spectropyLogo;
+  const brandName = clientUser?.client_name || 'Spectropy';
+  const dashboardTitle = clientUser?.client_name ? `${clientUser.client_name} Dashboard` : 'Organization Dashboard';
+  const clientMeta = clientUser?.client_name ? `${clientUser.client_name} Client` : null;
+  const visibleTabs = tabs.filter((tab) => !tab.roles || tab.roles.includes(user?.role || ''));
+  const activeTabLabel = tabs.find((tab) => tab.key === activeTab)?.label || 'Organization Setup';
+  const activeTabSubtitle: Record<TabKey, string> = {
+    schools: 'Create and manage schools under your organization.',
+    schoolMembers: 'Assign users to schools and define their scope.',
+    batches: 'Create and organize batches for schools.',
+    batchMembers: 'Manage users enrolled inside each batch.',
+    roles: 'Control role-based permissions for organization users.',
+    users: 'Create and maintain all organization users.',
+    bulkSetup: 'Upload setup data quickly with bulk operations.',
+  };
+  const tabIcons: Record<TabKey, ReactNode> = {
+    schools: <HiOutlineBuildingOffice2 />,
+    schoolMembers: <PiUsersBold />,
+    batches: <BiBookOpen />,
+    batchMembers: <PiUsersBold />,
+    roles: <RiFileList3Line />,
+    users: <PiUsersBold />,
+    bulkSetup: <PiChatsCircleBold />,
+  };
+  const navItems: SidebarNavItem[] = visibleTabs.map((tab) => ({
+    key: tab.key,
+    label: tab.label,
+    icon: tabIcons[tab.key],
+    active: activeTab === tab.key,
+    onClick: () => setActiveTab(tab.key),
+  }));
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
-      <div className="mx-auto max-w-6xl px-6 py-8">
-        <div className="mb-4 flex flex-wrap items-center gap-3">
+    <DashboardLayout
+      shellClass={theme.shellClass}
+      layoutClass={theme.layoutClass}
+      sidebarOpen={sidebarOpen}
+      onSidebarClose={() => setSidebarOpen(false)}
+      contentClassName="p-6"
+      sidebar={
+        <SidebarNav
+          brandLogo={brandLogo}
+          brandName={brandName}
+          title={dashboardTitle}
+          brandTag={clientUser?.client_name}
+          navItems={navItems}
+          userInfo={{
+            name: user?.full_name || 'Organization Admin',
+            email: user?.email || 'org@lms.com',
+            meta: clientMeta,
+          }}
+          showUserInfo={false}
+          showLogout={false}
+          sidebarOpen={sidebarOpen}
+          onClose={() => setSidebarOpen(false)}
+          theme={theme}
+        />
+      }
+      header={
+        <div className={theme.headerClass}>
           <button
-            onClick={() => navigate('/admin/dashboard')}
-            className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            onClick={() => setSidebarOpen(true)}
+            className={`md:hidden mr-3 p-2 rounded-lg border ${theme.secondaryBorderClass}`}
+            aria-label="Open menu"
           >
-            Back to Dashboard
+            Menu
           </button>
-          <h2 className="text-lg font-semibold text-slate-900">Organization Setup</h2>
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h1 className="text-xl md:text-2xl font-bold">{activeTabLabel}</h1>
+              <p className="mt-1 text-sm md:text-base text-gray-600">{activeTabSubtitle[activeTab]}</p>
+            </div>
+            <button
+              onClick={() => navigate('/admin/dashboard')}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+            >
+              Back to Admin Dashboard
+            </button>
+          </div>
         </div>
-        <div className="flex flex-wrap gap-3">
-          {tabs
-            .filter((tab) => !tab.roles || tab.roles.includes(user?.role || ''))
-            .map((tab) => (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                className={`rounded-full px-4 py-2 text-sm font-semibold ${
-                  activeTab === tab.key ? 'bg-blue-900 text-white' : 'bg-white text-slate-700'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-        </div>
-
+      }
+    >
         {activeTab === 'schools' && (
           <section className="mt-6 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-            <div className="rounded-2xl bg-white p-5 shadow-sm">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
               <h3 className="text-lg font-semibold">Schools</h3>
               <div className="mt-4 space-y-3">
                 {schools.map((school) => (
-                  <div key={school.id} className="rounded-xl border border-slate-100 p-3">
+                  <div key={school.id} className="rounded-xl border border-slate-200 bg-white p-3">
                     <div className="font-semibold">{school.name}</div>
                     <div className="text-xs text-slate-500">Code: {school.school_code || '-'}</div>
                   </div>
                 ))}
               </div>
             </div>
-            <form onSubmit={createSchool} className="rounded-2xl bg-white p-5 shadow-sm">
+            <form onSubmit={createSchool} className="rounded-2xl border border-slate-200 bg-white p-5">
               <h3 className="text-lg font-semibold">Create School</h3>
               <div className="mt-4 space-y-3">
                 <input
@@ -236,12 +306,13 @@ export default function OrgDashboard() {
 
         {activeTab === 'schoolMembers' && (
           <section className="mt-6 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-            <div className="rounded-2xl bg-white p-5 shadow-sm">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+              <h3 className="text-lg font-semibold">School Members</h3>
               <div className="flex items-center gap-3">
                 <select
                   value={selectedSchoolId}
                   onChange={(e) => setSelectedSchoolId(e.target.value)}
-                  className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                  className="mt-4 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
                 >
                   <option value="">Select school</option>
                   {schools.map((school) => (
@@ -253,16 +324,16 @@ export default function OrgDashboard() {
               </div>
               <div className="mt-4 space-y-3">
                 {schoolMembers.map((member) => (
-                  <div key={member.id} className="rounded-xl border border-slate-100 p-3">
+                  <div key={member.id} className="rounded-xl border border-slate-200 bg-white p-3">
                     <div className="font-semibold">{member.full_name}</div>
                     <div className="text-xs text-slate-500">
-                      {member.email} â€¢ {member.role_scope}
+                      {member.email} | {member.role_scope}
                     </div>
                   </div>
                 ))}
               </div>
             </div>
-            <form onSubmit={addSchoolMember} className="rounded-2xl bg-white p-5 shadow-sm">
+            <form onSubmit={addSchoolMember} className="rounded-2xl border border-slate-200 bg-white p-5">
               <h3 className="text-lg font-semibold">Add School Member</h3>
               <div className="mt-4 space-y-3">
                 <input
@@ -291,18 +362,18 @@ export default function OrgDashboard() {
 
         {activeTab === 'batches' && (
           <section className="mt-6 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-            <div className="rounded-2xl bg-white p-5 shadow-sm">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
               <h3 className="text-lg font-semibold">Batches</h3>
               <div className="mt-4 space-y-3">
                 {batches.map((batch) => (
-                  <div key={batch.id} className="rounded-xl border border-slate-100 p-3">
+                  <div key={batch.id} className="rounded-xl border border-slate-200 bg-white p-3">
                     <div className="font-semibold">{batch.name}</div>
                     <div className="text-xs text-slate-500">School ID: {batch.school_id}</div>
                   </div>
                 ))}
               </div>
             </div>
-            <form onSubmit={createBatch} className="rounded-2xl bg-white p-5 shadow-sm">
+            <form onSubmit={createBatch} className="rounded-2xl border border-slate-200 bg-white p-5">
               <h3 className="text-lg font-semibold">Create Batch</h3>
               <div className="mt-4 space-y-3">
                 <select
@@ -333,11 +404,12 @@ export default function OrgDashboard() {
 
         {activeTab === 'batchMembers' && (
           <section className="mt-6 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-            <div className="rounded-2xl bg-white p-5 shadow-sm">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+              <h3 className="text-lg font-semibold">Batch Members</h3>
               <select
                 value={selectedBatchId}
                 onChange={(e) => setSelectedBatchId(e.target.value)}
-                className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                className="mt-4 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
               >
                 <option value="">Select batch</option>
                 {batches.map((batch) => (
@@ -348,14 +420,14 @@ export default function OrgDashboard() {
               </select>
               <div className="mt-4 space-y-3">
                 {batchMembers.map((member) => (
-                  <div key={member.id} className="rounded-xl border border-slate-100 p-3">
+                  <div key={member.id} className="rounded-xl border border-slate-200 bg-white p-3">
                     <div className="font-semibold">{member.full_name}</div>
                     <div className="text-xs text-slate-500">{member.email}</div>
                   </div>
                 ))}
               </div>
             </div>
-            <form onSubmit={addBatchMember} className="rounded-2xl bg-white p-5 shadow-sm">
+            <form onSubmit={addBatchMember} className="rounded-2xl border border-slate-200 bg-white p-5">
               <h3 className="text-lg font-semibold">Add Batch Member</h3>
               <div className="mt-4 space-y-3">
                 <input
@@ -374,18 +446,18 @@ export default function OrgDashboard() {
 
         {activeTab === 'roles' && (
           <section className="mt-6 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-            <div className="rounded-2xl bg-white p-5 shadow-sm">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
               <h3 className="text-lg font-semibold">Role Permissions</h3>
               <div className="mt-4 space-y-2">
                 {rolePermissions.map((perm) => (
-                  <div key={perm.id} className="rounded-xl border border-slate-100 p-3 text-sm">
+                  <div key={perm.id} className="rounded-xl border border-slate-200 bg-white p-3 text-sm">
                     <div className="font-semibold">{perm.role}</div>
                     <div className="text-xs text-slate-500">{perm.permission}</div>
                   </div>
                 ))}
               </div>
             </div>
-            <form onSubmit={upsertRolePermission} className="rounded-2xl bg-white p-5 shadow-sm">
+            <form onSubmit={upsertRolePermission} className="rounded-2xl border border-slate-200 bg-white p-5">
               <h3 className="text-lg font-semibold">Add Permission</h3>
               <div className="mt-4 space-y-3">
                 <input
@@ -414,18 +486,18 @@ export default function OrgDashboard() {
 
         {activeTab === 'users' && (
           <section className="mt-6 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-            <div className="rounded-2xl bg-white p-5 shadow-sm">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
               <h3 className="text-lg font-semibold">Users</h3>
               <div className="mt-4 space-y-3">
                 {users.map((u) => (
-                  <div key={u.id} className="rounded-xl border border-slate-100 p-3">
+                  <div key={u.id} className="rounded-xl border border-slate-200 bg-white p-3">
                     <div className="font-semibold">{u.full_name}</div>
-                    <div className="text-xs text-slate-500">{u.email} â€¢ {u.role}</div>
+                    <div className="text-xs text-slate-500">{u.email} | {u.role}</div>
                   </div>
                 ))}
               </div>
             </div>
-            <form onSubmit={createUser} className="rounded-2xl bg-white p-5 shadow-sm">
+            <form onSubmit={createUser} className="rounded-2xl border border-slate-200 bg-white p-5">
               <h3 className="text-lg font-semibold">Create User</h3>
               <div className="mt-4 space-y-3">
                 <input
@@ -472,11 +544,13 @@ export default function OrgDashboard() {
 
         {activeTab === 'bulkSetup' && (
           <section className="mt-6">
-            <BulkSetup />
+            <div className="w-full rounded-2xl border border-slate-200 bg-white p-5">
+              <h3 className="mb-4 text-lg font-semibold">Bulk Upload Workspace</h3>
+              <BulkSetup />
+            </div>
           </section>
         )}
-      </div>
-    </div>
+    </DashboardLayout>
   );
 }
 

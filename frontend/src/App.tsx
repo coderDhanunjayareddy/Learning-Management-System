@@ -6,10 +6,6 @@ import { Toaster } from 'react-hot-toast';
 import AppRoutes from "./app/routes/AppRoutes";
 
 
-
-
-
-
 // ✅ Moved all routes into a separate component
 
 

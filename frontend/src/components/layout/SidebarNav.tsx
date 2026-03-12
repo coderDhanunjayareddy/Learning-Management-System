@@ -22,7 +22,9 @@ interface SidebarNavProps {
     meta?: string | null;
   };
   onProfileClick?: () => void;
-  onLogout: () => void;
+  onLogout?: () => void;
+  showUserInfo?: boolean;
+  showLogout?: boolean;
   sidebarOpen: boolean;
   onClose: () => void;
   theme: DashboardTheme;
@@ -37,6 +39,8 @@ export default function SidebarNav({
   userInfo,
   onProfileClick,
   onLogout,
+  showUserInfo = true,
+  showLogout = true,
   sidebarOpen,
   onClose,
   theme,
@@ -86,13 +90,25 @@ export default function SidebarNav({
         ))}
       </nav>
 
-      {onProfileClick ? (
-        <button
-          type="button"
-          onClick={onProfileClick}
-          className="w-full text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/60 focus-visible:ring-offset-2 transition"
-          aria-label="Open profile"
-        >
+      {showUserInfo &&
+        (onProfileClick ? (
+          <button
+            type="button"
+            onClick={onProfileClick}
+            className="w-full text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/60 focus-visible:ring-offset-2 transition"
+            aria-label="Open profile"
+          >
+            <UserInfoCard
+              name={userInfo.name}
+              email={userInfo.email}
+              meta={userInfo.meta}
+              wrapperClassName={theme.userInfoWrapperClass}
+              innerClassName={theme.userInfoInnerClass}
+              avatarClassName={theme.avatarClass}
+              avatarTextClassName={theme.avatarTextClass}
+            />
+          </button>
+        ) : (
           <UserInfoCard
             name={userInfo.name}
             email={userInfo.email}
@@ -102,45 +118,36 @@ export default function SidebarNav({
             avatarClassName={theme.avatarClass}
             avatarTextClassName={theme.avatarTextClass}
           />
-        </button>
-      ) : (
-        <UserInfoCard
-          name={userInfo.name}
-          email={userInfo.email}
-          meta={userInfo.meta}
-          wrapperClassName={theme.userInfoWrapperClass}
-          innerClassName={theme.userInfoInnerClass}
-          avatarClassName={theme.avatarClass}
-          avatarTextClassName={theme.avatarTextClass}
-        />
-      )}
+        ))}
 
-      <div
-        className={`border-t ${
-          theme.brandTagClass ? "mt-auto border-amber-100 px-4 py-2" : "border-gray-200 p-4"
-        }`}
-      >
-        <button
-          onClick={onLogout}
-          className={`w-full flex items-center justify-center ${theme.logoutButtonClass}`}
+      {showLogout && onLogout && (
+        <div
+          className={`border-t ${
+            theme.brandTagClass ? "mt-auto border-amber-100 px-4 py-2" : "border-gray-200 p-4"
+          }`}
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-4 w-4 mr-2"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
+          <button
+            onClick={onLogout}
+            className={`w-full flex items-center justify-center ${theme.logoutButtonClass}`}
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M10 19l-7-7m0 0l7-7m-7 7h18"
-            />
-          </svg>
-          Logout
-        </button>
-      </div>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-4 w-4 mr-2"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M10 19l-7-7m0 0l7-7m-7 7h18"
+              />
+            </svg>
+            Logout
+          </button>
+        </div>
+      )}
     </div>
   );
 }

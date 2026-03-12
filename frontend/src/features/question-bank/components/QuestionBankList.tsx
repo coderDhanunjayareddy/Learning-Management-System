@@ -447,6 +447,13 @@ export default function QuestionBankList({ filtersPlacement = "sidebar" }: { fil
   const totalCount = total;
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
   const paginatedQuestions = filteredQuestions;
+  const activeFilterCount = useMemo(
+    () =>
+      Object.values(filters).filter(
+        (value) => typeof value === "string" && value.trim() !== ""
+      ).length,
+    [filters]
+  );
 
   const handleApprove = async (question: Question) => {
     try {
@@ -522,17 +529,25 @@ export default function QuestionBankList({ filtersPlacement = "sidebar" }: { fil
       )}
 
       {filtersPlacement !== "sidebar" || !sidebarHost ? (
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <QuestionFilters
-            filters={filters}
-            programs={programs}
-            grades={grades}
-            subjects={subjects}
-            chapters={availableChapters}
-            topics={availableTopics}
-            onChange={setFilters}
-          />
-        </div>
+        <details className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-sm font-semibold text-slate-800">
+            <span>Filters</span>
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">
+              {activeFilterCount > 0 ? `${activeFilterCount} active` : "Optional"}
+            </span>
+          </summary>
+          <div className="mt-4 border-t border-slate-100 pt-4">
+            <QuestionFilters
+              filters={filters}
+              programs={programs}
+              grades={grades}
+              subjects={subjects}
+              chapters={availableChapters}
+              topics={availableTopics}
+              onChange={setFilters}
+            />
+          </div>
+        </details>
       ) : (
         createPortal(filtersPanel, sidebarHost)
       )}
