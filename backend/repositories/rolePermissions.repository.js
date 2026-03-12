@@ -1,13 +1,25 @@
 // backend/repositories/rolePermissions.repository.js
 import { query as dbQuery } from './db.repository.js';
 
-export const fetchRolePermissions = async ({ clientId, scope }) => {
-  const where = clientId
-    ? scope === 'client'
-      ? 'WHERE client_id = $1'
-      : 'WHERE client_id = $1 OR client_id IS NULL'
-    : '';
-  const params = clientId ? [clientId] : [];
+export const fetchRolePermissions = async ({ clientId, scope, role }) => {
+  const whereClauses = [];
+  const params = [];
+
+  if (clientId) {
+    if (scope === 'client') {
+      whereClauses.push(`client_id = $${params.length + 1}`);
+    } else {
+      whereClauses.push(`(client_id = $${params.length + 1} OR client_id IS NULL)`);
+    }
+    params.push(clientId);
+  }
+
+  if (role) {
+    whereClauses.push(`role = $${params.length + 1}`);
+    params.push(role);
+  }
+
+  const where = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
 
   return dbQuery(
     `

@@ -97,7 +97,7 @@ const sortByIdAsc = (items: Question[]) => {
 
 export default function QuestionBankList({ filtersPlacement = "sidebar" }: { filtersPlacement?: "content" | "sidebar" }) {
   const { user, token } = useAuth();
-  const permissions = getQuestionPermissions(user?.role);
+  const permissions = getQuestionPermissions(user);
   const navigate = useNavigate();
   const location = useLocation();
   const [sidebarHost, setSidebarHost] = useState<Element | null>(null);
@@ -122,6 +122,7 @@ export default function QuestionBankList({ filtersPlacement = "sidebar" }: { fil
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
   const [rejectQuestion, setRejectQuestion] = useState<Question | null>(null);
+
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 25;
   const [total, setTotal] = useState(0);
@@ -379,18 +380,20 @@ export default function QuestionBankList({ filtersPlacement = "sidebar" }: { fil
   };
 
   const filtersPanel = (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+    <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+      <h3 className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
         Filters
+      </h3>
+      <div className="mt-3">
+        <QuestionFilters
+          layout="vertical"
+          filters={filters}
+          subjects={subjects}
+          chapters={availableChapters}
+          topics={availableTopics}
+          onChange={setFilters}
+        />
       </div>
-      <QuestionFilters
-        layout="vertical"
-        filters={filters}
-        subjects={subjects}
-        chapters={availableChapters}
-        topics={availableTopics}
-        onChange={setFilters}
-      />
     </div>
   );
 
@@ -435,10 +438,11 @@ export default function QuestionBankList({ filtersPlacement = "sidebar" }: { fil
           No questions match the current filters.
         </div>
       ) : (
-        <div className="space-y-4">
-          {paginatedQuestions.map((question) => (
+        <div className="space-y-3">
+          {paginatedQuestions.map((question, index) => (
             <QuestionCard
               key={question.id}
+              number={(currentPage - 1) * pageSize + index + 1}
               question={question}
               permissions={permissions}
               onEdit={(item) => navigate(`/question-bank/${item.id}/edit`)}
@@ -470,8 +474,8 @@ export default function QuestionBankList({ filtersPlacement = "sidebar" }: { fil
                     key={page}
                     onClick={() => setCurrentPage(page)}
                     className={`rounded-lg border px-3 py-1.5 text-xs font-semibold ${page === currentPage
-                        ? "border-slate-900 bg-slate-900 text-white"
-                        : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                      ? "border-slate-900 bg-slate-900 text-white"
+                      : "border-slate-200 text-slate-600 hover:bg-slate-50"
                       }`}
                   >
                     {page}

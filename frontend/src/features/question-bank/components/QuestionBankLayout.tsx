@@ -65,8 +65,8 @@ export default function QuestionBankLayout({
       </div>
 
       <div className="mx-auto flex max-w-6xl gap-6 px-6 py-8">
-        <aside className="hidden w-60 shrink-0 lg:block space-y-6">
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <aside className="sticky top-6 hidden h-[calc(100vh-6rem)] w-80 shrink-0 flex-col gap-6 lg:flex">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm shrink-0">
             <h2 className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
               Question Bank
             </h2>
@@ -87,7 +87,10 @@ export default function QuestionBankLayout({
               ))}
             </nav>
           </div>
-          <div id="question-bank-sidebar-slot" />
+          <div
+            id="question-bank-sidebar-slot"
+            className="flex-1 min-h-0 [&>div]:max-h-full [&>div]:flex [&>div]:flex-col [&>div>div:last-child]:flex-1 [&>div>div:last-child]:min-h-0 [&>div>div:last-child]:overflow-y-auto"
+          />
         </aside>
 
         <main className="flex-1">{children}</main>

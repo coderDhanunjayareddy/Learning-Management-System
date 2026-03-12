@@ -1,5 +1,4 @@
 import type { Role } from "@/features/auth/types";
-import { isAdminRole } from "@/features/auth/types";
 
 export interface QuestionPermissions {
   canView: boolean;
@@ -11,19 +10,44 @@ export interface QuestionPermissions {
   canViewAnswer: boolean;
 }
 
-export const getQuestionPermissions = (role?: Role | null): QuestionPermissions => {
-  const isAdmin = isAdminRole(role);
-  const isTeacher = role === "teacher";
-  const isContentAuthorizer = role === "content_authorizer";
-  const isSchoolOwner = role === "school_owner";
+type PermissionUser = { role?: Role | null; permissions?: string[] | null };
+
+export const getQuestionPermissions = (user?: PermissionUser | null): QuestionPermissions => {
+  const role = user?.role ?? null;
+  if (!role) {
+    return {
+      canView: false,
+      canCreate: false,
+      canEdit: false,
+      canApprove: false,
+      canReject: false,
+      canDelete: false,
+      canViewAnswer: false,
+    };
+  }
+
+  if (role === "super_admin") {
+    return {
+      canView: true,
+      canCreate: true,
+      canEdit: true,
+      canApprove: true,
+      canReject: true,
+      canDelete: true,
+      canViewAnswer: true,
+    };
+  }
+
+  const permissionSet = new Set((user?.permissions ?? []).filter(Boolean));
+  const has = (permission: string) => permissionSet.has(permission);
 
   return {
-    canView: Boolean(role),
-    canCreate: isAdmin || isTeacher || isSchoolOwner || isContentAuthorizer,
-    canEdit: isAdmin || isTeacher || isSchoolOwner || isContentAuthorizer,
-    canApprove: isAdmin || isSchoolOwner || isContentAuthorizer,
-    canReject: isAdmin || isSchoolOwner || isContentAuthorizer,
-    canDelete: role === "super_admin" || role === "client_admin",
+    canView: has("questions.read"),
+    canCreate: has("questions.create"),
+    canEdit: has("questions.create"),
+    canApprove: has("questions.approve"),
+    canReject: has("questions.reject"),
+    canDelete: has("questions.delete"),
     canViewAnswer: role !== "student",
   };
 };

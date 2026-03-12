@@ -17,6 +17,9 @@ import {
   listRolePermissions,
   upsertRolePermission,
   deleteRolePermission,
+  listUserPermissions,
+  upsertUserPermission,
+  deleteUserPermission,
 } from '../controllers/hierarchy.controller.js';
 import { authenticateToken, requireRole } from '../middleware/auth.js';
 
@@ -50,5 +53,10 @@ router.delete('/batches/:batchId/members/:userId', requireRole(['super_admin', '
 router.get('/role-permissions', requireRole(['super_admin', 'client_admin']), listRolePermissions);
 router.post('/role-permissions', requireRole(['super_admin', 'client_admin']), upsertRolePermission);
 router.delete('/role-permissions/:id', requireRole(['super_admin']), deleteRolePermission);
+
+// User permissions (super admin, client admin)
+router.get('/user-permissions', requireRole(['super_admin', 'client_admin']), listUserPermissions);
+router.post('/user-permissions', requireRole(['super_admin', 'client_admin']), upsertUserPermission);
+router.delete('/user-permissions/:id', requireRole(['super_admin', 'client_admin']), deleteUserPermission);
 
 export default router;

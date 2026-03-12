@@ -60,8 +60,8 @@ const setCachedUser = (userId, user) => {
   });
 };
 
-const getCachedPermissions = (role, clientId) => {
-  const key = `${role}:${clientId ?? 'global'}`;
+const getCachedPermissions = (userId, role, clientId) => {
+  const key = `${userId}:${role}:${clientId ?? 'global'}`;
   const cached = permissionsCache.get(key);
   if (!cached) return null;
   if (cached.expiresAt <= Date.now()) {
@@ -71,8 +71,8 @@ const getCachedPermissions = (role, clientId) => {
   return cached.permissions;
 };
 
-const setCachedPermissions = (role, clientId, permissions) => {
-  const key = `${role}:${clientId ?? 'global'}`;
+const setCachedPermissions = (userId, role, clientId, permissions) => {
+  const key = `${userId}:${role}:${clientId ?? 'global'}`;
   permissionsCache.set(key, {
     permissions,
     expiresAt: Date.now() + PERMISSIONS_CACHE_TTL_MS,
@@ -148,9 +148,11 @@ export const loadPermissions = async (req, res, next) => {
   if (!role) return res.status(401).json({ error: 'Unauthorized' });
 
   const clientId = req.clientId ?? null;
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
   try {
-    const cachedPermissions = getCachedPermissions(role, clientId);
+    const cachedPermissions = getCachedPermissions(userId, role, clientId);
     if (cachedPermissions) {
       req.permissions = cachedPermissions;
       return next();
@@ -171,7 +173,17 @@ export const loadPermissions = async (req, res, next) => {
       }
     }
 
-    setCachedPermissions(role, clientId, permissions);
+    const overrides = await pool.query(
+      `SELECT permission, granted
+       FROM user_permissions
+       WHERE user_id = $1`,
+      [userId]
+    );
+    for (const row of overrides.rows) {
+      permissions.set(row.permission, row.granted === true);
+    }
+
+    setCachedPermissions(userId, role, clientId, permissions);
     req.permissions = permissions;
     next();
   } catch (err) {

@@ -6,6 +6,7 @@ import {
   requireRole,
 } from '../schemas/rolePermissions.schema.js';
 import * as rolePermissionsRepo from '../repositories/rolePermissions.repository.js';
+import { getPermissionCatalog } from '../utils/permissionCatalog.js';
 
 const ensureSuperAdmin = (user) => {
   if (user?.role !== 'super_admin') {
@@ -30,8 +31,32 @@ export const listRolePermissions = async ({ user, query }) => {
   if (user?.role === 'super_admin') {
     const clientId = parseClientId(query?.client_id);
     const scope = query?.scope || 'all';
-    const result = await rolePermissionsRepo.fetchRolePermissions({ clientId, scope });
-    return result.rows;
+    const role = query?.role ? requireRole(query?.role) : null;
+    const result = await rolePermissionsRepo.fetchRolePermissions({ clientId, scope, role });
+
+    if (!role) {
+      return result.rows;
+    }
+
+    const catalog = await getPermissionCatalog();
+    const byPermission = new Map();
+    for (const row of result.rows) {
+      if (!byPermission.has(row.permission)) {
+        byPermission.set(row.permission, row);
+      }
+    }
+
+    return catalog.map((permission) => {
+      const existing = byPermission.get(permission);
+      if (existing) return existing;
+      return {
+        id: null,
+        client_id: clientId ?? null,
+        role,
+        permission,
+        granted: false,
+      };
+    });
   }
 
   ensureClientAdmin(user);
@@ -40,7 +65,8 @@ export const listRolePermissions = async ({ user, query }) => {
     throw new AppError('Access denied', 403);
   }
   const scope = query?.scope === 'all' ? 'all' : 'client';
-  const result = await rolePermissionsRepo.fetchRolePermissions({ clientId, scope });
+  const role = query?.role ? requireRole(query?.role) : null;
+  const result = await rolePermissionsRepo.fetchRolePermissions({ clientId, scope, role });
   return result.rows;
 };
 

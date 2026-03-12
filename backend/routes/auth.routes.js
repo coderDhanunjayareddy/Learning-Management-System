@@ -1,7 +1,7 @@
 // backend/routes/auth.routes.js
 import { Router } from 'express';
 import { login, refreshToken, logout } from '../controllers/auth.controller.js';
-import { authenticateToken } from '../middleware/auth.js';
+import { authenticateToken, attachClientContext, loadPermissions } from '../middleware/auth.js';
 
 const router = Router();
 
@@ -11,11 +11,23 @@ router.post('/logout', logout);
 
 
 // ✅ Add user refresh route (for frontend reloads)
-router.get('/me', authenticateToken, async (req, res) => {
+router.get('/me', authenticateToken, attachClientContext, loadPermissions, async (req, res) => {
     try {
         // req.user comes from authenticateToken middleware
         const { id, email, full_name, role, is_active, client_id, user_id } = req.user;
-        res.json({ user: { id, email, full_name, role, is_active, client_id, user_id } });
+        const permissions = req.permissions;
+        const granted = [];
+        if (permissions instanceof Map) {
+            permissions.forEach((value, key) => {
+                if (value === true) granted.push(key);
+            });
+        } else if (permissions instanceof Set) {
+            granted.push(...permissions);
+        } else if (Array.isArray(permissions)) {
+            granted.push(...permissions);
+        }
+
+        res.json({ user: { id, email, full_name, role, is_active, client_id, user_id }, permissions: granted });
         //console.log('Refreshed user data for:', { user: { id, email, full_name, role, is_active, client_id, user_id } });
     } catch (error) {
         console.error('Error in /me:', error);

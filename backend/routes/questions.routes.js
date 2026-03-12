@@ -14,7 +14,7 @@ import {
   createQuestionFolder,
   updateQuestionFolder,
 } from '../controllers/questions.controller.js';
-import { authenticateToken, requireRole } from '../middleware/auth.js';
+import { authenticateToken, requireRole, attachClientContext, loadPermissions, checkPermission } from '../middleware/auth.js';
 import multer from 'multer';
 
 const router = Router();
@@ -22,22 +22,24 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 
 
 router.use(
   authenticateToken,
-  requireRole(['super_admin', 'content_authorizer', 'client_admin', 'school_owner', 'teacher'])
+  requireRole(['super_admin', 'content_authorizer', 'client_admin', 'school_owner', 'teacher']),
+  attachClientContext,
+  loadPermissions
 );
 
-router.get('/questions', listQuestions);
-router.get('/questions/bulk-upload/template', bulkUploadTemplate);
-router.post('/questions/bulk-upload', upload.single('file'), bulkUploadQuestions);
-router.get('/questions/:id', getQuestionById);
-router.post('/questions', createQuestion);
-router.put('/questions/:id', updateQuestion);
-router.delete('/questions/:id', softDeleteQuestion);
-router.post('/questions/:id/approve', approveQuestion);
-router.post('/questions/:id/reject', rejectQuestion);
+router.get('/questions', checkPermission('questions.read'), listQuestions);
+router.get('/questions/bulk-upload/template', checkPermission('questions.read'), bulkUploadTemplate);
+router.post('/questions/bulk-upload', checkPermission('questions.create'), upload.single('file'), bulkUploadQuestions);
+router.get('/questions/:id', checkPermission('questions.read'), getQuestionById);
+router.post('/questions', checkPermission('questions.create'), createQuestion);
+router.put('/questions/:id', checkPermission('questions.create'), updateQuestion);
+router.delete('/questions/:id', checkPermission('questions.delete'), softDeleteQuestion);
+router.post('/questions/:id/approve', checkPermission('questions.approve'), approveQuestion);
+router.post('/questions/:id/reject', checkPermission('questions.reject'), rejectQuestion);
 
-router.get('/question-folders', listQuestionFolders);
-router.get('/question-folders/:id', getQuestionFolderById);
-router.post('/question-folders', createQuestionFolder);
-router.patch('/question-folders/:id', updateQuestionFolder);
+router.get('/question-folders', checkPermission('questions.read'), listQuestionFolders);
+router.get('/question-folders/:id', checkPermission('questions.read'), getQuestionFolderById);
+router.post('/question-folders', checkPermission('questions.create'), createQuestionFolder);
+router.patch('/question-folders/:id', checkPermission('questions.create'), updateQuestionFolder);
 
 export default router;
