@@ -1,7 +1,8 @@
 ﻿// src/pages/teacher/Dashboard.tsx
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/features/auth/hooks/useAuth';
+import api from '@/lib/api';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import SidebarNav from '@/components/layout/SidebarNav';
 import { getDashboardTheme } from '@/components/layout/dashboardTheme';
@@ -10,32 +11,10 @@ import { BiBookOpen } from 'react-icons/bi';
 import { PiUsersBold, PiChatsCircleBold } from 'react-icons/pi';
 import AdminCourseManager from '@/features/courses/components/list/AdminCourseManager';
 
-const placeholderCourses = [
-  {
-    id: 101,
-    title: 'Foundations of Algebra',
-    description: 'Unit planning, assessments, and weekly practice sets.',
-    published: true,
-    student_count: 28,
-  },
-  {
-    id: 102,
-    title: 'Modern World History',
-    description: 'Curate reading packs and recorded discussions.',
-    published: false,
-    student_count: 18,
-  },
-  {
-    id: 103,
-    title: 'Digital Literacy',
-    description: 'Short modules on productivity and research skills.',
-    published: true,
-    student_count: 42,
-  },
-];
-
 export default function TeacherDashboard() {
-  const [courses] = useState(placeholderCourses);
+  const [courses, setCourses] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const { logout, user } = useAuth();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -83,6 +62,24 @@ export default function TeacherDashboard() {
     await logout();
     navigate('/login', { replace: true });
   };
+
+  useEffect(() => {
+    const loadCourses = async () => {
+      setLoading(true);
+      setLoadError(null);
+      try {
+        const res = await api.get('/courses');
+        setCourses(res.data || []);
+      } catch (error: any) {
+        const message = error?.response?.data?.error || 'Failed to load courses';
+        setLoadError(message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadCourses();
+  }, []);
 
   return (
     <DashboardLayout
@@ -139,13 +136,16 @@ export default function TeacherDashboard() {
           listTitle="My Courses"
           emptyMessage="No teaching assignments yet. Courses will appear here once assigned."
           courses={courses}
+          loading={loading}
           onManageContent={(courseId) =>
             navigate(`/teacher/courses/${courseId}/content`)
           }
         />
-        <p className="mt-6 text-xs text-slate-500">
-          Course data is currently using placeholder entries until the teacher course API is available.
-        </p>
+        {loadError && (
+          <p className="mt-4 text-xs text-rose-600">
+            {loadError}
+          </p>
+        )}
       </div>
     </DashboardLayout>
   );

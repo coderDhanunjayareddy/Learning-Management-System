@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "@/lib/api";
 import QuestionBankLayout from "@/features/question-bank/components/QuestionBankLayout";
@@ -17,17 +17,60 @@ const generateSubjectCode = (name: string) => {
 
 export default function QuestionSubjectCreatePage() {
   const navigate = useNavigate();
+  const [programs, setPrograms] = useState<CurriculumItem[]>([]);
+  const [grades, setGrades] = useState<CurriculumItem[]>([]);
+  const [programId, setProgramId] = useState("");
+  const [gradeId, setGradeId] = useState("");
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    const loadPrograms = async () => {
+      try {
+        const res = await api.get("/programs");
+        const payload = Array.isArray(res.data)
+          ? res.data
+          : Array.isArray(res.data?.data)
+            ? res.data.data
+            : [];
+        setPrograms(payload);
+      } catch {
+        setPrograms([]);
+      }
+    };
+    loadPrograms();
+  }, []);
+
+  useEffect(() => {
+    if (!programId) {
+      setGrades([]);
+      return;
+    }
+    const loadGrades = async () => {
+      try {
+        const res = await api.get(`/programs/${programId}/grades`);
+        const payload = Array.isArray(res.data)
+          ? res.data
+          : Array.isArray(res.data?.data)
+            ? res.data.data
+            : [];
+        setGrades(payload);
+      } catch {
+        setGrades([]);
+      }
+    };
+    loadGrades();
+  }, [programId]);
+
   const handleSave = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!name.trim()) return;
+    if (!name.trim() || !gradeId) return;
     setLoading(true);
     try {
       const res = await api.post("/subjects", {
         name: name.trim(),
         code: generateSubjectCode(name),
+        grade_id: Number(gradeId),
       });
       if (res.data) {
         const created: CurriculumItem = {
@@ -62,6 +105,38 @@ export default function QuestionSubjectCreatePage() {
         onSubmit={handleSave}
         className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
       >
+        <label className="text-xs font-semibold text-slate-500">Program</label>
+        <select
+          value={programId}
+          onChange={(event) => {
+            setProgramId(event.target.value);
+            setGradeId("");
+          }}
+          className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+        >
+          <option value="">Select program</option>
+          {programs.map((program) => (
+            <option key={program.id} value={program.id}>
+              {program.name}
+            </option>
+          ))}
+        </select>
+
+        <label className="mt-4 block text-xs font-semibold text-slate-500">Grade</label>
+        <select
+          value={gradeId}
+          onChange={(event) => setGradeId(event.target.value)}
+          disabled={!programId}
+          className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100"
+        >
+          <option value="">Select grade</option>
+          {grades.map((grade) => (
+            <option key={grade.id} value={grade.id}>
+              {grade.name ?? `Grade ${grade.grade_number ?? ""}`.trim()}
+            </option>
+          ))}
+        </select>
+
         <label className="text-xs font-semibold text-slate-500">Subject Name</label>
         <input
           value={name}

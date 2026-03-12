@@ -32,7 +32,7 @@ export default function QuestionBankPage() {
         ) : null
       }
     >
-      <QuestionBankList filtersPlacement="sidebar" />
+      <QuestionBankList filtersPlacement="content" />
     </QuestionBankLayout>
   );
 }

@@ -20,6 +20,8 @@ interface QuestionFormProps {
   open?: boolean;
   variant?: "modal" | "page";
   initialQuestion?: Question | null;
+  programs: CurriculumItem[];
+  grades: CurriculumItem[];
   subjects: CurriculumItem[];
   chapters: CurriculumItem[];
   topics: CurriculumItem[];
@@ -58,8 +60,18 @@ const makeDefaultMatchSide = () =>
 const normalizeCurriculum = (items: any[]): CurriculumItem[] =>
   items
     .map((item) => ({
-      id: item.id ?? item.subject_id ?? item.chapter_id ?? item.topic_id,
-      name: item.name ?? item.title ?? item.subject_name ?? "Untitled",
+      id: item.id ?? item.program_id ?? item.grade_id ?? item.subject_id ?? item.chapter_id ?? item.topic_id,
+      name:
+        item.name ??
+        (item.grade_number !== undefined && item.grade_number !== null
+          ? `Grade ${item.grade_number}`
+          : null) ??
+        item.title ??
+        item.subject_name ??
+        "Untitled",
+      program_id: item.program_id ?? item.programId ?? null,
+      grade_id: item.grade_id ?? item.gradeId ?? null,
+      grade_number: item.grade_number ?? item.gradeNumber ?? null,
       subject_id: item.subject_id ?? item.subjectId ?? null,
       chapter_id: item.chapter_id ?? item.chapterId ?? null,
     }))
@@ -91,6 +103,8 @@ export default function QuestionForm({
   open = true,
   variant = "page",
   initialQuestion,
+  programs,
+  grades,
   subjects,
   chapters,
   topics,
@@ -113,6 +127,8 @@ export default function QuestionForm({
   const [comprehensionPassage, setComprehensionPassage] = useState<RichTextValue>(emptyRichText());
   const [comprehensionQuestions, setComprehensionQuestions] = useState<ComprehensiveQuestion[]>([]);
   const [solutionText, setSolutionText] = useState<RichTextValue>(emptyRichText());
+  const [programId, setProgramId] = useState("");
+  const [gradeId, setGradeId] = useState("");
   const [subjectId, setSubjectId] = useState("");
   const [chapterId, setChapterId] = useState("");
   const [topicId, setTopicId] = useState("");
@@ -121,9 +137,25 @@ export default function QuestionForm({
   const [marksNegative, setMarksNegative] = useState(1);
   const [tags, setTags] = useState("");
   const [scoringMode, setScoringMode] = useState<ScoringMode>("all_or_nothing");
+  const [dynamicGrades, setDynamicGrades] = useState<CurriculumItem[]>([]);
+  const [dynamicSubjects, setDynamicSubjects] = useState<CurriculumItem[]>([]);
   const [dynamicChapters, setDynamicChapters] = useState<CurriculumItem[]>([]);
   const [dynamicTopics, setDynamicTopics] = useState<CurriculumItem[]>([]);
 
+  const availableGrades = useMemo(
+    () => {
+      const source = programId ? dynamicGrades : grades;
+      return source.filter((grade) => !programId || String(grade.program_id) === programId);
+    },
+    [dynamicGrades, grades, programId]
+  );
+  const availableSubjects = useMemo(
+    () => {
+      const source = gradeId ? dynamicSubjects : subjects;
+      return source.filter((subject) => !gradeId || String(subject.grade_id) === gradeId);
+    },
+    [dynamicSubjects, gradeId, subjects]
+  );
   const availableChapters = useMemo(
     () => {
       const source = subjectId ? dynamicChapters : chapters;
@@ -138,6 +170,71 @@ export default function QuestionForm({
     },
     [chapterId, dynamicTopics, topics]
   );
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadGrades = async () => {
+      if (!programId) {
+        if (isMounted) {
+          setDynamicGrades([]);
+          setDynamicSubjects([]);
+          setDynamicChapters([]);
+          setDynamicTopics([]);
+        }
+        return;
+      }
+      try {
+        const res = await api.get(`/programs/${programId}/grades`);
+        const payload = Array.isArray(res.data)
+          ? res.data
+          : Array.isArray(res.data?.data)
+            ? res.data.data
+            : [];
+        if (!isMounted) return;
+        setDynamicGrades(normalizeCurriculum(payload));
+      } catch {
+        if (!isMounted) return;
+        setDynamicGrades([]);
+      }
+    };
+
+    loadGrades();
+    return () => {
+      isMounted = false;
+    };
+  }, [programId]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadSubjects = async () => {
+      if (!gradeId) {
+        if (isMounted) {
+          setDynamicSubjects([]);
+          setDynamicChapters([]);
+          setDynamicTopics([]);
+        }
+        return;
+      }
+      try {
+        const res = await api.get(`/grades/${gradeId}/subjects`);
+        const payload = Array.isArray(res.data)
+          ? res.data
+          : Array.isArray(res.data?.data)
+            ? res.data.data
+            : [];
+        if (!isMounted) return;
+        setDynamicSubjects(normalizeCurriculum(payload));
+      } catch {
+        if (!isMounted) return;
+        setDynamicSubjects([]);
+      }
+    };
+
+    loadSubjects();
+    return () => {
+      isMounted = false;
+    };
+  }, [gradeId]);
 
   useEffect(() => {
     let isMounted = true;
@@ -279,10 +376,12 @@ export default function QuestionForm({
       }
       if (initialQuestion.question_type === "comprehensive") {
         setComprehensionPassage(normalizeRichText(initialQuestion.comprehension_passage));
-        setComprehensionQuestions(normalizeComprehensionQuestions(initialQuestion.comprehension_questions));
+      setComprehensionQuestions(normalizeComprehensionQuestions(initialQuestion.comprehension_questions));
       }
       setSolutionText(normalizeRichText(initialQuestion.solution));
 
+      setProgramId(initialQuestion.program_id ? String(initialQuestion.program_id) : "");
+      setGradeId(initialQuestion.grade_id ? String(initialQuestion.grade_id) : "");
       setSubjectId(initialQuestion.subject_id ? String(initialQuestion.subject_id) : "");
       setChapterId(initialQuestion.chapter_id ? String(initialQuestion.chapter_id) : "");
       setTopicId(initialQuestion.topic_id ? String(initialQuestion.topic_id) : "");
@@ -310,6 +409,8 @@ export default function QuestionForm({
     setComprehensionPassage(emptyRichText());
     setComprehensionQuestions([]);
     setSolutionText(emptyRichText());
+    setProgramId("");
+    setGradeId("");
     setSubjectId("");
     setChapterId("");
     setTopicId("");
@@ -555,9 +656,11 @@ export default function QuestionForm({
         scoring_mode: scoringMode,
         comprehension_passage: questionType === "comprehensive" ? comprehensionPassage : null,
         comprehension_questions: questionType === "comprehensive" ? comprehensionQuestions : undefined,
-          subject_id: toNullableNumber(subjectId),
-          chapter_id: toNullableNumber(chapterId),
-          topic_id: toNullableNumber(topicId),
+        program_id: toNullableNumber(programId),
+        grade_id: toNullableNumber(gradeId),
+        subject_id: toNullableNumber(subjectId),
+        chapter_id: toNullableNumber(chapterId),
+        topic_id: toNullableNumber(topicId),
         difficulty_level: difficulty,
         marks_positive: Number(marksPositive) || 0,
         marks_negative: Number(marksNegative) || 0,
@@ -1119,7 +1222,49 @@ export default function QuestionForm({
         </div>
       )}
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-5">
+        <div>
+          <label className="text-xs font-semibold text-slate-500">Program</label>
+          <select
+            value={programId}
+            onChange={(event) => {
+              setProgramId(event.target.value);
+              setGradeId("");
+              setSubjectId("");
+              setChapterId("");
+              setTopicId("");
+            }}
+            className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+          >
+            <option value="">Select</option>
+            {programs.map((program) => (
+              <option key={program.id} value={String(program.id)}>
+                {program.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="text-xs font-semibold text-slate-500">Grade</label>
+          <select
+            value={gradeId}
+            onChange={(event) => {
+              setGradeId(event.target.value);
+              setSubjectId("");
+              setChapterId("");
+              setTopicId("");
+            }}
+            disabled={!programId}
+            className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-slate-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100"
+          >
+            <option value="">Select</option>
+            {availableGrades.map((grade) => (
+              <option key={grade.id} value={String(grade.id)}>
+                {grade.name}
+              </option>
+            ))}
+          </select>
+        </div>
         <div>
           <label className="text-xs font-semibold text-slate-500">Subject</label>
           <select
@@ -1129,10 +1274,11 @@ export default function QuestionForm({
               setChapterId("");
               setTopicId("");
             }}
-            className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+            disabled={!gradeId}
+            className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-slate-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100"
           >
             <option value="">Select</option>
-            {subjects.map((subject) => (
+            {availableSubjects.map((subject) => (
               <option key={subject.id} value={String(subject.id)}>
                 {subject.name}
               </option>
@@ -1147,7 +1293,8 @@ export default function QuestionForm({
               setChapterId(event.target.value);
               setTopicId("");
             }}
-            className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+            disabled={!subjectId}
+            className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-slate-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100"
           >
             <option value="">Select</option>
             {availableChapters.map((chapter) => (

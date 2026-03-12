@@ -1,6 +1,17 @@
 import { Router } from 'express';
 import {
+  listPrograms,
+  getProgram,
+  createProgram,
+  updateProgram,
+  deleteProgram,
+  listGrades,
+  getGrade,
+  createGrade,
+  updateGrade,
+  deleteGrade,
   listSubjects,
+  listSubjectsByGrade,
   getSubject,
   createSubject,
   updateSubject,
@@ -27,8 +38,23 @@ router.use(
   loadPermissions
 );
 
+// Programs
+router.get('/programs', checkPermission('questions.read'), listPrograms);
+router.get('/programs/:id', checkPermission('questions.read'), getProgram);
+router.post('/programs', checkPermission('questions.create'), createProgram);
+router.patch('/programs/:id', checkPermission('questions.create'), updateProgram);
+router.delete('/programs/:id', checkPermission('questions.delete'), deleteProgram);
+
+// Grades
+router.get('/programs/:programId/grades', checkPermission('questions.read'), listGrades);
+router.get('/grades/:id', checkPermission('questions.read'), getGrade);
+router.post('/programs/:programId/grades', checkPermission('questions.create'), createGrade);
+router.patch('/grades/:id', checkPermission('questions.create'), updateGrade);
+router.delete('/grades/:id', checkPermission('questions.delete'), deleteGrade);
+
 // Subjects
 router.get('/subjects', checkPermission('questions.read'), listSubjects);
+router.get('/grades/:gradeId/subjects', checkPermission('questions.read'), listSubjectsByGrade);
 router.get('/subjects/:id', checkPermission('questions.read'), getSubject);
 router.post('/subjects', checkPermission('questions.create'), createSubject);
 router.patch('/subjects/:id', checkPermission('questions.create'), updateSubject);

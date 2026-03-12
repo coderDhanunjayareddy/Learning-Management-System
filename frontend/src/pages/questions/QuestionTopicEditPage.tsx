@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import api from "@/lib/api";
 import QuestionBankLayout from "@/features/question-bank/components/QuestionBankLayout";
 import type { CurriculumItem } from "@/types/questionBank";
@@ -10,15 +10,42 @@ type TopicPayload = CurriculumItem & {
   subject_id?: string | number | null;
 };
 
+const buildHierarchyQuery = (
+  programId: string,
+  gradeId: string,
+  subjectId: string,
+  chapterId: string
+) => {
+  const params = new URLSearchParams();
+  if (programId) params.set("program_id", programId);
+  if (gradeId) params.set("grade_id", gradeId);
+  if (subjectId) params.set("subject_id", subjectId);
+  if (chapterId) params.set("chapter_id", chapterId);
+  const query = params.toString();
+  return query ? `?${query}` : "";
+};
+
 export default function QuestionTopicEditPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  const [programId, setProgramId] = useState(searchParams.get("program_id") ?? "");
+  const [gradeId, setGradeId] = useState(searchParams.get("grade_id") ?? "");
+
   const [topic, setTopic] = useState<TopicPayload | null>(null);
   const [name, setName] = useState("");
   const [topicNumber, setTopicNumber] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const subjectId = topic?.subject_id ? String(topic.subject_id) : searchParams.get("subject_id") ?? "";
+  const chapterId = topic?.chapter_id ? String(topic.chapter_id) : searchParams.get("chapter_id") ?? "";
+  const returnQuery = useMemo(
+    () => buildHierarchyQuery(programId, gradeId, subjectId, chapterId),
+    [programId, gradeId, subjectId, chapterId]
+  );
 
   useEffect(() => {
     if (!id) return;
@@ -33,13 +60,13 @@ export default function QuestionTopicEditPage() {
           return;
         }
 
-        let subjectId: number | null = null;
+        let resolvedSubjectId: number | null = null;
         if (topicRes.data.chapter_id) {
           try {
             const chapterRes = await api.get(`/chapters/${topicRes.data.chapter_id}`);
-            subjectId = chapterRes.data?.subject_id ?? null;
+            resolvedSubjectId = chapterRes.data?.subject_id ?? null;
           } catch {
-            subjectId = null;
+            resolvedSubjectId = null;
           }
         }
 
@@ -48,8 +75,32 @@ export default function QuestionTopicEditPage() {
           name: topicRes.data.name ?? "Untitled",
           chapter_id: topicRes.data.chapter_id ?? null,
           topic_number: topicRes.data.topic_number ?? null,
-          subject_id: subjectId,
+          subject_id: resolvedSubjectId,
         };
+
+        if (resolvedSubjectId && (!gradeId || !programId)) {
+          try {
+            const subjectRes = await api.get(`/subjects/${resolvedSubjectId}`);
+            const resolvedGradeId = String(subjectRes.data?.grade_id ?? "");
+            if (resolvedGradeId) {
+              setGradeId((prev) => prev || resolvedGradeId);
+              if (!programId) {
+                try {
+                  const gradeRes = await api.get(`/grades/${resolvedGradeId}`);
+                  const resolvedProgramId = String(gradeRes.data?.program_id ?? "");
+                  if (resolvedProgramId) {
+                    setProgramId((prev) => prev || resolvedProgramId);
+                  }
+                } catch {
+                  // Keep query-derived value if available.
+                }
+              }
+            }
+          } catch {
+            // Keep query-derived values if lookup fails.
+          }
+        }
+
         setTopic(loaded);
         setName(loaded.name);
         setTopicNumber(loaded.topic_number ? String(loaded.topic_number) : "");
@@ -91,10 +142,7 @@ export default function QuestionTopicEditPage() {
         name: res.data?.name ?? trimmedName,
         chapter_id: topic.chapter_id ?? null,
       };
-      const query = topic.chapter_id
-        ? `?subject_id=${topic.subject_id ?? ""}&chapter_id=${topic.chapter_id}`
-        : "";
-      navigate(`/question-bank/topics${query}`, {
+      navigate(`/question-bank/topics${returnQuery}`, {
         state: { updatedTopic: updated },
       });
     } catch (err: any) {
@@ -110,11 +158,7 @@ export default function QuestionTopicEditPage() {
       description="Update topic details."
       actions={
         <button
-          onClick={() =>
-            navigate(
-              `/question-bank/topics${topic?.chapter_id ? `?subject_id=${topic.subject_id ?? ""}&chapter_id=${topic.chapter_id}` : ""}`
-            )
-          }
+          onClick={() => navigate(`/question-bank/topics${returnQuery}`)}
           className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
         >
           Cancel

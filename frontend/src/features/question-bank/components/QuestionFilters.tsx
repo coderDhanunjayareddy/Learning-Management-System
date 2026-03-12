@@ -3,6 +3,8 @@ import type { CurriculumItem, DifficultyLevel, QuestionStatus, QuestionType } fr
 
 export interface QuestionFiltersState {
   search: string;
+  programId: string;
+  gradeId: string;
   subjectId: string;
   chapterId: string;
   topicId: string;
@@ -13,6 +15,8 @@ export interface QuestionFiltersState {
 
 interface QuestionFiltersProps {
   filters: QuestionFiltersState;
+  programs: CurriculumItem[];
+  grades: CurriculumItem[];
   subjects: CurriculumItem[];
   chapters: CurriculumItem[];
   topics: CurriculumItem[];
@@ -22,6 +26,8 @@ interface QuestionFiltersProps {
 
 export default function QuestionFilters({
   filters,
+  programs,
+  grades,
   subjects,
   chapters,
   topics,
@@ -51,7 +57,7 @@ export default function QuestionFilters({
   }, [searchValue, onChange]);
 
   return (
-    <div className={isVertical ? "space-y-2" : "grid gap-4 md:grid-cols-2 xl:grid-cols-6"}>
+    <div className={isVertical ? "space-y-3" : "grid gap-4 md:grid-cols-2 xl:grid-cols-8"}>
       <div className={isVertical ? "" : "md:col-span-2"}>
         <label className="text-xs font-semibold text-slate-500">Search</label>
         <input
@@ -61,6 +67,54 @@ export default function QuestionFilters({
           placeholder="Search by text, tag, or author"
           className="mt-0.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm focus:border-slate-400 focus:outline-none"
         />
+      </div>
+      <div>
+        <label className="text-xs font-semibold text-slate-500">Program</label>
+        <select
+          value={filters.programId}
+          onChange={(event) =>
+            onChange({
+              ...filters,
+              programId: event.target.value,
+              gradeId: "",
+              subjectId: "",
+              chapterId: "",
+              topicId: "",
+            })
+          }
+          className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+        >
+          <option value="">All</option>
+          {programs.map((program) => (
+            <option key={program.id} value={String(program.id)}>
+              {program.name}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div>
+        <label className="text-xs font-semibold text-slate-500">Grade</label>
+        <select
+          value={filters.gradeId}
+          onChange={(event) =>
+            onChange({
+              ...filters,
+              gradeId: event.target.value,
+              subjectId: "",
+              chapterId: "",
+              topicId: "",
+            })
+          }
+          disabled={!filters.programId}
+          className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-slate-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100"
+        >
+          <option value="">All</option>
+          {grades.map((grade) => (
+            <option key={grade.id} value={String(grade.id)}>
+              {grade.name}
+            </option>
+          ))}
+        </select>
       </div>
       <div>
         <label className="text-xs font-semibold text-slate-500">Subject</label>
@@ -74,7 +128,8 @@ export default function QuestionFilters({
               topicId: "",
             })
           }
-          className="mt-0.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm focus:border-slate-400 focus:outline-none"
+          disabled={!filters.gradeId}
+          className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
         >
           <option value="">All</option>
           {subjects.map((subject) => (

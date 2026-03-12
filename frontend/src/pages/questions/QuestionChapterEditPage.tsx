@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import api from "@/lib/api";
 import QuestionBankLayout from "@/features/question-bank/components/QuestionBankLayout";
 import type { CurriculumItem } from "@/types/questionBank";
@@ -9,9 +9,23 @@ type ChapterPayload = CurriculumItem & {
   description?: string | null;
 };
 
+const buildHierarchyQuery = (programId: string, gradeId: string, subjectId: string) => {
+  const params = new URLSearchParams();
+  if (programId) params.set("program_id", programId);
+  if (gradeId) params.set("grade_id", gradeId);
+  if (subjectId) params.set("subject_id", subjectId);
+  const query = params.toString();
+  return query ? `?${query}` : "";
+};
+
 export default function QuestionChapterEditPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  const [programId, setProgramId] = useState(searchParams.get("program_id") ?? "");
+  const [gradeId, setGradeId] = useState(searchParams.get("grade_id") ?? "");
+
   const [chapter, setChapter] = useState<ChapterPayload | null>(null);
   const [name, setName] = useState("");
   const [chapterNumber, setChapterNumber] = useState("");
@@ -20,8 +34,15 @@ export default function QuestionChapterEditPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const subjectId = chapter?.subject_id ? String(chapter.subject_id) : searchParams.get("subject_id") ?? "";
+  const returnQuery = useMemo(
+    () => buildHierarchyQuery(programId, gradeId, subjectId),
+    [programId, gradeId, subjectId]
+  );
+
   useEffect(() => {
     if (!id) return;
+
     const loadChapter = async () => {
       setLoading(true);
       setError(null);
@@ -31,6 +52,7 @@ export default function QuestionChapterEditPage() {
           setChapter(null);
           return;
         }
+
         const loaded: ChapterPayload = {
           id: res.data.id ?? id,
           name: res.data.name ?? "Untitled",
@@ -38,6 +60,31 @@ export default function QuestionChapterEditPage() {
           chapter_number: res.data.chapter_number ?? null,
           description: res.data.description ?? null,
         };
+
+        const resolvedSubjectId = loaded.subject_id ? String(loaded.subject_id) : "";
+        if (resolvedSubjectId && (!gradeId || !programId)) {
+          try {
+            const subjectRes = await api.get(`/subjects/${resolvedSubjectId}`);
+            const resolvedGradeId = String(subjectRes.data?.grade_id ?? "");
+            if (resolvedGradeId) {
+              setGradeId((prev) => prev || resolvedGradeId);
+              if (!programId) {
+                try {
+                  const gradeRes = await api.get(`/grades/${resolvedGradeId}`);
+                  const resolvedProgramId = String(gradeRes.data?.program_id ?? "");
+                  if (resolvedProgramId) {
+                    setProgramId((prev) => prev || resolvedProgramId);
+                  }
+                } catch {
+                  // Keep query-derived value if available.
+                }
+              }
+            }
+          } catch {
+            // Keep query-derived values if lookup fails.
+          }
+        }
+
         setChapter(loaded);
         setName(loaded.name);
         setChapterNumber(loaded.chapter_number ? String(loaded.chapter_number) : "");
@@ -55,6 +102,7 @@ export default function QuestionChapterEditPage() {
   const handleSave = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!chapter) return;
+
     const trimmedName = name.trim();
     const parsedChapterNumber = Number(chapterNumber);
     if (!trimmedName) {
@@ -80,8 +128,7 @@ export default function QuestionChapterEditPage() {
         name: res.data?.name ?? trimmedName,
         subject_id: chapter.subject_id ?? null,
       };
-      const query = chapter.subject_id ? `?subject_id=${chapter.subject_id}` : "";
-      navigate(`/question-bank/chapters${query}`, {
+      navigate(`/question-bank/chapters${returnQuery}`, {
         state: { updatedChapter: updated },
       });
     } catch (err: any) {
@@ -97,11 +144,7 @@ export default function QuestionChapterEditPage() {
       description="Update chapter details."
       actions={
         <button
-          onClick={() =>
-            navigate(
-              `/question-bank/chapters${chapter?.subject_id ? `?subject_id=${chapter.subject_id}` : ""}`
-            )
-          }
+          onClick={() => navigate(`/question-bank/chapters${returnQuery}`)}
           className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
         >
           Cancel

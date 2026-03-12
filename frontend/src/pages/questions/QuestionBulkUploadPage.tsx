@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import api from "@/lib/api";
 import QuestionBankLayout from "@/features/question-bank/components/QuestionBankLayout";
-import type { CurriculumItem } from "@/types/questionBank";
 import type { QuestionFolder } from "@/types/questionFolder";
 
 const normalizeFolder = (item: Record<string, unknown>): QuestionFolder => ({
@@ -18,76 +17,8 @@ export default function QuestionBulkUploadPage() {
   const [bulkFile, setBulkFile] = useState<File | null>(null);
   const [selectedFolder, setSelectedFolder] = useState("");
   const [folderOptions, setFolderOptions] = useState<QuestionFolder[]>([]);
-  const [subjects, setSubjects] = useState<CurriculumItem[]>([]);
-  const [chapters, setChapters] = useState<CurriculumItem[]>([]);
-  const [topics, setTopics] = useState<CurriculumItem[]>([]);
-  const [subjectId, setSubjectId] = useState("");
-  const [chapterId, setChapterId] = useState("");
-  const [topicId, setTopicId] = useState("");
   const [uploadErrors, setUploadErrors] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
-
-  useEffect(() => {
-    const loadSubjects = async () => {
-      try {
-        const res = await api.get("/subjects");
-        const payload = Array.isArray(res.data)
-          ? res.data
-          : Array.isArray(res.data?.data)
-            ? res.data.data
-            : [];
-        if (payload.length) {
-          setSubjects(payload);
-        }
-      } catch {
-        setSubjects([]);
-      }
-    };
-    loadSubjects();
-  }, []);
-
-  useEffect(() => {
-    if (!subjectId) {
-      setChapters([]);
-      setTopics([]);
-      return;
-    }
-    const loadChapters = async () => {
-      try {
-        const res = await api.get(`/subjects/${subjectId}/chapters`);
-        const payload = Array.isArray(res.data)
-          ? res.data
-          : Array.isArray(res.data?.data)
-            ? res.data.data
-            : [];
-        setChapters(payload);
-      } catch {
-        setChapters([]);
-      }
-    };
-    loadChapters();
-  }, [subjectId]);
-
-  useEffect(() => {
-    if (!chapterId) {
-      setTopics([]);
-      return;
-    }
-    const loadTopics = async () => {
-      try {
-        const res = await api.get(`/chapters/${chapterId}/topics`);
-        const payload = Array.isArray(res.data)
-          ? res.data
-          : Array.isArray(res.data?.data)
-            ? res.data.data
-            : [];
-        setTopics(payload);
-      } catch {
-        setTopics([]);
-      }
-    };
-    loadTopics();
-  }, [chapterId]);
 
   const folderFromQuery = useMemo(() => {
     const params = new URLSearchParams(location.search);
@@ -118,10 +49,7 @@ export default function QuestionBulkUploadPage() {
       alert("Please select a file to upload.");
       return;
     }
-    if (!subjectId || !chapterId) {
-      alert("Please select a subject and chapter for bulk upload.");
-      return;
-    }
+
     setUploadErrors([]);
     setUploading(true);
     try {
@@ -129,13 +57,12 @@ export default function QuestionBulkUploadPage() {
       if (extension === "docx") {
         const formData = new FormData();
         formData.append("file", bulkFile);
-        formData.append("default_subject_id", subjectId);
-        formData.append("default_chapter_id", chapterId);
-        if (topicId) formData.append("default_topic_id", topicId);
         if (activeFolder) formData.append("folder_id", activeFolder);
+
         const res = await api.post("/questions/bulk-upload", formData, {
           headers: { "Content-Type": "multipart/form-data" },
         });
+
         if (res.data?.errors?.length) {
           setUploadErrors(res.data.errors.map((err: { message?: string }) => err.message ?? String(err)));
         } else {
@@ -176,7 +103,7 @@ export default function QuestionBulkUploadPage() {
   return (
     <QuestionBankLayout
       title="Bulk Upload"
-      description="Upload CSV or Excel files to add questions in bulk."
+      description="Upload DOCX template files to add questions in bulk."
       actions={
         <button
           onClick={() => navigate("/question-bank")}
@@ -231,12 +158,12 @@ export default function QuestionBulkUploadPage() {
                 <li>Correct Answer: use option letters (A/B/...) for MCQ, true/false for True/False, number for Numerical.</li>
                 <li>Match Pairs: format like L1=R1;L2=R2 (matches by order).</li>
                 <li>Blanks: format like blank1=ans1|ans2;blank2=ans3.</li>
-                <li>Comprehensive Passage: rich text passage for comprehensive questions.</li>
-                <li>Comprehensive Subquestions: use the mini format Q1|type=...|text=...|options=A;B;C;D|answer=A|marks=2</li>
+                <li>Comprehensive Passage: for comprehensive questions, keep passage text in this column.</li>
+                <li>Category: optional category/tag value (example: algebra, grammar, reading).</li>
+                <li>Program, Grade, Subject, Chapter, Topic can be provided as IDs or names inside the file.</li>
               </ul>
-              <p className="mt-3 text-xs text-slate-500">
-                If a column is not applicable, leave it empty.
-              </p>
+              <p className="mt-3 text-xs text-slate-500">If a column is not applicable, leave it empty.</p>
+
               <div className="mt-4">
                 <div className="text-xs font-semibold text-slate-500">DOCX Template (Dummy Sample)</div>
                 <div className="mt-2 overflow-x-auto rounded-lg border border-slate-200">
@@ -254,11 +181,13 @@ export default function QuestionBulkUploadPage() {
                         <th className="border border-slate-200 px-2 py-1">Marks+</th>
                         <th className="border border-slate-200 px-2 py-1">Marks-</th>
                         <th className="border border-slate-200 px-2 py-1">Tags</th>
+                        <th className="border border-slate-200 px-2 py-1">Program</th>
+                        <th className="border border-slate-200 px-2 py-1">Grade</th>
                         <th className="border border-slate-200 px-2 py-1">Subject</th>
                         <th className="border border-slate-200 px-2 py-1">Chapter</th>
                         <th className="border border-slate-200 px-2 py-1">Topic</th>
                         <th className="border border-slate-200 px-2 py-1">Comprehensive Passage</th>
-                        <th className="border border-slate-200 px-2 py-1">Comprehensive Subquestions</th>
+                        <th className="border border-slate-200 px-2 py-1">Category</th>
                       </tr>
                     </thead>
                     <tbody className="text-slate-700">
@@ -274,35 +203,37 @@ export default function QuestionBulkUploadPage() {
                         <td className="border border-slate-200 px-2 py-1">4</td>
                         <td className="border border-slate-200 px-2 py-1">1</td>
                         <td className="border border-slate-200 px-2 py-1">math,arithmetic</td>
+                        <td className="border border-slate-200 px-2 py-1">Catalyst</td>
+                        <td className="border border-slate-200 px-2 py-1">6</td>
                         <td className="border border-slate-200 px-2 py-1">Math</td>
                         <td className="border border-slate-200 px-2 py-1">Basics</td>
                         <td className="border border-slate-200 px-2 py-1">Addition</td>
                         <td className="border border-slate-200 px-2 py-1">-</td>
-                        <td className="border border-slate-200 px-2 py-1">-</td>
+                        <td className="border border-slate-200 px-2 py-1">direct question</td>
                       </tr>
                       <tr>
                         <td className="border border-slate-200 px-2 py-1">fill_in_blank</td>
-                        <td className="border border-slate-200 px-2 py-1">
-                          {"Water freezes at {{blank1}}°C."}
-                        </td>
+                        <td className="border border-slate-200 px-2 py-1">{"Water freezes at {{blank1}}�C."}</td>
                         <td className="border border-slate-200 px-2 py-1">-</td>
                         <td className="border border-slate-200 px-2 py-1">-</td>
                         <td className="border border-slate-200 px-2 py-1">-</td>
                         <td className="border border-slate-200 px-2 py-1">{"blank1=0|zero"}</td>
-                        <td className="border border-slate-200 px-2 py-1">At standard pressure, water freezes at 0°C.</td>
+                        <td className="border border-slate-200 px-2 py-1">At standard pressure, water freezes at 0�C.</td>
                         <td className="border border-slate-200 px-2 py-1">easy</td>
                         <td className="border border-slate-200 px-2 py-1">2</td>
                         <td className="border border-slate-200 px-2 py-1">0</td>
                         <td className="border border-slate-200 px-2 py-1">science</td>
+                        <td className="border border-slate-200 px-2 py-1">Spark</td>
+                        <td className="border border-slate-200 px-2 py-1">7</td>
                         <td className="border border-slate-200 px-2 py-1">Science</td>
                         <td className="border border-slate-200 px-2 py-1">Physics</td>
                         <td className="border border-slate-200 px-2 py-1">States</td>
                         <td className="border border-slate-200 px-2 py-1">-</td>
-                        <td className="border border-slate-200 px-2 py-1">-</td>
+                        <td className="border border-slate-200 px-2 py-1">similar question</td>
                       </tr>
                       <tr>
                         <td className="border border-slate-200 px-2 py-1">comprehensive</td>
-                        <td className="border border-slate-200 px-2 py-1">Read the passage and answer.</td>
+                        <td className="border border-slate-200 px-2 py-1">What is the main idea of the passage?</td>
                         <td className="border border-slate-200 px-2 py-1">-</td>
                         <td className="border border-slate-200 px-2 py-1">-</td>
                         <td className="border border-slate-200 px-2 py-1">-</td>
@@ -312,13 +243,13 @@ export default function QuestionBulkUploadPage() {
                         <td className="border border-slate-200 px-2 py-1">5</td>
                         <td className="border border-slate-200 px-2 py-1">1</td>
                         <td className="border border-slate-200 px-2 py-1">reading</td>
+                        <td className="border border-slate-200 px-2 py-1">Maestro</td>
+                        <td className="border border-slate-200 px-2 py-1">8</td>
                         <td className="border border-slate-200 px-2 py-1">English</td>
                         <td className="border border-slate-200 px-2 py-1">Comprehension</td>
                         <td className="border border-slate-200 px-2 py-1">Passages</td>
                         <td className="border border-slate-200 px-2 py-1">[Passage text here]</td>
-                        <td className="border border-slate-200 px-2 py-1">
-                          Q1|type=mcq_single|text=Main idea?|options=A;B;C;D|answer=A|marks=2
-                        </td>
+                        <td className="border border-slate-200 px-2 py-1">direct question</td>
                       </tr>
                     </tbody>
                   </table>
@@ -345,58 +276,7 @@ export default function QuestionBulkUploadPage() {
                 </option>
               ))}
             </select>
-            <p className="mt-2 text-xs text-slate-500">
-              Files will be linked to the selected folder.
-            </p>
-
-            <label className="mt-4 block text-xs font-semibold text-slate-500">Subject</label>
-            <select
-              value={subjectId}
-              onChange={(event) => {
-                setSubjectId(event.target.value);
-                setChapterId("");
-                setTopicId("");
-              }}
-              className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
-            >
-              <option value="">Select subject</option>
-              {subjects.map((subject) => (
-                <option key={subject.id} value={subject.id}>
-                  {subject.name}
-                </option>
-              ))}
-            </select>
-
-            <label className="mt-4 block text-xs font-semibold text-slate-500">Chapter</label>
-            <select
-              value={chapterId}
-              onChange={(event) => {
-                setChapterId(event.target.value);
-                setTopicId("");
-              }}
-              className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
-            >
-              <option value="">Select chapter</option>
-              {chapters.map((chapter) => (
-                <option key={chapter.id} value={chapter.id}>
-                  {chapter.name}
-                </option>
-              ))}
-            </select>
-
-            <label className="mt-4 block text-xs font-semibold text-slate-500">Topic (Optional)</label>
-            <select
-              value={topicId}
-              onChange={(event) => setTopicId(event.target.value)}
-              className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
-            >
-              <option value="">Select topic</option>
-              {topics.map((topic) => (
-                <option key={topic.id} value={topic.id}>
-                  {topic.name}
-                </option>
-              ))}
-            </select>
+            <p className="mt-2 text-xs text-slate-500">Files will be linked to the selected folder.</p>
 
             <button
               onClick={handleUpload}

@@ -2,12 +2,111 @@
 import * as curriculumService from '../services/curriculum.service.js';
 import { handleServiceError } from '../utils/errors.js';
 
+export const listPrograms = async (req, res) => {
+  try {
+    const data = await curriculumService.listPrograms({ user: req.user, query: req.query });
+    res.json(data);
+  } catch (err) {
+    handleServiceError(res, err, 'Failed to list programs');
+  }
+};
+
+export const getProgram = async (req, res) => {
+  try {
+    const data = await curriculumService.getProgram({ user: req.user, params: req.params });
+    res.json(data);
+  } catch (err) {
+    handleServiceError(res, err, 'Failed to load program');
+  }
+};
+
+export const createProgram = async (req, res) => {
+  try {
+    const data = await curriculumService.createProgram({ user: req.user, body: req.body });
+    res.status(201).json(data);
+  } catch (err) {
+    handleServiceError(res, err, 'Failed to create program');
+  }
+};
+
+export const updateProgram = async (req, res) => {
+  try {
+    const data = await curriculumService.updateProgram({ user: req.user, params: req.params, body: req.body });
+    res.json(data);
+  } catch (err) {
+    handleServiceError(res, err, 'Failed to update program');
+  }
+};
+
+export const deleteProgram = async (req, res) => {
+  try {
+    const data = await curriculumService.deleteProgram({ user: req.user, params: req.params });
+    res.json(data);
+  } catch (err) {
+    handleServiceError(res, err, 'Failed to delete program');
+  }
+};
+
+export const listGrades = async (req, res) => {
+  try {
+    const data = await curriculumService.listGrades({ user: req.user, params: req.params });
+    res.json(data);
+  } catch (err) {
+    handleServiceError(res, err, 'Failed to list grades');
+  }
+};
+
+export const getGrade = async (req, res) => {
+  try {
+    const data = await curriculumService.getGrade({ user: req.user, params: req.params });
+    res.json(data);
+  } catch (err) {
+    handleServiceError(res, err, 'Failed to load grade');
+  }
+};
+
+export const createGrade = async (req, res) => {
+  try {
+    const data = await curriculumService.createGrade({ user: req.user, params: req.params, body: req.body });
+    res.status(201).json(data);
+  } catch (err) {
+    handleServiceError(res, err, 'Failed to create grade');
+  }
+};
+
+export const updateGrade = async (req, res) => {
+  try {
+    const data = await curriculumService.updateGrade({ user: req.user, params: req.params, body: req.body });
+    res.json(data);
+  } catch (err) {
+    handleServiceError(res, err, 'Failed to update grade');
+  }
+};
+
+export const deleteGrade = async (req, res) => {
+  try {
+    const data = await curriculumService.deleteGrade({ user: req.user, params: req.params });
+    res.json(data);
+  } catch (err) {
+    handleServiceError(res, err, 'Failed to delete grade');
+  }
+};
+
 export const listSubjects = async (req, res) => {
   try {
     const data = await curriculumService.listSubjects({ user: req.user, query: req.query });
     res.json(data);
   } catch (err) {
     handleServiceError(res, err, 'Failed to list subjects');
+  }
+};
+
+export const listSubjectsByGrade = async (req, res) => {
+  try {
+    const data = await curriculumService.listSubjectsByGrade({ user: req.user, params: req.params });
+    res.json(data);
+  } catch (err) {
+    handleServiceError(res, err, 'Failed to list subjects by grade');
   }
 };
 

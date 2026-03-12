@@ -30,26 +30,92 @@
     "users.update"
   ],
   "platform_permissions": [
-    { "role": "content_authorizer", "permission": "questions.read", "granted": true },
-    { "role": "content_authorizer", "permission": "questions.create", "granted": true },
-    { "role": "content_authorizer", "permission": "questions.approve", "granted": true },
-    { "role": "content_authorizer", "permission": "questions.reject", "granted": true },
-    { "role": "content_authorizer", "permission": "questions.delete", "granted": true }
+    {
+      "role": "content_authorizer",
+      "permission": "questions.read",
+      "granted": true
+    },
+    {
+      "role": "content_authorizer",
+      "permission": "questions.create",
+      "granted": true
+    },
+    {
+      "role": "content_authorizer",
+      "permission": "questions.approve",
+      "granted": true
+    },
+    {
+      "role": "content_authorizer",
+      "permission": "questions.reject",
+      "granted": true
+    },
+    {
+      "role": "content_authorizer",
+      "permission": "questions.delete",
+      "granted": true
+    }
   ],
   "tenant_permissions": [
-    { "role": "client_admin", "permission": "questions.read", "granted": true },
-    { "role": "client_admin", "permission": "questions.create", "granted": true },
-    { "role": "client_admin", "permission": "questions.approve", "granted": true },
-    { "role": "client_admin", "permission": "questions.reject", "granted": true },
-    { "role": "client_admin", "permission": "questions.delete", "granted": true },
-
-    { "role": "school_owner", "permission": "questions.read", "granted": true },
-    { "role": "school_owner", "permission": "questions.create", "granted": true },
-    { "role": "school_owner", "permission": "questions.approve", "granted": true },
-    { "role": "school_owner", "permission": "questions.reject", "granted": true },
-    { "role": "school_owner", "permission": "questions.delete", "granted": true },
-
-    { "role": "teacher", "permission": "questions.read", "granted": true },
-    { "role": "teacher", "permission": "questions.create", "granted": true }
+    {
+      "role": "client_admin",
+      "permission": "questions.read",
+      "granted": true
+    },
+    {
+      "role": "client_admin",
+      "permission": "questions.create",
+      "granted": true
+    },
+    {
+      "role": "client_admin",
+      "permission": "questions.approve",
+      "granted": true
+    },
+    {
+      "role": "client_admin",
+      "permission": "questions.reject",
+      "granted": true
+    },
+    {
+      "role": "client_admin",
+      "permission": "questions.delete",
+      "granted": true
+    },
+    {
+      "role": "school_owner",
+      "permission": "questions.read",
+      "granted": true
+    },
+    {
+      "role": "school_owner",
+      "permission": "questions.create",
+      "granted": true
+    },
+    {
+      "role": "school_owner",
+      "permission": "questions.approve",
+      "granted": true
+    },
+    {
+      "role": "school_owner",
+      "permission": "questions.reject",
+      "granted": true
+    },
+    {
+      "role": "school_owner",
+      "permission": "questions.delete",
+      "granted": true
+    },
+    {
+      "role": "teacher",
+      "permission": "questions.read",
+      "granted": true
+    },
+    {
+      "role": "teacher",
+      "permission": "questions.create",
+      "granted": true
+    }
   ]
 }

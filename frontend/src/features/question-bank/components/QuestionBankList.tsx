@@ -11,8 +11,19 @@ import { getQuestionPermissions } from "@/features/question-bank/utils/questionP
 const normalizeCurriculum = (items: any[]): CurriculumItem[] =>
   items
     .map((item) => ({
-      id: item.id ?? item.subject_id ?? item.chapter_id ?? item.topic_id,
-      name: item.name ?? item.title ?? item.subject_name ?? "Untitled",
+      id: item.id ?? item.program_id ?? item.grade_id ?? item.subject_id ?? item.chapter_id ?? item.topic_id,
+      name:
+        item.name ??
+        (item.grade_number !== undefined && item.grade_number !== null
+          ? `Grade ${item.grade_number}`
+          : null) ??
+        item.title ??
+        item.subject_name ??
+        "Untitled",
+      code: item.code ?? null,
+      program_id: item.program_id ?? item.programId ?? null,
+      grade_id: item.grade_id ?? item.gradeId ?? null,
+      grade_number: item.grade_number ?? item.gradeNumber ?? null,
       subject_id: item.subject_id ?? item.subjectId ?? null,
       chapter_id: item.chapter_id ?? item.chapterId ?? null,
     }))
@@ -69,6 +80,8 @@ const normalizeQuestions = (items: any[]): Question[] =>
     scoring_mode: item.scoring_mode ?? "all_or_nothing",
     comprehension_passage: resolveQuestionText(item.comprehension_passage),
     comprehension_questions: item.comprehension_questions ?? [],
+    program_id: item.program_id ?? null,
+    grade_id: item.grade_id ?? null,
     subject_id: item.subject_id ?? null,
     chapter_id: item.chapter_id ?? null,
     topic_id: item.topic_id ?? null,
@@ -105,12 +118,16 @@ export default function QuestionBankList({ filtersPlacement = "sidebar" }: { fil
   const [questions, setQuestions] = useState<Question[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const [programs, setPrograms] = useState<CurriculumItem[]>([]);
+  const [grades, setGrades] = useState<CurriculumItem[]>([]);
   const [subjects, setSubjects] = useState<CurriculumItem[]>([]);
   const [chapters, setChapters] = useState<CurriculumItem[]>([]);
   const [topics, setTopics] = useState<CurriculumItem[]>([]);
 
   const [filters, setFilters] = useState<QuestionFiltersState>({
     search: "",
+    programId: "",
+    gradeId: "",
     subjectId: "",
     chapterId: "",
     topicId: "",
@@ -133,27 +150,27 @@ export default function QuestionBankList({ filtersPlacement = "sidebar" }: { fil
 
   useEffect(() => {
     if (!authHeaders) {
-      setSubjects([]);
+      setPrograms([]);
       return;
     }
 
-    const loadSubjects = async () => {
+    const loadPrograms = async () => {
       try {
-        const res = await api.get("/subjects", { headers: authHeaders });
+        const res = await api.get("/programs", { headers: authHeaders });
         const payload = Array.isArray(res.data)
           ? res.data
           : Array.isArray(res.data?.data)
             ? res.data.data
             : [];
         if (payload.length) {
-          setSubjects(normalizeCurriculum(payload));
+          setPrograms(normalizeCurriculum(payload));
         }
       } catch {
-        setSubjects([]);
+        setPrograms([]);
       }
     };
 
-    loadSubjects();
+    loadPrograms();
   }, [authHeaders]);
 
   useEffect(() => {
@@ -174,6 +191,8 @@ export default function QuestionBankList({ filtersPlacement = "sidebar" }: { fil
           page_size: pageSize,
         };
         if (filters.search.trim()) params.q = filters.search.trim();
+        if (filters.programId) params.program_id = filters.programId;
+        if (filters.gradeId) params.grade_id = filters.gradeId;
         if (filters.subjectId) params.subject_id = filters.subjectId;
         if (filters.chapterId) params.chapter_id = filters.chapterId;
         if (filters.topicId) params.topic_id = filters.topicId;
@@ -203,6 +222,94 @@ export default function QuestionBankList({ filtersPlacement = "sidebar" }: { fil
       isMounted = false;
     };
   }, [filters, currentPage, pageSize, authHeaders]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadGrades = async () => {
+      if (!authHeaders) {
+        if (isMounted) {
+          setGrades([]);
+          setSubjects([]);
+          setChapters([]);
+          setTopics([]);
+        }
+        return;
+      }
+
+      if (!filters.programId) {
+        if (isMounted) {
+          setGrades([]);
+          setSubjects([]);
+          setChapters([]);
+          setTopics([]);
+        }
+        return;
+      }
+      try {
+        const res = await api.get(`/programs/${filters.programId}/grades`, {
+          headers: authHeaders,
+        });
+        const payload = Array.isArray(res.data)
+          ? res.data
+          : Array.isArray(res.data?.data)
+            ? res.data.data
+            : [];
+        if (!isMounted) return;
+        setGrades(normalizeCurriculum(payload));
+      } catch {
+        if (!isMounted) return;
+        setGrades([]);
+      }
+    };
+
+    loadGrades();
+    return () => {
+      isMounted = false;
+    };
+  }, [filters.programId, authHeaders]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadSubjects = async () => {
+      if (!authHeaders) {
+        if (isMounted) {
+          setSubjects([]);
+          setChapters([]);
+          setTopics([]);
+        }
+        return;
+      }
+
+      if (!filters.gradeId) {
+        if (isMounted) {
+          setSubjects([]);
+          setChapters([]);
+          setTopics([]);
+        }
+        return;
+      }
+      try {
+        const res = await api.get(`/grades/${filters.gradeId}/subjects`, {
+          headers: authHeaders,
+        });
+        const payload = Array.isArray(res.data)
+          ? res.data
+          : Array.isArray(res.data?.data)
+            ? res.data.data
+            : [];
+        if (!isMounted) return;
+        setSubjects(normalizeCurriculum(payload));
+      } catch {
+        if (!isMounted) return;
+        setSubjects([]);
+      }
+    };
+
+    loadSubjects();
+    return () => {
+      isMounted = false;
+    };
+  }, [filters.gradeId, authHeaders]);
 
   useEffect(() => {
     let isMounted = true;
@@ -341,6 +448,13 @@ export default function QuestionBankList({ filtersPlacement = "sidebar" }: { fil
   const totalCount = total;
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
   const paginatedQuestions = filteredQuestions;
+  const activeFilterCount = useMemo(
+    () =>
+      Object.values(filters).filter(
+        (value) => typeof value === "string" && value.trim() !== ""
+      ).length,
+    [filters]
+  );
 
   const handleApprove = async (question: Question) => {
     try {
@@ -384,16 +498,17 @@ export default function QuestionBankList({ filtersPlacement = "sidebar" }: { fil
       <h3 className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
         Filters
       </h3>
-      <div className="mt-3">
-        <QuestionFilters
-          layout="vertical"
-          filters={filters}
-          subjects={subjects}
-          chapters={availableChapters}
-          topics={availableTopics}
-          onChange={setFilters}
-        />
-      </div>
+
+      <QuestionFilters
+        layout="vertical"
+        filters={filters}
+        programs={programs}
+        grades={grades}
+        subjects={subjects}
+        chapters={availableChapters}
+        topics={availableTopics}
+        onChange={setFilters}
+      />
     </div>
   );
 
@@ -416,15 +531,25 @@ export default function QuestionBankList({ filtersPlacement = "sidebar" }: { fil
       )}
 
       {filtersPlacement !== "sidebar" || !sidebarHost ? (
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <QuestionFilters
-            filters={filters}
-            subjects={subjects}
-            chapters={availableChapters}
-            topics={availableTopics}
-            onChange={setFilters}
-          />
-        </div>
+        <details className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-sm font-semibold text-slate-800">
+            <span>Filters</span>
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">
+              {activeFilterCount > 0 ? `${activeFilterCount} active` : "Optional"}
+            </span>
+          </summary>
+          <div className="mt-4 border-t border-slate-100 pt-4">
+            <QuestionFilters
+              filters={filters}
+              programs={programs}
+              grades={grades}
+              subjects={subjects}
+              chapters={availableChapters}
+              topics={availableTopics}
+              onChange={setFilters}
+            />
+          </div>
+        </details>
       ) : (
         createPortal(filtersPanel, sidebarHost)
       )}
