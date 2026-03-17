@@ -554,7 +554,7 @@ export default function PermissionsPage() {
             <div className="text-lg font-semibold text-slate-900">User Overrides</div>
             <div className="text-sm text-slate-500">Grant or deny permissions for a specific user.</div>
           </div>
-          <div className="min-w-[240px]">
+          <div className="min-w-60">
             <FieldLabel>Select User</FieldLabel>
             <select
               value={selectedUserId}
