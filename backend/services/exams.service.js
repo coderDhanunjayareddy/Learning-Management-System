@@ -209,6 +209,131 @@ const getSectionByIdForAccess = async ({ examId, sectionId, user, requireOwner =
   return row;
 };
 
+const ensureExamEditable = (exam) => {
+  if (!exam) {
+    throw new AppError('Exam not found', 404);
+  }
+  if (exam.status !== 'draft') {
+    throw new AppError('Exam is locked and cannot be modified', 403);
+  }
+};
+
+export const addQuestionToSection = async (req, res) => {
+  try {
+    if (!req.user?.id || !req.user?.role) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { id: examId, sectionId } = req.params;
+    const questionId = parseRequiredInt(req.body?.question_id, 'question_id');
+
+    const section = await getSectionByIdForAccess({ examId, sectionId, user: req.user, requireOwner: isTeacher(req.user.role) });
+    const exam = await getExamByIdForAccess({ examId, user: req.user, requireOwner: isTeacher(req.user.role) });
+    ensureExamEditable(exam);
+
+    const questionResult = await dbQuery('SELECT * FROM questions WHERE id = $1', [questionId]);
+    if (questionResult.rows.length === 0) {
+      throw new AppError('Question not found', 404);
+    }
+
+    const question = questionResult.rows[0];
+    if (String(question.status).toLowerCase() !== 'approved') {
+      throw new AppError('Only approved questions can be added', 400);
+    }
+
+    if (question.client_id && Number(question.client_id) !== Number(exam.client_id)) {
+      throw new AppError('Question does not belong to the same client scope as the exam', 403);
+    }
+
+    if (question.school_id && exam.school_id && Number(question.school_id) !== Number(exam.school_id)) {
+      throw new AppError('Question does not belong to the same school scope as the exam', 403);
+    }
+
+    const duplicateCheck = await dbQuery(
+      'SELECT 1 FROM exam_questions WHERE section_id = $1 AND question_id = $2',
+      [sectionId, questionId]
+    );
+    if (duplicateCheck.rows.length > 0) {
+      throw new AppError('Question already exists in this section', 409);
+    }
+
+    let orderIndex = req.body?.order_index !== undefined ? parseRequiredInt(req.body.order_index, 'order_index') : null;
+    if (orderIndex !== null) {
+      if (orderIndex <= 0) throw new AppError('order_index must be greater than 0', 400);
+    } else {
+      const nextResult = await dbQuery(
+        'SELECT COALESCE(MAX(order_index), 0) + 1 AS next_index FROM exam_questions WHERE section_id = $1',
+        [sectionId]
+      );
+      orderIndex = Number(nextResult.rows[0].next_index);
+    }
+
+    const insertResult = await dbQuery(
+      `INSERT INTO exam_questions (section_id, question_id, order_index)
+       VALUES ($1, $2, $3)
+       RETURNING *`,
+      [sectionId, questionId, orderIndex]
+    );
+
+    res.status(201).json(insertResult.rows[0]);
+  } catch (err) {
+    handleServiceError(res, err, 'Failed to add question to section');
+  }
+};
+
+export const publishExam = async (req, res) => {
+  try {
+    if (!req.user?.id || !req.user?.role) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const exam = await getExamByIdForAccess({ examId: req.params.id, user: req.user, requireOwner: isTeacher(req.user.role) });
+
+    if (exam.status === 'published' || exam.status === 'active' || exam.status === 'completed') {
+      throw new AppError('Exam is already published or locked', 409);
+    }
+
+    const sectionCountRes = await dbQuery('SELECT COUNT(*)::int AS count FROM exam_sections WHERE exam_id = $1', [exam.id]);
+    const sectionCount = Number(sectionCountRes.rows[0]?.count || 0);
+    if (sectionCount === 0) {
+      throw new AppError('Exam must have at least one section before publishing', 400);
+    }
+
+    const questionCountRes = await dbQuery(
+      `SELECT COUNT(eq.*)::int AS count
+       FROM exam_sections es
+       JOIN exam_questions eq ON eq.section_id = es.id
+       WHERE es.exam_id = $1`,
+      [exam.id]
+    );
+    const questionCount = Number(questionCountRes.rows[0]?.count || 0);
+    if (questionCount === 0) {
+      throw new AppError('Exam must have at least one question before publishing', 400);
+    }
+
+    const attemptCheck = await dbQuery('SELECT COUNT(*)::int AS count FROM exam_attempts WHERE exam_id = $1', [exam.id]);
+    if (Number(attemptCheck.rows[0]?.count || 0) > 0) {
+      throw new AppError('Cannot publish exam after attempts have been made', 403);
+    }
+
+    if (!exam.start_datetime || !exam.end_datetime || new Date(exam.end_datetime) <= new Date(exam.start_datetime)) {
+      throw new AppError('Exam must have valid start and end datetimes before publishing', 400);
+    }
+
+    const updateResult = await dbQuery(
+      `UPDATE exams
+       SET status = 'published', updated_at = NOW()
+       WHERE id = $1
+       RETURNING *`,
+      [exam.id]
+    );
+
+    res.json(updateResult.rows[0]);
+  } catch (err) {
+    handleServiceError(res, err, 'Failed to publish exam');
+  }
+};
+
 export const listExams = async (req, res) => {
   try {
     if (!req.user?.id || !req.user?.role) {
@@ -382,9 +507,7 @@ export const updateExam = async (req, res) => {
       requireOwner: isTeacher(req.user.role),
     });
 
-    if (isTeacher(req.user.role) && exam.status !== 'draft') {
-      throw new AppError('Teachers can only update draft exams', 403);
-    }
+    ensureExamEditable(exam);
 
     const nextStartDateTime = req.body?.start_datetime !== undefined
       ? parseDateTime(req.body.start_datetime, 'start_datetime')
@@ -479,9 +602,7 @@ export const deleteExam = async (req, res) => {
       requireOwner: isTeacher(req.user.role),
     });
 
-    if (isTeacher(req.user.role) && exam.status !== 'draft') {
-      throw new AppError('Teachers can only delete draft exams', 403);
-    }
+    ensureExamEditable(exam);
 
     const result = await dbQuery(`DELETE FROM exams WHERE id = $1 RETURNING id`, [exam.id]);
     res.json({ success: true, id: Number(result.rows[0].id) });
@@ -501,9 +622,7 @@ export const createExamSection = async (req, res) => {
       user: req.user,
       requireOwner: isTeacher(req.user.role),
     });
-    if (isTeacher(req.user.role) && exam.status !== 'draft') {
-      throw new AppError('Teachers can only modify sections for draft exams', 403);
-    }
+    ensureExamEditable(exam);
 
     const title = requireString(req.body?.title, 'title');
     const instructions = req.body?.instructions ? String(req.body.instructions).trim() : null;
@@ -549,9 +668,8 @@ export const updateExamSection = async (req, res) => {
       user: req.user,
       requireOwner: isTeacher(req.user.role),
     });
-    if (isTeacher(req.user.role) && section.status !== 'draft') {
-      throw new AppError('Teachers can only modify sections for draft exams', 403);
-    }
+    const exam = await getExamByIdForAccess({ examId: req.params.id, user: req.user, requireOwner: isTeacher(req.user.role) });
+    ensureExamEditable(exam);
 
     const updates = [];
     const values = [];
@@ -609,9 +727,8 @@ export const deleteExamSection = async (req, res) => {
       user: req.user,
       requireOwner: isTeacher(req.user.role),
     });
-    if (isTeacher(req.user.role) && section.status !== 'draft') {
-      throw new AppError('Teachers can only modify sections for draft exams', 403);
-    }
+    const exam = await getExamByIdForAccess({ examId: req.params.id, user: req.user, requireOwner: isTeacher(req.user.role) });
+    ensureExamEditable(exam);
 
     await dbQuery(`DELETE FROM exam_sections WHERE id = $1`, [section.id]);
     res.json({ success: true, id: Number(section.id) });
