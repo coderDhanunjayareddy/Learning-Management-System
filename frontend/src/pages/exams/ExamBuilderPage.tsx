@@ -1,6 +1,7 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import toast from "react-hot-toast";
+import { DragDropContext, Draggable, Droppable, type DropResult } from "@hello-pangea/dnd";
 import api from "@/lib/api";
 import ExamShell from "@/features/exams/components/ExamShell";
 import ExamStatusBadge from "@/components/ui/ExamStatusBadge";
@@ -113,6 +114,8 @@ interface SectionDraft {
   marks_per_question: string;
   negative_marks: string;
 }
+
+type SelectedQuestion = Question;
 
 const buildSectionEdits = (sectionList: ExamSection[]) => {
   const editMap: Record<string, SectionDraft> = {};
@@ -490,7 +493,10 @@ export default function ExamBuilderPage() {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [activeSection, setActiveSection] = useState<ExamSection | null>(null);
-  const [selectedBySection, setSelectedBySection] = useState<Record<string, string[]>>({});
+  const [selectedQuestionsBySection, setSelectedQuestionsBySection] = useState<Record<string, SelectedQuestion[]>>({});
+
+  const [publishModalOpen, setPublishModalOpen] = useState(false);
+  const [publishing, setPublishing] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -528,6 +534,21 @@ export default function ExamBuilderPage() {
 
   const effectiveStatus = normalizeStatus(exam?.status ?? null) ?? computeExamStatus(exam ?? {});
   const isReadOnly = exam?.status ? exam.status !== "draft" : effectiveStatus !== "draft";
+
+  const publishValidation = useMemo(
+    () =>
+      sections.map((section) => {
+        const local = selectedQuestionsBySection[String(section.id)] ?? [];
+        const count = local.length > 0 ? local.length : section.question_count ?? 0;
+        return {
+          section,
+          count,
+          valid: count >= 1,
+        };
+      }),
+    [sections, selectedQuestionsBySection]
+  );
+  const canPublish = publishValidation.every((item) => item.valid);
 
   const handleAddSection = async () => {
     if (!id) return;
@@ -645,17 +666,47 @@ export default function ExamBuilderPage() {
   const handleToggleQuestion = (question: Question) => {
     if (!activeSection) return;
     const sectionId = String(activeSection.id);
-    const current = new Set(selectedBySection[sectionId] ?? []);
-    const questionId = String(question.id);
-    if (current.has(questionId)) {
-      current.delete(questionId);
-    } else {
-      current.add(questionId);
-    }
-    setSelectedBySection((prev) => ({
-      ...prev,
-      [sectionId]: Array.from(current),
-    }));
+    setSelectedQuestionsBySection((prev) => {
+      const current = [...(prev[sectionId] ?? [])];
+      const questionId = String(question.id);
+      const existingIndex = current.findIndex((item) => String(item.id) === questionId);
+      if (existingIndex >= 0) {
+        current.splice(existingIndex, 1);
+      } else {
+        current.push(question);
+      }
+      return {
+        ...prev,
+        [sectionId]: current,
+      };
+    });
+  };
+
+  const handleRemoveSelectedQuestion = (sectionId: number, questionId: string) => {
+    const key = String(sectionId);
+    setSelectedQuestionsBySection((prev) => {
+      const current = prev[key] ?? [];
+      return {
+        ...prev,
+        [key]: current.filter((question) => String(question.id) !== questionId),
+      };
+    });
+  };
+
+  const handleReorderSelectedQuestions = (sectionId: number, result: DropResult) => {
+    if (!result.destination) return;
+    if (result.destination.index === result.source.index) return;
+    const key = String(sectionId);
+    setSelectedQuestionsBySection((prev) => {
+      const current = [...(prev[key] ?? [])];
+      const [moved] = current.splice(result.source.index, 1);
+      if (!moved) return prev;
+      current.splice(result.destination!.index, 0, moved);
+      return {
+        ...prev,
+        [key]: current,
+      };
+    });
   };
 
   const closeModal = () => {
@@ -664,7 +715,25 @@ export default function ExamBuilderPage() {
   };
 
   const selectionCount = (sectionId: number) =>
-    selectedBySection[String(sectionId)]?.length ?? 0;
+    selectedQuestionsBySection[String(sectionId)]?.length ?? 0;
+
+  const handlePublish = async () => {
+    if (!id || !canPublish) return;
+    try {
+      setPublishing(true);
+      const res = await api.post(`/exams/${id}/publish`);
+      setExam((prev) =>
+        prev ? { ...prev, status: res.data?.status ?? "published" } : prev
+      );
+      toast.success("Exam published");
+      setPublishModalOpen(false);
+    } catch (err: any) {
+      const message = err?.response?.data?.error || "Failed to publish exam.";
+      toast.error(message);
+    } finally {
+      setPublishing(false);
+    }
+  };
 
   return (
     <ExamShell title="Exam Builder" description="Manage sections and build the exam paper.">
@@ -691,6 +760,14 @@ export default function ExamBuilderPage() {
             </div>
             <div className="flex items-center gap-2">
               <ExamStatusBadge status={effectiveStatus} />
+              {!isReadOnly && (
+                <button
+                  onClick={() => setPublishModalOpen(true)}
+                  className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
+                >
+                  Publish Exam
+                </button>
+              )}
               <button
                 onClick={() => navigate("/exams")}
                 className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
@@ -827,6 +904,95 @@ export default function ExamBuilderPage() {
                             />
                           </div>
                         </div>
+                        <div className="mt-4 rounded-xl border border-slate-100 bg-slate-50 p-4">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <h4 className="text-sm font-semibold text-slate-700">Selected Questions</h4>
+                            {selectedCount > 0 && (
+                              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                                Not saved yet
+                              </span>
+                            )}
+                          </div>
+
+                          {selectedCount === 0 ? (
+                            <div className="mt-3 text-xs text-slate-500">No selected questions yet.</div>
+                          ) : (
+                            <DragDropContext
+                              onDragEnd={(result) => handleReorderSelectedQuestions(section.id, result)}
+                            >
+                              <Droppable droppableId={`section-${section.id}`}>
+                                {(dropProvided) => (
+                                  <div
+                                    ref={dropProvided.innerRef}
+                                    {...dropProvided.droppableProps}
+                                    className="mt-3 space-y-3"
+                                  >
+                                    {(selectedQuestionsBySection[String(section.id)] ?? []).map((question, index) => (
+                                      <Draggable
+                                        key={`section-${section.id}-question-${question.id}`}
+                                        draggableId={`section-${section.id}-question-${question.id}`}
+                                        index={index}
+                                        isDragDisabled={isReadOnly}
+                                      >
+                                        {(dragProvided) => (
+                                          <div
+                                            ref={dragProvided.innerRef}
+                                            {...dragProvided.draggableProps}
+                                            className="rounded-lg border border-slate-200 bg-white p-3"
+                                          >
+                                            <div className="flex gap-3">
+                                              <div
+                                                {...dragProvided.dragHandleProps}
+                                                className="mt-1 cursor-grab select-none text-slate-400"
+                                              >
+                                                ::
+                                              </div>
+                                              <div className="flex-1">
+                                                <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+                                                  <span className="rounded-full bg-slate-100 px-2 py-0.5 font-semibold text-slate-600">
+                                                    #{index + 1}
+                                                  </span>
+                                                  <span className="rounded-full bg-slate-100 px-2 py-0.5 font-semibold">
+                                                    {question.question_type}
+                                                  </span>
+                                                  <span className="rounded-full bg-slate-100 px-2 py-0.5 font-semibold">
+                                                    {question.difficulty_level}
+                                                  </span>
+                                                  <span className="rounded-full bg-slate-100 px-2 py-0.5 font-semibold text-slate-700">
+                                                    +{section.marks_per_question ?? 0} / -{section.negative_marks ?? 0}
+                                                  </span>
+                                                </div>
+                                                <div className="mt-2">
+                                                  <QuestionRenderer
+                                                    question={question}
+                                                    showMeta={false}
+                                                    showOptions={false}
+                                                    showAnswer={false}
+                                                    showSolution={false}
+                                                    showComprehension={false}
+                                                    contentClassName="text-sm font-semibold text-slate-900"
+                                                  />
+                                                </div>
+                                              </div>
+                                              <button
+                                                onClick={() => handleRemoveSelectedQuestion(section.id, String(question.id))}
+                                                disabled={isReadOnly}
+                                                className="h-7 rounded-md border border-rose-200 px-2 text-[11px] font-semibold text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                              >
+                                                Remove
+                                              </button>
+                                            </div>
+                                          </div>
+                                        )}
+                                      </Draggable>
+                                    ))}
+                                    {dropProvided.placeholder}
+                                  </div>
+                                )}
+                              </Droppable>
+                            </DragDropContext>
+                          )}
+                        </div>
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <button
@@ -863,10 +1029,73 @@ export default function ExamBuilderPage() {
       <QuestionSelectionModal
         open={modalOpen}
         section={activeSection}
-        selectedIds={new Set(selectedBySection[String(activeSection?.id ?? "")] ?? [])}
+        selectedIds={new Set(
+          (selectedQuestionsBySection[String(activeSection?.id ?? "")] ?? []).map((question) => String(question.id))
+        )}
         onToggle={handleToggleQuestion}
         onClose={closeModal}
       />
+
+      {publishModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-semibold">Publish Exam</h3>
+                <p className="text-sm text-slate-500">
+                  Confirm each section has at least 1 question before publishing.
+                </p>
+              </div>
+              <button
+                onClick={() => !publishing && setPublishModalOpen(false)}
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-2">
+              {publishValidation.map((item) => (
+                <div
+                  key={item.section.id}
+                  className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm"
+                >
+                  <div>
+                    <div className="font-semibold text-slate-700">{item.section.title}</div>
+                    <div className="text-xs text-slate-500">{item.count} question(s)</div>
+                  </div>
+                  <span
+                    className={
+                      item.valid
+                        ? "rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700"
+                        : "rounded-full bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-700"
+                    }
+                  >
+                    {item.valid ? "Ready" : "Needs 1+"}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                onClick={() => setPublishModalOpen(false)}
+                disabled={publishing}
+                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handlePublish}
+                disabled={!canPublish || publishing}
+                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {publishing ? "Publishing..." : "Yes, Publish"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </ExamShell>
   );
 }

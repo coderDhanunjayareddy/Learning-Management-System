@@ -42,6 +42,7 @@ const parsePagination = (query) => {
 };
 
 const ensureClientScope = (user, sourceClientId = null) => {
+  console.log("request: ", user);
   if (isPlatformAdmin(user?.role)) {
     const clientId = parseNullableInt(sourceClientId, 'client_id');
     return clientId;
@@ -335,6 +336,7 @@ export const publishExam = async (req, res) => {
 };
 
 export const listExams = async (req, res) => {
+
   try {
     if (!req.user?.id || !req.user?.role) {
       return res.status(401).json({ error: 'Unauthorized' });
