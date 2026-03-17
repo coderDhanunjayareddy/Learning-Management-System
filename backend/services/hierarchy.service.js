@@ -10,6 +10,7 @@ import {
 } from '../utils/access.js';
 import { hashPassword } from '../utils/hash.js';
 import * as rolePermissionsService from '../services/rolePermissions.service.js';
+import * as userPermissionsService from '../services/userPermissions.service.js';
 import { handleServiceError } from '../utils/errors.js';
 
 const VALID_ROLE_SCOPES = ['school_owner', 'teacher', 'student', 'admin'];
@@ -542,14 +543,42 @@ export const upsertRolePermission = async (req, res) => {
   }
 };
 
-export const deleteRolePermission = async (req, res) => {
-  try {
-    const data = await rolePermissionsService.deleteRolePermission({ user: req.user, params: req.params });
-    res.json(data);
-  } catch (err) {
-    handleServiceError(res, err, 'Failed to delete role permission');
-  }
-};
+  export const deleteRolePermission = async (req, res) => {
+    try {
+      const data = await rolePermissionsService.deleteRolePermission({ user: req.user, params: req.params });
+      res.json(data);
+    } catch (err) {
+      handleServiceError(res, err, 'Failed to delete role permission');
+    }
+  };
+
+  // ---------- User Permissions ----------
+  export const listUserPermissions = async (req, res) => {
+    try {
+      const data = await userPermissionsService.listUserPermissions({ user: req.user, query: req.query });
+      res.json(data);
+    } catch (err) {
+      handleServiceError(res, err, 'Failed to load user permissions');
+    }
+  };
+
+  export const upsertUserPermission = async (req, res) => {
+    try {
+      const data = await userPermissionsService.upsertUserPermission({ user: req.user, body: req.body });
+      res.status(201).json(data);
+    } catch (err) {
+      handleServiceError(res, err, 'Failed to upsert user permission');
+    }
+  };
+
+  export const deleteUserPermission = async (req, res) => {
+    try {
+      const data = await userPermissionsService.deleteUserPermission({ user: req.user, params: req.params });
+      res.json(data);
+    } catch (err) {
+      handleServiceError(res, err, 'Failed to delete user permission');
+    }
+  };
 
 // ---------- Users (Admin create/update) ----------
 export const createUser = async (req, res) => {

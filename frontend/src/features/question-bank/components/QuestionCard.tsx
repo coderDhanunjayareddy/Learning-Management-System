@@ -21,6 +21,7 @@ const typeLabels: Record<string, string> = {
 
 
 interface QuestionCardProps {
+  number: number;
   question: Question;
   permissions: QuestionPermissions;
   onEdit: (question: Question) => void;
@@ -30,6 +31,7 @@ interface QuestionCardProps {
 }
 
 export default function QuestionCard({
+  number,
   question,
   permissions,
   onEdit,
@@ -40,11 +42,11 @@ export default function QuestionCard({
   const isEditable = permissions.canEdit;
 
   return (
-    <div className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-900 text-sm font-bold text-white shadow-sm">
-            {String(question.id).slice(-2)}
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-xs font-bold text-slate-600 shadow-sm">
+            {number}
           </div>
           <div>
             <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold text-slate-500">

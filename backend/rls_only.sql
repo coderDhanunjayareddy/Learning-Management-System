@@ -222,6 +222,51 @@ CREATE POLICY role_permissions_delete ON role_permissions
   FOR DELETE
   USING (app_role() = 'super_admin' OR client_id = app_client_id());
 
+ALTER TABLE user_permissions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY user_permissions_select ON user_permissions
+  FOR SELECT
+  USING (
+    app_role() = 'super_admin'
+    OR EXISTS (
+      SELECT 1 FROM users u
+      WHERE u.id = user_id AND u.client_id = app_client_id()
+    )
+  );
+CREATE POLICY user_permissions_insert ON user_permissions
+  FOR INSERT
+  WITH CHECK (
+    app_role() = 'super_admin'
+    OR EXISTS (
+      SELECT 1 FROM users u
+      WHERE u.id = user_id AND u.client_id = app_client_id()
+    )
+  );
+CREATE POLICY user_permissions_update ON user_permissions
+  FOR UPDATE
+  USING (
+    app_role() = 'super_admin'
+    OR EXISTS (
+      SELECT 1 FROM users u
+      WHERE u.id = user_id AND u.client_id = app_client_id()
+    )
+  )
+  WITH CHECK (
+    app_role() = 'super_admin'
+    OR EXISTS (
+      SELECT 1 FROM users u
+      WHERE u.id = user_id AND u.client_id = app_client_id()
+    )
+  );
+CREATE POLICY user_permissions_delete ON user_permissions
+  FOR DELETE
+  USING (
+    app_role() = 'super_admin'
+    OR EXISTS (
+      SELECT 1 FROM users u
+      WHERE u.id = user_id AND u.client_id = app_client_id()
+    )
+  );
+
 -- AUDIT LOGS
 ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
 CREATE POLICY audit_logs_tenant_isolation ON audit_logs

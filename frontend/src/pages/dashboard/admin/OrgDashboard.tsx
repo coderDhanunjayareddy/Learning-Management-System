@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import api from '@/lib/api';
 import type { ReactNode } from 'react';
 import { useAuth } from '@/features/auth/hooks/useAuth';
@@ -58,6 +58,21 @@ type ClientUser = {
   client_name?: string;
 };
 
+const permissionGroupLabels: Record<string, string> = {
+  questions: 'Question Bank',
+  courses: 'Courses',
+  subjects: 'Subjects',
+  chapters: 'Chapters',
+  topics: 'Topics',
+};
+
+const permissionGroupOrder = ['Question Bank', 'Courses', 'Subjects', 'Chapters', 'Topics', 'Other'];
+
+const getPermissionGroup = (permission: string) => {
+  const prefix = permission.split('.')[0];
+  return permissionGroupLabels[prefix] ?? 'Other';
+};
+
 export default function OrgDashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -68,16 +83,19 @@ export default function OrgDashboard() {
   const [schoolMembers, setSchoolMembers] = useState<Membership[]>([]);
   const [batchMembers, setBatchMembers] = useState<Membership[]>([]);
   const [rolePermissions, setRolePermissions] = useState<RolePermission[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
+  const [selectedRole, setSelectedRole] = useState('teacher');
+  const [saving, setSaving] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [filterMode, setFilterMode] = useState<'all' | 'granted' | 'missing'>('all');
 
   const [selectedSchoolId, setSelectedSchoolId] = useState<string>('');
   const [selectedBatchId, setSelectedBatchId] = useState<string>('');
+  const [users, setUsers] = useState<User[]>([]);
 
   const [schoolForm, setSchoolForm] = useState({ name: '', school_code: '' });
   const [batchForm, setBatchForm] = useState({ name: '', school_id: '' });
   const [schoolMemberForm, setSchoolMemberForm] = useState({ user_id: '', role_scope: 'teacher', is_primary: false });
   const [batchMemberForm, setBatchMemberForm] = useState({ user_id: '', is_primary: false });
-  const [roleForm, setRoleForm] = useState({ role: 'teacher', permission: 'courses.read', granted: true });
   const [userForm, setUserForm] = useState({ email: '', full_name: '', password: '', role: 'teacher', school_id: '' });
 
   const loadSchools = async () => {
@@ -161,11 +179,128 @@ export default function OrgDashboard() {
     loadBatchMembers(selectedBatchId);
   };
 
-  const upsertRolePermission = async (e: React.FormEvent) => {
-    e.preventDefault();
-    await api.post('/org/role-permissions', roleForm);
-    setRoleForm({ role: 'teacher', permission: 'courses.read', granted: true });
-    loadRolePermissions();
+  const filteredPermissions = useMemo(() => {
+    return rolePermissions.filter((perm) => perm.role === selectedRole);
+  }, [rolePermissions, selectedRole]);
+
+  const permissionMap = useMemo(() => {
+    const map = new Map<string, RolePermission>();
+    filteredPermissions.forEach((perm) => {
+      map.set(perm.permission, perm);
+    });
+    return map;
+  }, [filteredPermissions]);
+
+  const permissionKeys = useMemo(() => {
+    const keys = new Set<string>();
+    rolePermissions.forEach((perm) => keys.add(perm.permission));
+    return Array.from(keys).sort();
+  }, [rolePermissions]);
+
+  const groupedPermissions = useMemo(() => {
+    const groups = new Map<string, string[]>();
+    permissionKeys.forEach((permission) => {
+      const group = getPermissionGroup(permission);
+      if (!groups.has(group)) groups.set(group, []);
+      groups.get(group)?.push(permission);
+    });
+
+    const orderedGroups = permissionGroupOrder.filter((group) => groups.has(group));
+    const remainingGroups = Array.from(groups.keys())
+      .filter((group) => !permissionGroupOrder.includes(group))
+      .sort();
+
+    return [...orderedGroups, ...remainingGroups].map((group) => ({
+      name: group,
+      permissions: (groups.get(group) ?? []).sort(),
+    }));
+  }, [permissionKeys]);
+
+  const filteredGroupedPermissions = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return groupedPermissions
+      .map((group) => {
+        const permissions = group.permissions.filter((permission) => {
+          if (term && !permission.toLowerCase().includes(term)) return false;
+          const granted = permissionMap.get(permission)?.granted === true;
+          if (filterMode === 'granted') return granted;
+          if (filterMode === 'missing') return !granted;
+          return true;
+        });
+        return permissions.length > 0 ? { name: group.name, permissions } : null;
+      })
+      .filter(Boolean) as { name: string; permissions: string[] }[];
+  }, [groupedPermissions, permissionMap, search, filterMode]);
+
+  const permissionStats = useMemo(() => {
+    const total = permissionKeys.length;
+    let grantedCount = 0;
+    permissionKeys.forEach((permission) => {
+      if (permissionMap.get(permission)?.granted === true) grantedCount += 1;
+    });
+    return {
+      total,
+      granted: grantedCount,
+      missing: Math.max(total - grantedCount, 0),
+    };
+  }, [permissionKeys, permissionMap]);
+
+  const handleTogglePermission = async (permission: string, nextValue: boolean) => {
+    const existing = permissionMap.get(permission);
+
+    try {
+      setSaving(permission);
+      if (nextValue) {
+        if (existing?.granted) {
+          return;
+        }
+        const payload = {
+          role: selectedRole,
+          permission,
+          granted: true,
+        };
+        await api.post('/org/role-permissions', payload);
+      } else if (existing?.id) {
+        await api.delete(`/org/role-permissions/${existing.id}`);
+      }
+
+      await loadRolePermissions();
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const handleGroupToggle = async (groupName: string, groupPermissions: string[], nextValue: boolean) => {
+    const pending = groupPermissions.filter((permission) => {
+      const existing = permissionMap.get(permission);
+      const enabled = Boolean(existing?.granted);
+      return nextValue ? !enabled : Boolean(existing?.id);
+    });
+
+    if (pending.length === 0) return;
+
+    try {
+      setSaving(`group:${groupName}`);
+
+      for (const permission of pending) {
+        const existing = permissionMap.get(permission);
+        if (nextValue) {
+          if (existing?.granted) continue;
+          const payload = {
+            role: selectedRole,
+            permission,
+            granted: true,
+          };
+          await api.post('/org/role-permissions', payload);
+        } else if (existing?.id) {
+          await api.delete(`/org/role-permissions/${existing.id}`);
+        }
+      }
+
+      await loadRolePermissions();
+    } finally {
+      setSaving(null);
+    }
   };
 
   const createUser = async (e: React.FormEvent) => {
@@ -268,223 +403,349 @@ export default function OrgDashboard() {
         </div>
       }
     >
-        {activeTab === 'schools' && (
-          <section className="mt-6 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-              <h3 className="text-lg font-semibold">Schools</h3>
-              <div className="mt-4 space-y-3">
-                {schools.map((school) => (
-                  <div key={school.id} className="rounded-xl border border-slate-200 bg-white p-3">
-                    <div className="font-semibold">{school.name}</div>
-                    <div className="text-xs text-slate-500">Code: {school.school_code || '-'}</div>
-                  </div>
-                ))}
-              </div>
+      {activeTab === 'schools' && (
+        <section className="mt-6 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+            <h3 className="text-lg font-semibold">Schools</h3>
+            <div className="mt-4 space-y-3">
+              {schools.map((school) => (
+                <div key={school.id} className="rounded-xl border border-slate-200 bg-white p-3">
+                  <div className="font-semibold">{school.name}</div>
+                  <div className="text-xs text-slate-500">Code: {school.school_code || '-'}</div>
+                </div>
+              ))}
             </div>
-            <form onSubmit={createSchool} className="rounded-2xl border border-slate-200 bg-white p-5">
-              <h3 className="text-lg font-semibold">Create School</h3>
-              <div className="mt-4 space-y-3">
-                <input
-                  value={schoolForm.name}
-                  onChange={(e) => setSchoolForm({ ...schoolForm, name: e.target.value })}
-                  placeholder="School name"
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                />
-                <input
-                  value={schoolForm.school_code}
-                  onChange={(e) => setSchoolForm({ ...schoolForm, school_code: e.target.value })}
-                  placeholder="School code"
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                />
-                <button className="w-full rounded-lg bg-blue-900 px-3 py-2 text-sm font-semibold text-white">
-                  Create School
-                </button>
-              </div>
-            </form>
-          </section>
-        )}
-
-        {activeTab === 'schoolMembers' && (
-          <section className="mt-6 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-              <h3 className="text-lg font-semibold">School Members</h3>
-              <div className="flex items-center gap-3">
-                <select
-                  value={selectedSchoolId}
-                  onChange={(e) => setSelectedSchoolId(e.target.value)}
-                  className="mt-4 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
-                >
-                  <option value="">Select school</option>
-                  {schools.map((school) => (
-                    <option key={school.id} value={school.id}>
-                      {school.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="mt-4 space-y-3">
-                {schoolMembers.map((member) => (
-                  <div key={member.id} className="rounded-xl border border-slate-200 bg-white p-3">
-                    <div className="font-semibold">{member.full_name}</div>
-                    <div className="text-xs text-slate-500">
-                      {member.email} | {member.role_scope}
-                    </div>
-                  </div>
-                ))}
-              </div>
+          </div>
+          <form onSubmit={createSchool} className="rounded-2xl border border-slate-200 bg-white p-5">
+            <h3 className="text-lg font-semibold">Create School</h3>
+            <div className="mt-4 space-y-3">
+              <input
+                value={schoolForm.name}
+                onChange={(e) => setSchoolForm({ ...schoolForm, name: e.target.value })}
+                placeholder="School name"
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              />
+              <input
+                value={schoolForm.school_code}
+                onChange={(e) => setSchoolForm({ ...schoolForm, school_code: e.target.value })}
+                placeholder="School code"
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              />
+              <button className="w-full rounded-lg bg-blue-900 px-3 py-2 text-sm font-semibold text-white">
+                Create School
+              </button>
             </div>
-            <form onSubmit={addSchoolMember} className="rounded-2xl border border-slate-200 bg-white p-5">
-              <h3 className="text-lg font-semibold">Add School Member</h3>
-              <div className="mt-4 space-y-3">
-                <input
-                  value={schoolMemberForm.user_id}
-                  onChange={(e) => setSchoolMemberForm({ ...schoolMemberForm, user_id: e.target.value })}
-                  placeholder="User ID"
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                />
-                <select
-                  value={schoolMemberForm.role_scope}
-                  onChange={(e) => setSchoolMemberForm({ ...schoolMemberForm, role_scope: e.target.value })}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                >
-                  <option value="teacher">Teacher</option>
-                  <option value="student">Student</option>
-                  <option value="school_owner">School Owner</option>
-                  <option value="admin">Admin</option>
-                </select>
-                <button className="w-full rounded-lg bg-blue-900 px-3 py-2 text-sm font-semibold text-white">
-                  Add Member
-                </button>
-              </div>
-            </form>
-          </section>
-        )}
+          </form>
+        </section>
+      )}
 
-        {activeTab === 'batches' && (
-          <section className="mt-6 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-              <h3 className="text-lg font-semibold">Batches</h3>
-              <div className="mt-4 space-y-3">
-                {batches.map((batch) => (
-                  <div key={batch.id} className="rounded-xl border border-slate-200 bg-white p-3">
-                    <div className="font-semibold">{batch.name}</div>
-                    <div className="text-xs text-slate-500">School ID: {batch.school_id}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <form onSubmit={createBatch} className="rounded-2xl border border-slate-200 bg-white p-5">
-              <h3 className="text-lg font-semibold">Create Batch</h3>
-              <div className="mt-4 space-y-3">
-                <select
-                  value={batchForm.school_id}
-                  onChange={(e) => setBatchForm({ ...batchForm, school_id: e.target.value })}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                >
-                  <option value="">Select school</option>
-                  {schools.map((school) => (
-                    <option key={school.id} value={school.id}>
-                      {school.name}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  value={batchForm.name}
-                  onChange={(e) => setBatchForm({ ...batchForm, name: e.target.value })}
-                  placeholder="Batch name"
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                />
-                <button className="w-full rounded-lg bg-blue-900 px-3 py-2 text-sm font-semibold text-white">
-                  Create Batch
-                </button>
-              </div>
-            </form>
-          </section>
-        )}
-
-        {activeTab === 'batchMembers' && (
-          <section className="mt-6 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-              <h3 className="text-lg font-semibold">Batch Members</h3>
+      {activeTab === 'schoolMembers' && (
+        <section className="mt-6 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+            <h3 className="text-lg font-semibold">School Members</h3>
+            <div className="flex items-center gap-3">
               <select
-                value={selectedBatchId}
-                onChange={(e) => setSelectedBatchId(e.target.value)}
+                value={selectedSchoolId}
+                onChange={(e) => setSelectedSchoolId(e.target.value)}
                 className="mt-4 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
               >
-                <option value="">Select batch</option>
-                {batches.map((batch) => (
-                  <option key={batch.id} value={batch.id}>
-                    {batch.name}
+                <option value="">Select school</option>
+                {schools.map((school) => (
+                  <option key={school.id} value={school.id}>
+                    {school.name}
                   </option>
                 ))}
               </select>
-              <div className="mt-4 space-y-3">
-                {batchMembers.map((member) => (
-                  <div key={member.id} className="rounded-xl border border-slate-200 bg-white p-3">
-                    <div className="font-semibold">{member.full_name}</div>
-                    <div className="text-xs text-slate-500">{member.email}</div>
-                  </div>
-                ))}
-              </div>
             </div>
-            <form onSubmit={addBatchMember} className="rounded-2xl border border-slate-200 bg-white p-5">
-              <h3 className="text-lg font-semibold">Add Batch Member</h3>
-              <div className="mt-4 space-y-3">
-                <input
-                  value={batchMemberForm.user_id}
-                  onChange={(e) => setBatchMemberForm({ ...batchMemberForm, user_id: e.target.value })}
-                  placeholder="User ID"
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                />
-                <button className="w-full rounded-lg bg-blue-900 px-3 py-2 text-sm font-semibold text-white">
-                  Add Member
-                </button>
-              </div>
-            </form>
-          </section>
-        )}
+            <div className="mt-4 space-y-3">
+              {schoolMembers.map((member) => (
+                <div key={member.id} className="rounded-xl border border-slate-200 bg-white p-3">
+                  <div className="font-semibold">{member.full_name}</div>
+                  <div className="text-xs text-slate-500">
+                    {member.email} | {member.role_scope}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <form onSubmit={addSchoolMember} className="rounded-2xl border border-slate-200 bg-white p-5">
+            <h3 className="text-lg font-semibold">Add School Member</h3>
+            <div className="mt-4 space-y-3">
+              <input
+                value={schoolMemberForm.user_id}
+                onChange={(e) => setSchoolMemberForm({ ...schoolMemberForm, user_id: e.target.value })}
+                placeholder="User ID"
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              />
+              <select
+                value={schoolMemberForm.role_scope}
+                onChange={(e) => setSchoolMemberForm({ ...schoolMemberForm, role_scope: e.target.value })}
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              >
+                <option value="teacher">Teacher</option>
+                <option value="student">Student</option>
+                <option value="school_owner">School Owner</option>
+                <option value="admin">Admin</option>
+              </select>
+              <button className="w-full rounded-lg bg-blue-900 px-3 py-2 text-sm font-semibold text-white">
+                Add Member
+              </button>
+            </div>
+          </form>
+        </section>
+      )}
 
-        {activeTab === 'roles' && (
-          <section className="mt-6 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-              <h3 className="text-lg font-semibold">Role Permissions</h3>
-              <div className="mt-4 space-y-2">
-                {rolePermissions.map((perm) => (
-                  <div key={perm.id} className="rounded-xl border border-slate-200 bg-white p-3 text-sm">
-                    <div className="font-semibold">{perm.role}</div>
-                    <div className="text-xs text-slate-500">{perm.permission}</div>
-                  </div>
-                ))}
-              </div>
+      {activeTab === 'batches' && (
+        <section className="mt-6 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+            <h3 className="text-lg font-semibold">Batches</h3>
+            <div className="mt-4 space-y-3">
+              {batches.map((batch) => (
+                <div key={batch.id} className="rounded-xl border border-slate-200 bg-white p-3">
+                  <div className="font-semibold">{batch.name}</div>
+                  <div className="text-xs text-slate-500">School ID: {batch.school_id}</div>
+                </div>
+              ))}
             </div>
-            <form onSubmit={upsertRolePermission} className="rounded-2xl border border-slate-200 bg-white p-5">
-              <h3 className="text-lg font-semibold">Add Permission</h3>
-              <div className="mt-4 space-y-3">
-                <input
-                  value={roleForm.permission}
-                  onChange={(e) => setRoleForm({ ...roleForm, permission: e.target.value })}
-                  placeholder="Permission"
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                />
+          </div>
+          <form onSubmit={createBatch} className="rounded-2xl border border-slate-200 bg-white p-5">
+            <h3 className="text-lg font-semibold">Create Batch</h3>
+            <div className="mt-4 space-y-3">
+              <select
+                value={batchForm.school_id}
+                onChange={(e) => setBatchForm({ ...batchForm, school_id: e.target.value })}
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              >
+                <option value="">Select school</option>
+                {schools.map((school) => (
+                  <option key={school.id} value={school.id}>
+                    {school.name}
+                  </option>
+                ))}
+              </select>
+              <input
+                value={batchForm.name}
+                onChange={(e) => setBatchForm({ ...batchForm, name: e.target.value })}
+                placeholder="Batch name"
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              />
+              <button className="w-full rounded-lg bg-blue-900 px-3 py-2 text-sm font-semibold text-white">
+                Create Batch
+              </button>
+            </div>
+          </form>
+        </section>
+      )}
+
+      {activeTab === 'batchMembers' && (
+        <section className="mt-6 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+            <h3 className="text-lg font-semibold">Batch Members</h3>
+            <select
+              value={selectedBatchId}
+              onChange={(e) => setSelectedBatchId(e.target.value)}
+              className="mt-4 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+            >
+              <option value="">Select batch</option>
+              {batches.map((batch) => (
+                <option key={batch.id} value={batch.id}>
+                  {batch.name}
+                </option>
+              ))}
+            </select>
+            <div className="mt-4 space-y-3">
+              {batchMembers.map((member) => (
+                <div key={member.id} className="rounded-xl border border-slate-200 bg-white p-3">
+                  <div className="font-semibold">{member.full_name}</div>
+                  <div className="text-xs text-slate-500">{member.email}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <form onSubmit={addBatchMember} className="rounded-2xl border border-slate-200 bg-white p-5">
+            <h3 className="text-lg font-semibold">Add Batch Member</h3>
+            <div className="mt-4 space-y-3">
+              <input
+                value={batchMemberForm.user_id}
+                onChange={(e) => setBatchMemberForm({ ...batchMemberForm, user_id: e.target.value })}
+                placeholder="User ID"
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              />
+              <button className="w-full rounded-lg bg-blue-900 px-3 py-2 text-sm font-semibold text-white">
+                Add Member
+              </button>
+            </div>
+          </form>
+        </section>
+      )}
+
+      {activeTab === 'roles' && (
+        <section className="mt-6 space-y-6">
+          <div className="rounded-2xl bg-white p-5 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-semibold">Role Permissions</h3>
+                <p className="text-sm text-slate-500">Manage permissions for client roles.</p>
+              </div>
+              <div className="min-w-[220px]">
+                <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Role</label>
                 <select
-                  value={roleForm.role}
-                  onChange={(e) => setRoleForm({ ...roleForm, role: e.target.value })}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                  value={selectedRole}
+                  onChange={(e) => setSelectedRole(e.target.value)}
+                  className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
                 >
                   <option value="client_admin">Client Admin</option>
                   <option value="school_owner">School Owner</option>
                   <option value="teacher">Teacher</option>
                   <option value="student">Student</option>
                 </select>
-                <button className="w-full rounded-lg bg-blue-900 px-3 py-2 text-sm font-semibold text-white">
-                  Save Permission
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-3 md:grid-cols-3">
+              <div className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
+                <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Total</div>
+                <div className="mt-2 text-2xl font-semibold text-slate-900">{permissionStats.total}</div>
+                <div className="text-xs text-slate-500">Available permissions</div>
+              </div>
+              <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4">
+                <div className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">Granted</div>
+                <div className="mt-2 text-2xl font-semibold text-emerald-700">{permissionStats.granted}</div>
+                <div className="text-xs text-emerald-700/70">Enabled for this role</div>
+              </div>
+              <div className="rounded-2xl border border-rose-100 bg-rose-50/70 p-4">
+                <div className="text-xs font-semibold uppercase tracking-[0.2em] text-rose-700">Missing</div>
+                <div className="mt-2 text-2xl font-semibold text-rose-700">{permissionStats.missing}</div>
+                <div className="text-xs text-rose-700/70">Not granted</div>
+              </div>
+            </div>
+
+            <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setFilterMode('all')}
+                  className={`rounded-full border px-3 py-1 text-xs font-semibold ${filterMode === 'all'
+                    ? 'border-slate-900 bg-slate-900 text-white'
+                    : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                    }`}
+                >
+                  All
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterMode('granted')}
+                  className={`rounded-full border px-3 py-1 text-xs font-semibold ${filterMode === 'granted'
+                    ? 'border-emerald-600 bg-emerald-600 text-white'
+                    : 'border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50'
+                    }`}
+                >
+                  Granted
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterMode('missing')}
+                  className={`rounded-full border px-3 py-1 text-xs font-semibold ${filterMode === 'missing'
+                    ? 'border-rose-600 bg-rose-600 text-white'
+                    : 'border-rose-200 bg-white text-rose-700 hover:bg-rose-50'
+                    }`}
+                >
+                  Not granted
                 </button>
               </div>
-            </form>
-          </section>
-        )}
+              <div className="w-full md:w-64">
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search permissions..."
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
 
-        {activeTab === 'users' && (
+            <div className="mt-6 space-y-6">
+              {filteredGroupedPermissions.length === 0 && (
+                <div className="rounded-2xl border border-slate-100 bg-slate-50 p-6 text-sm text-slate-600">
+                  No permissions match your filters.
+                </div>
+              )}
+              {filteredGroupedPermissions.map((group) => {
+                const isGroupSaving = saving === `group:${group.name}`;
+                return (
+                  <div key={group.name} className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold text-slate-900">{group.name}</div>
+                        <div className="text-xs text-slate-500">
+                          {group.permissions.length} permission{group.permissions.length === 1 ? '' : 's'}
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleGroupToggle(group.name, group.permissions, true)}
+                          disabled={Boolean(saving)}
+                          className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          Select all
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleGroupToggle(group.name, group.permissions, false)}
+                          disabled={Boolean(saving)}
+                          className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          Clear all
+                        </button>
+                        {isGroupSaving && <span className="text-xs text-slate-400">Saving...</span>}
+                      </div>
+                    </div>
+
+                    <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                      {group.permissions.map((permission) => {
+                        const existing = permissionMap.get(permission);
+                        const enabled = Boolean(existing?.granted);
+                        const isSaving = saving === permission || Boolean(saving?.startsWith('group:'));
+
+                        return (
+                          <div
+                            key={permission}
+                            className="flex items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-white px-4 py-3"
+                          >
+                            <div>
+                              <div className="text-sm font-semibold text-slate-900">{permission}</div>
+                              <div className="text-xs text-slate-500">
+                                {enabled ? 'Granted' : 'Not granted'}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleTogglePermission(permission, !enabled)}
+                              disabled={isSaving}
+                              aria-pressed={enabled}
+                              className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${enabled ? 'bg-emerald-500' : 'bg-slate-200'
+                                } ${isSaving ? 'cursor-not-allowed opacity-60' : ''}`}
+                            >
+                              <span
+                                className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${enabled ? 'translate-x-5' : 'translate-x-1'
+                                  }`}
+                              />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+      )}
+
+
+      {
+        activeTab === 'users' && (
           <section className="mt-6 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
               <h3 className="text-lg font-semibold">Users</h3>
@@ -540,18 +801,22 @@ export default function OrgDashboard() {
               </div>
             </form>
           </section>
-        )}
+        )
+      }
 
-        {activeTab === 'bulkSetup' && (
+      {
+        activeTab === 'bulkSetup' && (
           <section className="mt-6">
             <div className="w-full rounded-2xl border border-slate-200 bg-white p-5">
               <h3 className="mb-4 text-lg font-semibold">Bulk Upload Workspace</h3>
               <BulkSetup />
             </div>
           </section>
-        )}
-    </DashboardLayout>
+        )
+      }
+    </DashboardLayout >
   );
 }
+
 
 

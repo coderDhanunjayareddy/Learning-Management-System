@@ -12,6 +12,7 @@ export interface User {
   is_active?: boolean;
   client_id?: number | null;
   user_id?: string | null;
+  permissions?: string[];
 }
 
 interface AuthContextType {
@@ -117,7 +118,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       try {
         const res = await api.get('/auth/me');
-        setUser(res.data.user);
+        const permissions = Array.isArray(res.data?.permissions) ? res.data.permissions : [];
+        setUser({ ...res.data.user, permissions });
       } catch (error) {
         console.error('Failed to load user:', error);
         await logout();
@@ -139,12 +141,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         : { email: identifier, password };
     const res = await api.post('/auth/login', payload);
 
-    const { token, user } = res.data;
+    const { token, user, permissions } = res.data;
+    const nextUser =
+      Array.isArray(permissions)
+        ? { ...user, permissions }
+        : user;
 
     localStorage.setItem('token', token);
-    localStorage.setItem('auth_user', JSON.stringify(user));
+    localStorage.setItem('auth_user', JSON.stringify(nextUser));
     setToken(token);
-    setUser(user);
+    setUser(nextUser);
   }, []);
 
   const updateUser = (updates: Partial<User>) => {
@@ -172,11 +178,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       client_id,
       user_id,
     });
-    const { token, user } = res.data;
+    const { token, user, permissions } = res.data;
+    const nextUser =
+      Array.isArray(permissions)
+        ? { ...user, permissions }
+        : user;
     localStorage.setItem('token', token);
-    localStorage.setItem('auth_user', JSON.stringify(user));
+    localStorage.setItem('auth_user', JSON.stringify(nextUser));
     setToken(token);
-    setUser(user);
+    setUser(nextUser);
   }, []);
 
   return (

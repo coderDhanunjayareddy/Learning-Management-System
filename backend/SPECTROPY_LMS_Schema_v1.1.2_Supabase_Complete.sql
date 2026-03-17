@@ -376,6 +376,18 @@ CREATE TABLE role_permissions (
 CREATE INDEX idx_role_permissions_client ON role_permissions(client_id);
 CREATE INDEX idx_role_permissions_role ON role_permissions(role);
 
+-- 1.9A USER_PERMISSIONS
+-- Purpose: Per-user permission overrides
+CREATE TABLE user_permissions (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  permission VARCHAR(100) NOT NULL,
+  granted BOOLEAN DEFAULT TRUE,
+  UNIQUE(user_id, permission)
+);
+
+CREATE INDEX idx_user_permissions_user ON user_permissions(user_id);
+
 -- =====================================
 -- 1.10 AUDIT_LOGS
 -- Purpose: Tracks all important actions in the system
@@ -1304,6 +1316,51 @@ CREATE POLICY role_permissions_update ON role_permissions
 CREATE POLICY role_permissions_delete ON role_permissions
   FOR DELETE
   USING (app_role() = 'super_admin' OR client_id = app_client_id());
+
+ALTER TABLE user_permissions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY user_permissions_select ON user_permissions
+  FOR SELECT
+  USING (
+    app_role() = 'super_admin'
+    OR EXISTS (
+      SELECT 1 FROM users u
+      WHERE u.id = user_id AND u.client_id = app_client_id()
+    )
+  );
+CREATE POLICY user_permissions_insert ON user_permissions
+  FOR INSERT
+  WITH CHECK (
+    app_role() = 'super_admin'
+    OR EXISTS (
+      SELECT 1 FROM users u
+      WHERE u.id = user_id AND u.client_id = app_client_id()
+    )
+  );
+CREATE POLICY user_permissions_update ON user_permissions
+  FOR UPDATE
+  USING (
+    app_role() = 'super_admin'
+    OR EXISTS (
+      SELECT 1 FROM users u
+      WHERE u.id = user_id AND u.client_id = app_client_id()
+    )
+  )
+  WITH CHECK (
+    app_role() = 'super_admin'
+    OR EXISTS (
+      SELECT 1 FROM users u
+      WHERE u.id = user_id AND u.client_id = app_client_id()
+    )
+  );
+CREATE POLICY user_permissions_delete ON user_permissions
+  FOR DELETE
+  USING (
+    app_role() = 'super_admin'
+    OR EXISTS (
+      SELECT 1 FROM users u
+      WHERE u.id = user_id AND u.client_id = app_client_id()
+    )
+  );
 
 -- AUDIT LOGS
 ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;

@@ -65,7 +65,7 @@ export default function QuestionFilters({
           value={searchValue}
           onChange={(event) => setSearchValue(event.target.value)}
           placeholder="Search by text, tag, or author"
-          className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+          className="mt-0.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm focus:border-slate-400 focus:outline-none"
         />
       </div>
       <div>
@@ -146,7 +146,7 @@ export default function QuestionFilters({
           onChange={(event) =>
             onChange({ ...filters, chapterId: event.target.value, topicId: "" })
           }
-          className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+          className="mt-0.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm focus:border-slate-400 focus:outline-none"
         >
           <option value="">All</option>
           {chapters.map((chapter) => (
@@ -161,7 +161,7 @@ export default function QuestionFilters({
         <select
           value={filters.topicId}
           onChange={(event) => onChange({ ...filters, topicId: event.target.value })}
-          className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+          className="mt-0.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm focus:border-slate-400 focus:outline-none"
         >
           <option value="">All</option>
           {topics.map((topic) => (
@@ -171,41 +171,83 @@ export default function QuestionFilters({
           ))}
         </select>
       </div>
-      <div>
-        <label className="text-xs font-semibold text-slate-500">Difficulty</label>
-        <select
-          value={filters.difficulty}
-          onChange={(event) =>
-            onChange({ ...filters, difficulty: event.target.value as QuestionFiltersState["difficulty"] })
-          }
-          className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
-        >
-          <option value="">All</option>
-          <option value="easy">Easy</option>
-          <option value="medium">Medium</option>
-          <option value="hard">Hard</option>
-        </select>
-      </div>
-      <div>
-        <label className="text-xs font-semibold text-slate-500">Type</label>
-        <select
-          value={filters.type}
-          onChange={(event) =>
-            onChange({ ...filters, type: event.target.value as QuestionFiltersState["type"] })
-          }
-          className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
-        >
-          <option value="">All</option>
-          <option value="mcq_single">MCQ Single</option>
-          <option value="mcq_multiple">MCQ Multiple</option>
-          <option value="short_answer">Short Answer</option>
-          <option value="numerical">Numerical</option>
-          <option value="match_following">Match the Following</option>
-          <option value="fill_in_blank">Fill in the Blank</option>
-          <option value="true_false">True/False</option>
-          <option value="comprehensive">Comprehensive</option>
-        </select>
-      </div>
+      {isVertical ? (
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="text-xs font-semibold text-slate-500">Difficulty</label>
+            <select
+              value={filters.difficulty}
+              onChange={(event) =>
+                onChange({ ...filters, difficulty: event.target.value as QuestionFiltersState["difficulty"] })
+              }
+              className="mt-0.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm focus:border-slate-400 focus:outline-none"
+            >
+              <option value="">All</option>
+              <option value="easy">Easy</option>
+              <option value="medium">Medium</option>
+              <option value="hard">Hard</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-slate-500">Type</label>
+            <select
+              value={filters.type}
+              onChange={(event) =>
+                onChange({ ...filters, type: event.target.value as QuestionFiltersState["type"] })
+              }
+              className="mt-0.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm focus:border-slate-400 focus:outline-none"
+            >
+              <option value="">All</option>
+              <option value="mcq_single">MCQ Single</option>
+              <option value="mcq_multiple">MCQ Multiple</option>
+              <option value="short_answer">Short Answer</option>
+              <option value="numerical">Numerical</option>
+              <option value="match_following">Match the Following</option>
+              <option value="fill_in_blank">Fill in the Blank</option>
+              <option value="true_false">True/False</option>
+              <option value="comprehensive">Comprehensive</option>
+            </select>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div>
+            <label className="text-xs font-semibold text-slate-500">Difficulty</label>
+            <select
+              value={filters.difficulty}
+              onChange={(event) =>
+                onChange({ ...filters, difficulty: event.target.value as QuestionFiltersState["difficulty"] })
+              }
+              className="mt-0.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm focus:border-slate-400 focus:outline-none"
+            >
+              <option value="">All</option>
+              <option value="easy">Easy</option>
+              <option value="medium">Medium</option>
+              <option value="hard">Hard</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-slate-500">Type</label>
+            <select
+              value={filters.type}
+              onChange={(event) =>
+                onChange({ ...filters, type: event.target.value as QuestionFiltersState["type"] })
+              }
+              className="mt-0.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm focus:border-slate-400 focus:outline-none"
+            >
+              <option value="">All</option>
+              <option value="mcq_single">MCQ Single</option>
+              <option value="mcq_multiple">MCQ Multiple</option>
+              <option value="short_answer">Short Answer</option>
+              <option value="numerical">Numerical</option>
+              <option value="match_following">Match the Following</option>
+              <option value="fill_in_blank">Fill in the Blank</option>
+              <option value="true_false">True/False</option>
+              <option value="comprehensive">Comprehensive</option>
+            </select>
+          </div>
+        </>
+      )}
       <div>
         <label className="text-xs font-semibold text-slate-500">Status</label>
         <select
@@ -213,7 +255,7 @@ export default function QuestionFilters({
           onChange={(event) =>
             onChange({ ...filters, status: event.target.value as QuestionFiltersState["status"] })
           }
-          className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+          className="mt-0.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm focus:border-slate-400 focus:outline-none"
         >
           <option value="">All</option>
           <option value="draft">Draft</option>

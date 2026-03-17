@@ -27,7 +27,7 @@ export interface Entitlement {
 }
 
 export interface RolePermission {
-  id: number;
+  id: number | null;
   client_id: number | null;
   role: string;
   permission: string;

@@ -39,39 +39,39 @@ router.use(
 );
 
 // Programs
-router.get('/programs', checkPermission('programs.read'), listPrograms);
-router.get('/programs/:id', checkPermission('programs.read'), getProgram);
-router.post('/programs', checkPermission('programs.create'), createProgram);
-router.patch('/programs/:id', checkPermission('programs.update'), updateProgram);
-router.delete('/programs/:id', checkPermission('programs.delete'), deleteProgram);
+router.get('/programs', checkPermission('questions.read'), listPrograms);
+router.get('/programs/:id', checkPermission('questions.read'), getProgram);
+router.post('/programs', checkPermission('questions.create'), createProgram);
+router.patch('/programs/:id', checkPermission('questions.create'), updateProgram);
+router.delete('/programs/:id', checkPermission('questions.delete'), deleteProgram);
 
 // Grades
-router.get('/programs/:programId/grades', checkPermission('grades.read'), listGrades);
-router.get('/grades/:id', checkPermission('grades.read'), getGrade);
-router.post('/programs/:programId/grades', checkPermission('grades.create'), createGrade);
-router.patch('/grades/:id', checkPermission('grades.update'), updateGrade);
-router.delete('/grades/:id', checkPermission('grades.delete'), deleteGrade);
+router.get('/programs/:programId/grades', checkPermission('questions.read'), listGrades);
+router.get('/grades/:id', checkPermission('questions.read'), getGrade);
+router.post('/programs/:programId/grades', checkPermission('questions.create'), createGrade);
+router.patch('/grades/:id', checkPermission('questions.create'), updateGrade);
+router.delete('/grades/:id', checkPermission('questions.delete'), deleteGrade);
 
 // Subjects
-router.get('/grades/:gradeId/subjects', checkPermission('subjects.read'), listSubjectsByGrade);
-router.get('/subjects', checkPermission('subjects.read'), listSubjects);
-router.get('/subjects/:id', checkPermission('subjects.read'), getSubject);
-router.post('/subjects', checkPermission('subjects.create'), createSubject);
-router.patch('/subjects/:id', checkPermission('subjects.update'), updateSubject);
-router.delete('/subjects/:id', checkPermission('subjects.delete'), deleteSubject);
+router.get('/subjects', checkPermission('questions.read'), listSubjects);
+router.get('/grades/:gradeId/subjects', checkPermission('questions.read'), listSubjectsByGrade);
+router.get('/subjects/:id', checkPermission('questions.read'), getSubject);
+router.post('/subjects', checkPermission('questions.create'), createSubject);
+router.patch('/subjects/:id', checkPermission('questions.create'), updateSubject);
+router.delete('/subjects/:id', checkPermission('questions.delete'), deleteSubject);
 
 // Chapters
-router.get('/subjects/:subjectId/chapters', checkPermission('chapters.read'), listChapters);
-router.get('/chapters/:id', checkPermission('chapters.read'), getChapter);
-router.post('/subjects/:subjectId/chapters', checkPermission('chapters.create'), createChapter);
-router.patch('/chapters/:id', checkPermission('chapters.update'), updateChapter);
-router.delete('/chapters/:id', checkPermission('chapters.delete'), deleteChapter);
+router.get('/subjects/:subjectId/chapters', checkPermission('questions.read'), listChapters);
+router.get('/chapters/:id', checkPermission('questions.read'), getChapter);
+router.post('/subjects/:subjectId/chapters', checkPermission('questions.create'), createChapter);
+router.patch('/chapters/:id', checkPermission('questions.create'), updateChapter);
+router.delete('/chapters/:id', checkPermission('questions.delete'), deleteChapter);
 
 // Topics
-router.get('/chapters/:chapterId/topics', checkPermission('topics.read'), listTopics);
-router.get('/topics/:id', checkPermission('topics.read'), getTopic);
-router.post('/chapters/:chapterId/topics', checkPermission('topics.create'), createTopic);
-router.patch('/topics/:id', checkPermission('topics.update'), updateTopic);
-router.delete('/topics/:id', checkPermission('topics.delete'), deleteTopic);
+router.get('/chapters/:chapterId/topics', checkPermission('questions.read'), listTopics);
+router.get('/topics/:id', checkPermission('questions.read'), getTopic);
+router.post('/chapters/:chapterId/topics', checkPermission('questions.create'), createTopic);
+router.patch('/topics/:id', checkPermission('questions.create'), updateTopic);
+router.delete('/topics/:id', checkPermission('questions.delete'), deleteTopic);
 
 export default router;
