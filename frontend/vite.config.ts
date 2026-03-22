@@ -34,6 +34,9 @@ export default defineConfig({
           },
         ],
       },
+      workbox: {
+        maximumFileSizeToCacheInBytes: 3000000,
+      },
     }),
   ],
   resolve: {
@@ -46,7 +49,7 @@ export default defineConfig({
     host: true,
     proxy: {
       '/api': {
-        target: 'http://localhost:5000', // your backend
+        target: 'http://localhost:5000',
         changeOrigin: true,
         secure: false,
       },
