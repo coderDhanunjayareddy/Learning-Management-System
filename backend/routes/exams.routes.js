@@ -10,6 +10,8 @@ import {
   deleteExamSection,
   addQuestionToSection,
   publishExam,
+  getExamAssignedCourses,
+  assignExamCourses,
 } from '../controllers/exams.controller.js';
 import { authenticateToken, requireRole } from '../middleware/auth.js';
 
@@ -32,5 +34,7 @@ router.delete('/exams/:id/sections/:sectionId', deleteExamSection);
 
 router.post('/exams/:id/sections/:sectionId/questions', addQuestionToSection);
 router.post('/exams/:id/publish', publishExam);
+router.get('/exams/:id/courses', getExamAssignedCourses);
+router.put('/exams/:id/courses', assignExamCourses);
 
 export default router;

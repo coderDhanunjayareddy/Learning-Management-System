@@ -38,7 +38,7 @@ const getActionState = (status: ExamStatus | null) => {
   return {
     canEdit: isDraft,
     canBuilder: isDraft,
-    canAssign: isDraft,
+    canAssign: true,
     canLive: isActive,
     canResults: isCompleted,
   };
@@ -181,3 +181,4 @@ export default function ExamListTable({ exams, onAction }: ExamListTableProps) {
     </div>
   );
 }
+
