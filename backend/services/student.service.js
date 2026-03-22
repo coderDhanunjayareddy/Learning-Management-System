@@ -473,4 +473,342 @@ export const saveExamResponse = async (req, res) => {
   }
 };
 
+// ============================================
+// TASK 1: Submit Exam API
+// ============================================
+export const submitExamAttempt = async (req, res) => {
+  const attemptId = Number(req.params.aid);
+  const studentId = req.user?.id;
+
+  if (!attemptId || Number.isNaN(attemptId)) {
+    return res.status(400).json({ error: 'Invalid attempt ID' });
+  }
+
+  if (!studentId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+
+    // 1. Fetch attempt + exam window
+    const attemptRes = await client.query(
+      `SELECT ea.*, e.end_datetime, e.start_datetime
+       FROM exam_attempts ea
+       JOIN exams e ON ea.exam_id = e.id
+       WHERE ea.id = $1 AND ea.student_id = $2`,
+      [attemptId, studentId]
+    );
+
+    if (attemptRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Attempt not found or access denied' });
+    }
+
+    const attempt = attemptRes.rows[0];
+    const now = new Date();
+    const startDt = new Date(attempt.start_datetime);
+    const endDt = new Date(attempt.end_datetime);
+
+    // Validate exam window
+    if (now < startDt) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'Exam has not started yet' });
+    }
+
+    const isLate = now > endDt;
+
+    // Validate attempt not already submitted
+    if (attempt.status !== 'in_progress') {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'Attempt already submitted or graded' });
+    }
+
+    // 2. Atomic status transition (WHERE status='in_progress')
+    const updateRes = await client.query(
+      `UPDATE exam_attempts
+       SET status = 'submitted', submitted_at = $1, auto_submitted = $2
+       WHERE id = $3 AND status = 'in_progress'
+       RETURNING id`,
+      [now, isLate, attemptId]
+    );
+
+    if (updateRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'Attempt already submitted (race condition)' });
+    }
+
+    // 3. Trigger grading
+    await gradeAttempt(client, attemptId);
+
+    await client.query('COMMIT');
+
+    // Return attempt summary
+    const finalAttempt = await dbQuery(
+      `SELECT id, exam_id, student_id, attempt_number, status, submitted_at, total_score, 
+              total_correct, total_wrong, total_unattempted
+       FROM exam_attempts WHERE id = $1`,
+      [attemptId]
+    );
+
+    return res.status(200).json({
+      message: 'Exam submitted and graded successfully',
+      attempt: finalAttempt.rows[0]
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Submit exam error:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    client.release();
+  }
+};
+
+// ============================================
+// TASK 2 & 3: Grading Functions by Question Type
+// ============================================
+
+// Grade single MCQ - exact match
+const gradeMCQSingle = (studentAnswer, correctAnswer) => {
+  if (studentAnswer === null || studentAnswer === '' || studentAnswer === undefined) {
+    return { isCorrect: false, isUnattempted: true };
+  }
+  // Normalize to string for comparison
+  const normalizedStudent = String(studentAnswer).trim();
+  const normalizedCorrect = String(correctAnswer).trim();
+  return {
+    isCorrect: normalizedStudent === normalizedCorrect,
+    isUnattempted: false
+  };
+};
+
+// Grade multiple MCQ - exact full set match
+const gradeMCQMultiple = (studentAnswer, correctAnswer) => {
+  if (!studentAnswer || (Array.isArray(studentAnswer) && studentAnswer.length === 0)) {
+    return { isCorrect: false, isUnattempted: true };
+  }
+
+  const studentArray = Array.isArray(studentAnswer) ? studentAnswer : [studentAnswer];
+  const correctArray = Array.isArray(correctAnswer) ? correctAnswer : [correctAnswer];
+
+  // Normalize and sort for comparison
+  const studentNorm = studentArray.map(s => String(s).trim()).sort();
+  const correctNorm = correctArray.map(c => String(c).trim()).sort();
+
+  const isExactMatch = studentNorm.length === correctNorm.length &&
+    studentNorm.every((val, idx) => val === correctNorm[idx]);
+
+  return {
+    isCorrect: isExactMatch,
+    isUnattempted: false
+  };
+};
+
+// Grade numerical - tolerance check (default 0.01)
+const gradeNumerical = (studentAnswer, correctAnswer, tolerance = 0.01) => {
+  if (studentAnswer === null || studentAnswer === '' || studentAnswer === undefined) {
+    return { isCorrect: false, isUnattempted: true };
+  }
+
+  try {
+    const studentNum = parseFloat(studentAnswer);
+    const correctNum = parseFloat(correctAnswer);
+
+    if (Number.isNaN(studentNum) || Number.isNaN(correctNum)) {
+      return { isCorrect: false, isUnattempted: false };
+    }
+
+    const diff = Math.abs(studentNum - correctNum);
+    return {
+      isCorrect: diff <= tolerance,
+      isUnattempted: false
+    };
+  } catch (e) {
+    return { isCorrect: false, isUnattempted: false };
+  }
+};
+
+// Grade true/false - exact match
+const gradeTrueFalse = (studentAnswer, correctAnswer) => {
+  if (studentAnswer === null || studentAnswer === '' || studentAnswer === undefined) {
+    return { isCorrect: false, isUnattempted: true };
+  }
+
+  // Normalize to lowercase string
+  const normalizedStudent = String(studentAnswer).toLowerCase().trim();
+  const normalizedCorrect = String(correctAnswer).toLowerCase().trim();
+
+  return {
+    isCorrect: normalizedStudent === normalizedCorrect,
+    isUnattempted: false
+  };
+};
+
+// Grade integer - exact match after parsing
+const gradeInteger = (studentAnswer, correctAnswer) => {
+  if (studentAnswer === null || studentAnswer === '' || studentAnswer === undefined) {
+    return { isCorrect: false, isUnattempted: true };
+  }
+
+  try {
+    const studentInt = parseInt(studentAnswer, 10);
+    const correctInt = parseInt(correctAnswer, 10);
+
+    if (Number.isNaN(studentInt) || Number.isNaN(correctInt)) {
+      return { isCorrect: false, isUnattempted: false };
+    }
+
+    return {
+      isCorrect: studentInt === correctInt,
+      isUnattempted: false
+    };
+  } catch (e) {
+    return { isCorrect: false, isUnattempted: false };
+  }
+};
+
+// ============================================
+// Task 4: Grading Orchestrator + Totals
+// ============================================
+
+const gradeAttempt = async (client, attemptId) => {
+  // Fetch all responses with question/section scoring metadata
+  const responsesRes = await client.query(
+    `SELECT 
+       er.id,
+       er.question_id,
+       er.section_id,
+       er.student_answer,
+       q.question_type,
+       q.correct_answer,
+       q.marks_positive,
+       q.marks_negative,
+       eq.marks_override,
+       eq.negative_override,
+       es.marks_per_question,
+       es.negative_marks
+     FROM exam_responses er
+     JOIN questions q ON er.question_id = q.id
+     JOIN exam_questions eq ON er.question_id = eq.question_id AND er.section_id = eq.section_id
+     JOIN exam_sections es ON er.section_id = es.id
+     WHERE er.attempt_id = $1`,
+    [attemptId]
+  );
+
+  const responses = responsesRes.rows;
+  let totalScore = 0;
+  let totalCorrect = 0;
+  let totalWrong = 0;
+  let totalUnattempted = 0;
+
+  // Grade each response
+  for (const response of responses) {
+    const {
+      id: responseId,
+      question_type: questionType,
+      student_answer: studentAnswer,
+      correct_answer: correctAnswer,
+      marks_positive: markPositive,
+      marks_negative: markNegative,
+      marks_override: marksOverride,
+      negative_override: negativeOverride,
+      marks_per_question: markPerQuestion,
+      negative_marks: negativeMarks
+    } = response;
+
+    // Mark source resolution: override → section default → question default
+    const posMarks = marksOverride !== null ? Number(marksOverride) :
+      (markPerQuestion !== null ? Number(markPerQuestion) :
+        (markPositive !== null ? Number(markPositive) : 0));
+
+    const negMarks = negativeOverride !== null ? Number(negativeOverride) :
+      (negativeMarks !== null ? Number(negativeMarks) :
+        (markNegative !== null ? Number(markNegative) : 0));
+
+    let isCorrect = false;
+    let isUnattempted = false;
+    let marksAwarded = 0;
+
+    // Grade based on question type
+    switch (questionType) {
+      case 'mcq_single': {
+        const result = gradeMCQSingle(studentAnswer, correctAnswer);
+        isCorrect = result.isCorrect;
+        isUnattempted = result.isUnattempted;
+        break;
+      }
+      case 'mcq_multiple': {
+        const result = gradeMCQMultiple(studentAnswer, correctAnswer);
+        isCorrect = result.isCorrect;
+        isUnattempted = result.isUnattempted;
+        break;
+      }
+      case 'numerical': {
+        const result = gradeNumerical(studentAnswer, correctAnswer);
+        isCorrect = result.isCorrect;
+        isUnattempted = result.isUnattempted;
+        break;
+      }
+      case 'true_false': {
+        const result = gradeTrueFalse(studentAnswer, correctAnswer);
+        isCorrect = result.isCorrect;
+        isUnattempted = result.isUnattempted;
+        break;
+      }
+      case 'integer': {
+        const result = gradeInteger(studentAnswer, correctAnswer);
+        isCorrect = result.isCorrect;
+        isUnattempted = result.isUnattempted;
+        break;
+      }
+      default:
+        // Skip unsupported types for MVP
+        continue;
+    }
+
+    // Calculate marks awarded
+    if (isUnattempted) {
+      marksAwarded = 0;
+      totalUnattempted++;
+    } else if (isCorrect) {
+      marksAwarded = posMarks;
+      totalCorrect++;
+    } else {
+      // Negative marking only on wrong (not unattempted)
+      marksAwarded = -negMarks;
+      totalWrong++;
+    }
+
+    totalScore += marksAwarded;
+
+    // Update response with grading results
+    await client.query(
+      `UPDATE exam_responses
+       SET is_correct = $1, marks_awarded = $2
+       WHERE id = $3`,
+      [isCorrect, marksAwarded, responseId]
+    );
+  }
+
+  // Round final score to 2 decimal places
+  const finalScore = Math.round(totalScore * 100) / 100;
+
+  // Calculate pass/fail: 50% threshold for MVP
+  const totalPossibleMarks = responses.length * 4; // Default marks if all had default 4 marks
+  const isPassed = finalScore >= (totalPossibleMarks * 0.5);
+
+  // Update attempt with final totals
+  await client.query(
+    `UPDATE exam_attempts
+     SET status = 'graded',
+         total_score = $1,
+         total_correct = $2,
+         total_wrong = $3,
+         total_unattempted = $4
+     WHERE id = $5`,
+    [finalScore, totalCorrect, totalWrong, totalUnattempted, attemptId]
+  );
+};
+
 
