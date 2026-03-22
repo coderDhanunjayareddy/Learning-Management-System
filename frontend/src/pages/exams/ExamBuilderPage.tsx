@@ -1,16 +1,11 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import toast from "react-hot-toast";
-import { DragDropContext, Draggable, Droppable, type DropResult } from "@hello-pangea/dnd";
 import api from "@/lib/api";
 import ExamShell from "@/features/exams/components/ExamShell";
 import ExamStatusBadge from "@/components/ui/ExamStatusBadge";
-import Pagination from "@/components/ui/Pagination";
-import QuestionFilters, { type QuestionFiltersState } from "@/features/question-bank/components/QuestionFilters";
-import QuestionRenderer from "@/components/questions/QuestionRenderer";
 import { computeExamStatus } from "@/features/exams/utils/computeExamStatus";
 import type { ExamSection, ExamSummary, ExamStatus } from "@/features/exams/types";
-import type { CurriculumItem, Question } from "@/types/questionBank";
 
 interface ExamDetail extends ExamSummary {
   sections?: ExamSection[];
@@ -18,81 +13,6 @@ interface ExamDetail extends ExamSummary {
   question_count?: number | null;
   section_count?: number | null;
 }
-
-const normalizeCurriculum = (items: any[]): CurriculumItem[] =>
-  items
-    .map((item) => ({
-      id: item.id ?? item.program_id ?? item.grade_id ?? item.subject_id ?? item.chapter_id ?? item.topic_id,
-      name:
-        item.name ??
-        (item.grade_number !== undefined && item.grade_number !== null
-          ? `Grade ${item.grade_number}`
-          : null) ??
-        item.title ??
-        item.subject_name ??
-        "Untitled",
-      code: item.code ?? null,
-      program_id: item.program_id ?? item.programId ?? null,
-      grade_id: item.grade_id ?? item.gradeId ?? null,
-      grade_number: item.grade_number ?? item.gradeNumber ?? null,
-      subject_id: item.subject_id ?? item.subjectId ?? null,
-      chapter_id: item.chapter_id ?? item.chapterId ?? null,
-    }))
-    .filter((item) => item.id !== undefined && item.id !== null);
-
-const resolveQuestionText = (value: any) => {
-  if (typeof value === "string") return { html: value, json: null };
-  if (value && typeof value === "object") {
-    return { html: value.html ?? value.text ?? "", json: value.json ?? null };
-  }
-  return { html: "", json: null };
-};
-
-const normalizeOptions = (options: any) => {
-  if (!Array.isArray(options)) return [];
-  return options.map((option, index) => {
-    if (typeof option === "string") {
-      return { id: `${index}`, text: { html: option, json: null } };
-    }
-    if (option && typeof option === "object") {
-      return {
-        id: String(option.id ?? index),
-        text: typeof option.text === "object" ? option.text : { html: option.text ?? option.label ?? option.value ?? "", json: null },
-        is_correct: option.is_correct ?? option.isCorrect ?? option.correct ?? undefined,
-      };
-    }
-    return { id: `${index}`, text: { html: String(option ?? ""), json: null } };
-  });
-};
-
-const normalizeQuestions = (items: any[]): Question[] =>
-  items.map((item) => ({
-    id: item.id ?? item.question_id ?? `${Math.random()}`,
-    question_type: item.question_type ?? "mcq_single",
-    question_text: resolveQuestionText(item.question_text),
-    options: normalizeOptions(item.options),
-    correct_answer: item.correct_answer ?? null,
-    solution: resolveQuestionText(item.solution),
-    solution_video_url: item.solution_video_url ?? null,
-    scoring_mode: item.scoring_mode ?? "all_or_nothing",
-    comprehension_passage: resolveQuestionText(item.comprehension_passage),
-    comprehension_questions: item.comprehension_questions ?? [],
-    program_id: item.program_id ?? null,
-    grade_id: item.grade_id ?? null,
-    subject_id: item.subject_id ?? null,
-    chapter_id: item.chapter_id ?? null,
-    topic_id: item.topic_id ?? null,
-    difficulty_level: item.difficulty_level ?? "easy",
-    marks_positive: Number(item.marks_positive ?? 4),
-    marks_negative: Number(item.marks_negative ?? 1),
-    exam_tags: item.exam_tags ?? [],
-    status: item.status ?? "draft",
-    created_by:
-      item.created_by_name ??
-      (item.created_by !== undefined && item.created_by !== null ? String(item.created_by) : "Unknown"),
-    created_at: item.created_at ?? null,
-    review_note: item.review_note ?? item.rejection_reason ?? null,
-  }));
 
 const normalizeStatus = (value?: string | null): ExamStatus | null => {
   if (!value) return null;
@@ -114,8 +34,6 @@ interface SectionDraft {
   marks_per_question: string;
   negative_marks: string;
 }
-
-type SelectedQuestion = Question;
 
 const buildSectionEdits = (sectionList: ExamSection[]) => {
   const editMap: Record<string, SectionDraft> = {};
@@ -142,6 +60,7 @@ const buildDemoExam = (): ExamDetail => {
   const sections: ExamSection[] = [
     {
       id: 101,
+      exam_id: 0,
       title: "Section A",
       marks_per_question: 4,
       negative_marks: 1,
@@ -149,6 +68,7 @@ const buildDemoExam = (): ExamDetail => {
     },
     {
       id: 102,
+      exam_id: 0,
       title: "Section B",
       marks_per_question: 2,
       negative_marks: 0.5,
@@ -170,310 +90,6 @@ const buildDemoExam = (): ExamDetail => {
   };
 };
 
-function QuestionSelectionModal({
-  open,
-  section,
-  selectedIds,
-  onToggle,
-  onClose,
-}: {
-  open: boolean;
-  section: ExamSection | null;
-  selectedIds: Set<string>;
-  onToggle: (question: Question) => void;
-  onClose: () => void;
-}) {
-  const [questions, setQuestions] = useState<Question[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const pageSize = 20;
-
-  const [programs, setPrograms] = useState<CurriculumItem[]>([]);
-  const [grades, setGrades] = useState<CurriculumItem[]>([]);
-  const [subjects, setSubjects] = useState<CurriculumItem[]>([]);
-  const [chapters, setChapters] = useState<CurriculumItem[]>([]);
-  const [topics, setTopics] = useState<CurriculumItem[]>([]);
-
-  const [filters, setFilters] = useState<QuestionFiltersState>({
-    search: "",
-    programId: "",
-    gradeId: "",
-    subjectId: "",
-    chapterId: "",
-    topicId: "",
-    difficulty: "",
-    type: "",
-    status: "approved",
-  });
-
-  useEffect(() => {
-    if (!open) return;
-    const loadPrograms = async () => {
-      try {
-        const res = await api.get("/programs");
-        const payload = Array.isArray(res.data)
-          ? res.data
-          : Array.isArray(res.data?.data)
-            ? res.data.data
-            : [];
-        setPrograms(normalizeCurriculum(payload));
-      } catch {
-        setPrograms([]);
-      }
-    };
-    loadPrograms();
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    if (!filters.programId) {
-      setGrades([]);
-      setSubjects([]);
-      setChapters([]);
-      setTopics([]);
-      return;
-    }
-    const loadGrades = async () => {
-      try {
-        const res = await api.get(`/programs/${filters.programId}/grades`);
-        const payload = Array.isArray(res.data)
-          ? res.data
-          : Array.isArray(res.data?.data)
-            ? res.data.data
-            : [];
-        setGrades(normalizeCurriculum(payload));
-      } catch {
-        setGrades([]);
-      }
-    };
-    loadGrades();
-  }, [filters.programId, open]);
-
-  useEffect(() => {
-    if (!open) return;
-    if (!filters.gradeId) {
-      setSubjects([]);
-      setChapters([]);
-      setTopics([]);
-      return;
-    }
-    const loadSubjects = async () => {
-      try {
-        const res = await api.get(`/grades/${filters.gradeId}/subjects`);
-        const payload = Array.isArray(res.data)
-          ? res.data
-          : Array.isArray(res.data?.data)
-            ? res.data.data
-            : [];
-        setSubjects(normalizeCurriculum(payload));
-      } catch {
-        setSubjects([]);
-      }
-    };
-    loadSubjects();
-  }, [filters.gradeId, open]);
-
-  useEffect(() => {
-    if (!open) return;
-    if (!filters.subjectId) {
-      setChapters([]);
-      setTopics([]);
-      return;
-    }
-    const loadChapters = async () => {
-      try {
-        const res = await api.get(`/subjects/${filters.subjectId}/chapters`);
-        const payload = Array.isArray(res.data)
-          ? res.data
-          : Array.isArray(res.data?.data)
-            ? res.data.data
-            : [];
-        setChapters(normalizeCurriculum(payload));
-      } catch {
-        setChapters([]);
-      }
-    };
-    loadChapters();
-  }, [filters.subjectId, open]);
-
-  useEffect(() => {
-    if (!open) return;
-    if (!filters.chapterId) {
-      setTopics([]);
-      return;
-    }
-    const loadTopics = async () => {
-      try {
-        const res = await api.get(`/chapters/${filters.chapterId}/topics`);
-        const payload = Array.isArray(res.data)
-          ? res.data
-          : Array.isArray(res.data?.data)
-            ? res.data.data
-            : [];
-        setTopics(normalizeCurriculum(payload));
-      } catch {
-        setTopics([]);
-      }
-    };
-    loadTopics();
-  }, [filters.chapterId, open]);
-
-  useEffect(() => {
-    if (!open) return;
-    let isMounted = true;
-    const loadQuestions = async () => {
-      setLoading(true);
-      try {
-        const params: Record<string, string | number> = {
-          page,
-          page_size: pageSize,
-        };
-        if (filters.search.trim()) params.q = filters.search.trim();
-        if (filters.programId) params.program_id = filters.programId;
-        if (filters.gradeId) params.grade_id = filters.gradeId;
-        if (filters.subjectId) params.subject_id = filters.subjectId;
-        if (filters.chapterId) params.chapter_id = filters.chapterId;
-        if (filters.topicId) params.topic_id = filters.topicId;
-        if (filters.difficulty) params.difficulty_level = filters.difficulty;
-        if (filters.type) params.question_type = filters.type;
-        if (filters.status) params.status = filters.status;
-
-        const res = await api.get("/questions", { params });
-        const payload = Array.isArray(res.data?.data) ? res.data.data : [];
-        if (!isMounted) return;
-        const normalized = normalizeQuestions(payload);
-        setQuestions(normalized);
-        setTotal(Number(res.data?.total ?? normalized.length));
-      } catch {
-        if (!isMounted) return;
-        setQuestions([]);
-        setTotal(0);
-      } finally {
-        if (isMounted) setLoading(false);
-      }
-    };
-
-    loadQuestions();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [filters, page, open]);
-
-  useEffect(() => {
-    if (open) setPage(1);
-  }, [filters, open]);
-
-  if (!open || !section) return null;
-
-  const availableChapters = chapters.filter(
-    (chapter) => !filters.subjectId || String(chapter.subject_id) === filters.subjectId
-  );
-  const availableTopics = topics.filter(
-    (topic) => !filters.chapterId || String(topic.chapter_id) === filters.chapterId
-  );
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="max-h-[90vh] w-full max-w-6xl overflow-hidden rounded-2xl bg-white shadow-xl">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-6 py-4">
-          <div>
-            <h3 className="text-lg font-semibold">Add Questions</h3>
-            <p className="text-sm text-slate-500">Section: {section.title}</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
-              Not saved yet
-            </span>
-            <button
-              onClick={onClose}
-              className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-            >
-              Done
-            </button>
-          </div>
-        </div>
-
-        <div className="p-6">
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <QuestionFilters
-              layout="vertical"
-              filters={filters}
-              programs={programs}
-              grades={grades}
-              subjects={subjects}
-              chapters={availableChapters}
-              topics={availableTopics}
-              onChange={setFilters}
-            />
-          </div>
-
-          <div className="mt-4">
-            {loading ? (
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-6 text-sm text-slate-500">
-                Loading questions...
-              </div>
-            ) : questions.length === 0 ? (
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-6 text-sm text-slate-500">
-                No questions match the current filters.
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {questions.map((question) => {
-                  const id = String(question.id);
-                  const isSelected = selectedIds.has(id);
-                  return (
-                    <div key={id} className="flex gap-3 rounded-xl border border-slate-200 bg-white p-4">
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={() => onToggle(question)}
-                        className="mt-1"
-                      />
-                      <div className="flex-1">
-                        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                          <span className="rounded-full bg-slate-100 px-2 py-0.5 font-semibold">
-                            {question.question_type}
-                          </span>
-                          <span className="rounded-full bg-slate-100 px-2 py-0.5 font-semibold">
-                            {question.difficulty_level}
-                          </span>
-                          <span className="rounded-full bg-slate-100 px-2 py-0.5 font-semibold">
-                            {question.status}
-                          </span>
-                        </div>
-                        <div className="mt-2">
-                          <QuestionRenderer
-                            question={question}
-                            showMeta={false}
-                            showOptions={false}
-                            showAnswer={false}
-                            showSolution={false}
-                            showComprehension={false}
-                            contentClassName="text-sm font-semibold text-slate-900"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-
-                <Pagination
-                  page={page}
-                  pageSize={pageSize}
-                  total={total}
-                  onPageChange={setPage}
-                />
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export default function ExamBuilderPage() {
   const navigate = useNavigate();
   const { id } = useParams();
@@ -490,10 +106,6 @@ export default function ExamBuilderPage() {
 
   const [sectionEdits, setSectionEdits] = useState<Record<string, SectionDraft>>({});
   const [savingSectionId, setSavingSectionId] = useState<string | null>(null);
-
-  const [modalOpen, setModalOpen] = useState(false);
-  const [activeSection, setActiveSection] = useState<ExamSection | null>(null);
-  const [selectedQuestionsBySection, setSelectedQuestionsBySection] = useState<Record<string, SelectedQuestion[]>>({});
 
   const [publishModalOpen, setPublishModalOpen] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -512,7 +124,7 @@ export default function ExamBuilderPage() {
         const sectionList = Array.isArray(payload.sections) ? payload.sections : [];
         setSections(sectionList);
         setSectionEdits(buildSectionEdits(sectionList));
-      } catch (err: any) {
+      } catch {
         if (!mounted) return;
         const demo = buildDemoExam();
         setExam(demo);
@@ -535,18 +147,23 @@ export default function ExamBuilderPage() {
   const effectiveStatus = normalizeStatus(exam?.status ?? null) ?? computeExamStatus(exam ?? {});
   const isReadOnly = exam?.status ? exam.status !== "draft" : effectiveStatus !== "draft";
 
+  const sectionCount = sections.length;
+  const totalQuestionCount = useMemo(
+    () => sections.reduce((sum, section) => sum + (section.question_count ?? 0), 0),
+    [sections]
+  );
+
   const publishValidation = useMemo(
     () =>
       sections.map((section) => {
-        const local = selectedQuestionsBySection[String(section.id)] ?? [];
-        const count = local.length > 0 ? local.length : section.question_count ?? 0;
+        const count = section.question_count ?? 0;
         return {
           section,
           count,
           valid: count >= 1,
         };
       }),
-    [sections, selectedQuestionsBySection]
+    [sections]
   );
   const canPublish = publishValidation.every((item) => item.valid);
 
@@ -658,73 +275,12 @@ export default function ExamBuilderPage() {
     }
   };
 
-  const openModal = (section: ExamSection) => {
-    setActiveSection(section);
-    setModalOpen(true);
-  };
-
-  const handleToggleQuestion = (question: Question) => {
-    if (!activeSection) return;
-    const sectionId = String(activeSection.id);
-    setSelectedQuestionsBySection((prev) => {
-      const current = [...(prev[sectionId] ?? [])];
-      const questionId = String(question.id);
-      const existingIndex = current.findIndex((item) => String(item.id) === questionId);
-      if (existingIndex >= 0) {
-        current.splice(existingIndex, 1);
-      } else {
-        current.push(question);
-      }
-      return {
-        ...prev,
-        [sectionId]: current,
-      };
-    });
-  };
-
-  const handleRemoveSelectedQuestion = (sectionId: number, questionId: string) => {
-    const key = String(sectionId);
-    setSelectedQuestionsBySection((prev) => {
-      const current = prev[key] ?? [];
-      return {
-        ...prev,
-        [key]: current.filter((question) => String(question.id) !== questionId),
-      };
-    });
-  };
-
-  const handleReorderSelectedQuestions = (sectionId: number, result: DropResult) => {
-    if (!result.destination) return;
-    if (result.destination.index === result.source.index) return;
-    const key = String(sectionId);
-    setSelectedQuestionsBySection((prev) => {
-      const current = [...(prev[key] ?? [])];
-      const [moved] = current.splice(result.source.index, 1);
-      if (!moved) return prev;
-      current.splice(result.destination!.index, 0, moved);
-      return {
-        ...prev,
-        [key]: current,
-      };
-    });
-  };
-
-  const closeModal = () => {
-    setModalOpen(false);
-    setActiveSection(null);
-  };
-
-  const selectionCount = (sectionId: number) =>
-    selectedQuestionsBySection[String(sectionId)]?.length ?? 0;
-
   const handlePublish = async () => {
     if (!id || !canPublish) return;
     try {
       setPublishing(true);
       const res = await api.post(`/exams/${id}/publish`);
-      setExam((prev) =>
-        prev ? { ...prev, status: res.data?.status ?? "published" } : prev
-      );
+      setExam((prev) => (prev ? { ...prev, status: res.data?.status ?? "published" } : prev));
       toast.success("Exam published");
       setPublishModalOpen(false);
     } catch (err: any) {
@@ -736,7 +292,7 @@ export default function ExamBuilderPage() {
   };
 
   return (
-    <ExamShell title="Exam Builder" description="Manage sections and build the exam paper.">
+    <ExamShell title="Exam Builder" description="Manage sections and build the exam paper." backTo="/exams">
       {loading ? (
         <div className="rounded-xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-500">
           Loading exam...
@@ -755,7 +311,7 @@ export default function ExamBuilderPage() {
             <div>
               <h2 className="text-lg font-semibold text-slate-900">{exam.title}</h2>
               <p className="text-sm text-slate-500">
-                {exam.section_count ?? sections.length} sections · {exam.question_count ?? 0} questions
+                {sectionCount} sections . {totalQuestionCount} questions
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -833,7 +389,6 @@ export default function ExamBuilderPage() {
                   marks_per_question: String(section.marks_per_question ?? ""),
                   negative_marks: String(section.negative_marks ?? ""),
                 };
-                const selectedCount = selectionCount(section.id);
                 return (
                   <div key={section.id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                     <div className="flex flex-wrap items-start justify-between gap-4">
@@ -842,11 +397,6 @@ export default function ExamBuilderPage() {
                           <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
                             {section.question_count ?? 0} questions
                           </span>
-                          {selectedCount > 0 && (
-                            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
-                              {selectedCount} selected (not saved)
-                            </span>
-                          )}
                         </div>
                         <div className="mt-4 grid gap-3 md:grid-cols-3">
                           <div>
@@ -906,98 +456,20 @@ export default function ExamBuilderPage() {
                         </div>
                         <div className="mt-4 rounded-xl border border-slate-100 bg-slate-50 p-4">
                           <div className="flex flex-wrap items-center justify-between gap-2">
-                            <h4 className="text-sm font-semibold text-slate-700">Selected Questions</h4>
-                            {selectedCount > 0 && (
-                              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
-                                Not saved yet
-                              </span>
-                            )}
+                            <h4 className="text-sm font-semibold text-slate-700">Questions</h4>
+                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                              {section.question_count ?? 0} added
+                            </span>
                           </div>
-
-                          {selectedCount === 0 ? (
-                            <div className="mt-3 text-xs text-slate-500">No selected questions yet.</div>
-                          ) : (
-                            <DragDropContext
-                              onDragEnd={(result) => handleReorderSelectedQuestions(section.id, result)}
-                            >
-                              <Droppable droppableId={`section-${section.id}`}>
-                                {(dropProvided) => (
-                                  <div
-                                    ref={dropProvided.innerRef}
-                                    {...dropProvided.droppableProps}
-                                    className="mt-3 space-y-3"
-                                  >
-                                    {(selectedQuestionsBySection[String(section.id)] ?? []).map((question, index) => (
-                                      <Draggable
-                                        key={`section-${section.id}-question-${question.id}`}
-                                        draggableId={`section-${section.id}-question-${question.id}`}
-                                        index={index}
-                                        isDragDisabled={isReadOnly}
-                                      >
-                                        {(dragProvided) => (
-                                          <div
-                                            ref={dragProvided.innerRef}
-                                            {...dragProvided.draggableProps}
-                                            className="rounded-lg border border-slate-200 bg-white p-3"
-                                          >
-                                            <div className="flex gap-3">
-                                              <div
-                                                {...dragProvided.dragHandleProps}
-                                                className="mt-1 cursor-grab select-none text-slate-400"
-                                              >
-                                                ::
-                                              </div>
-                                              <div className="flex-1">
-                                                <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
-                                                  <span className="rounded-full bg-slate-100 px-2 py-0.5 font-semibold text-slate-600">
-                                                    #{index + 1}
-                                                  </span>
-                                                  <span className="rounded-full bg-slate-100 px-2 py-0.5 font-semibold">
-                                                    {question.question_type}
-                                                  </span>
-                                                  <span className="rounded-full bg-slate-100 px-2 py-0.5 font-semibold">
-                                                    {question.difficulty_level}
-                                                  </span>
-                                                  <span className="rounded-full bg-slate-100 px-2 py-0.5 font-semibold text-slate-700">
-                                                    +{section.marks_per_question ?? 0} / -{section.negative_marks ?? 0}
-                                                  </span>
-                                                </div>
-                                                <div className="mt-2">
-                                                  <QuestionRenderer
-                                                    question={question}
-                                                    showMeta={false}
-                                                    showOptions={false}
-                                                    showAnswer={false}
-                                                    showSolution={false}
-                                                    showComprehension={false}
-                                                    contentClassName="text-sm font-semibold text-slate-900"
-                                                  />
-                                                </div>
-                                              </div>
-                                              <button
-                                                onClick={() => handleRemoveSelectedQuestion(section.id, String(question.id))}
-                                                disabled={isReadOnly}
-                                                className="h-7 rounded-md border border-rose-200 px-2 text-[11px] font-semibold text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
-                                              >
-                                                Remove
-                                              </button>
-                                            </div>
-                                          </div>
-                                        )}
-                                      </Draggable>
-                                    ))}
-                                    {dropProvided.placeholder}
-                                  </div>
-                                )}
-                              </Droppable>
-                            </DragDropContext>
-                          )}
+                          <div className="mt-3 text-xs text-slate-500">
+                            Manage section questions on the Add Questions page.
+                          </div>
                         </div>
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <button
-                          onClick={() => openModal(section)}
-                          disabled={isReadOnly}
+                          onClick={() => navigate(`/exams/${id}/sections/${section.id}/questions`, { state: { sectionTitle: section.title } })}
+                          disabled={isReadOnly || !id}
                           className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           Add Questions
@@ -1025,16 +497,6 @@ export default function ExamBuilderPage() {
           </div>
         </div>
       )}
-
-      <QuestionSelectionModal
-        open={modalOpen}
-        section={activeSection}
-        selectedIds={new Set(
-          (selectedQuestionsBySection[String(activeSection?.id ?? "")] ?? []).map((question) => String(question.id))
-        )}
-        onToggle={handleToggleQuestion}
-        onClose={closeModal}
-      />
 
       {publishModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">

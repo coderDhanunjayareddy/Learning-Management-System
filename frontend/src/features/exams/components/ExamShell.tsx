@@ -5,20 +5,30 @@ import DashboardLayout from "@/components/layout/DashboardLayout";
 import SidebarNav from "@/components/layout/SidebarNav";
 import { getDashboardTheme } from "@/components/layout/dashboardTheme";
 import spectropyLogo from "/logo.png";
-import { RiFileList3Line } from "react-icons/ri";
+import { RiArrowLeftLine, RiFileList3Line } from "react-icons/ri";
 
 interface ExamShellProps {
   title: string;
   description: string;
   children: React.ReactNode;
   headerAction?: React.ReactNode;
+  backTo?: string;
 }
+
+const DASHBOARD_BY_ROLE: Record<string, string> = {
+  super_admin: "/superadmin/dashboard",
+  client_admin: "/admin/dashboard",
+  content_authorizer: "/content-authorizer/dashboard",
+  school_owner: "/school-owner/dashboard",
+  teacher: "/teacher/dashboard",
+};
 
 export default function ExamShell({
   title,
   description,
   children,
   headerAction,
+  backTo,
 }: ExamShellProps) {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -30,6 +40,10 @@ export default function ExamShell({
   const userEmail = user?.email || "";
 
   const isActive = (path: string) => location.pathname === path;
+  const resolvedBackPath = backTo || DASHBOARD_BY_ROLE[String(user?.role ?? "")] || "/admin/dashboard";
+  const handleBack = () => {
+    navigate(resolvedBackPath);
+  };
 
   const navItems = [
     {
@@ -56,7 +70,10 @@ export default function ExamShell({
           navItems={navItems}
           userInfo={{ name: userFullName, email: userEmail }}
           showUserInfo={false}
-          showLogout={false}
+          showLogout={true}
+          onLogout={handleBack}
+          logoutLabel="Back"
+          logoutIcon={<RiArrowLeftLine className="h-4 w-4" />}
           sidebarOpen={sidebarOpen}
           onClose={() => setSidebarOpen(false)}
           theme={theme}

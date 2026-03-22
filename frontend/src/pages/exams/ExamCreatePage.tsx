@@ -210,7 +210,7 @@ export default function ExamCreatePage() {
     ) : null;
 
   return (
-    <ExamShell title="Create Exam" description="Configure a new exam in two steps.">
+    <ExamShell title="Create Exam" description="Configure a new exam in two steps." backTo="/exams">
       <div className="space-y-6">
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex flex-wrap items-center gap-3">
@@ -458,3 +458,4 @@ export default function ExamCreatePage() {
     </ExamShell>
   );
 }
+
