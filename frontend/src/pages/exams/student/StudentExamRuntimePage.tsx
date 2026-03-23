@@ -5,6 +5,7 @@ import ExamHeader from "@/features/exam-runtime/components/ExamHeader";
 import SectionTabs from "@/features/exam-runtime/components/SectionTabs";
 import QuestionPanel from "@/features/exam-runtime/components/QuestionPanel";
 import QuestionPalette from "@/features/exam-runtime/components/QuestionPalette";
+import ExamTimerBar from "@/features/exam-runtime/components/ExamTimerBar";
 import ActionBar from "@/features/exam-runtime/components/ActionBar";
 import { useExamRuntime } from "@/features/exam-runtime/useExamRuntime";
 
@@ -138,17 +139,9 @@ export default function StudentExamRuntimePage() {
     <div className="flex h-screen flex-col overflow-hidden bg-[#ececec]">
       <ExamHeader
         examTitle={runtimeData.exam.title}
-        remainingSeconds={remainingSeconds}
-        autosaveState={autosaveState}
         autosaveError={autosaveError}
         focusWarning={focusWarning}
         onDismissFocusWarning={() => setFocusWarning(false)}
-      />
-
-      <SectionTabs
-        sections={sections}
-        activeSectionId={currentSection?.id ?? null}
-        onSelect={selectSection}
       />
 
       {submitHookMessage && (
@@ -164,9 +157,18 @@ export default function StudentExamRuntimePage() {
         </div>
       )}
 
-      <div className="min-h-0 flex-1 p-0">
-        <div className="grid h-full min-h-0 lg:grid-cols-[1fr_385px]">
-          <main className="min-h-0 ">
+      <div className=" grid min-h-0 flex-1 p-0 lg:grid-cols-[1fr_385px]">
+        <div className="flex h-full min-h-0 flex-col">
+          <ExamTimerBar
+            remainingSeconds={remainingSeconds}
+            autosaveState={autosaveState}
+          />
+          <SectionTabs
+            sections={sections}
+            activeSectionId={currentSection?.id ?? null}
+            onSelect={selectSection}
+          />
+          <main className="min-h-0 flex-1">
             <div className="h-full overflow-y-auto p-0">
               <QuestionPanel
                 question={currentQuestion}
@@ -179,21 +181,20 @@ export default function StudentExamRuntimePage() {
               />
             </div>
           </main>
-
-          <aside className="hidden min-h-0 lg:block">
-            <div className="h-full overflow-y-auto p-0">
-              <QuestionPalette
-                questions={sectionQuestions}
-                allQuestionIds={allQuestionIds}
-                currentSectionTitle={activeSectionTitle}
-                studentName={studentName}
-                currentQuestionId={currentQuestionId}
-                statusByQuestionId={paletteStateByQuestionId}
-                onJump={jumpToQuestion}
-              />
-            </div>
-          </aside>
         </div>
+        <aside className="hidden min-h-0 lg:block">
+          <div className="h-full overflow-y-auto p-0">
+            <QuestionPalette
+              questions={sectionQuestions}
+              allQuestionIds={allQuestionIds}
+              currentSectionTitle={activeSectionTitle}
+              studentName={studentName}
+              currentQuestionId={currentQuestionId}
+              statusByQuestionId={paletteStateByQuestionId}
+              onJump={jumpToQuestion}
+            />
+          </div>
+        </aside>
       </div>
 
       <div className="border-t border-slate-300 bg-[#f1f1f1] px-4 py-3">
