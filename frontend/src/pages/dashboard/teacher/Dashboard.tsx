@@ -36,6 +36,13 @@ export default function TeacherDashboard() {
       onClick: () => navigate('/question-bank'),
     },
     {
+      key: 'exams',
+      label: 'Exams',
+      icon: <RiFileList3Line />,
+      active: false,
+      onClick: () => navigate('/exams'),
+    },
+    {
       key: 'courses',
       label: 'Courses',
       icon: <BiBookOpen />,

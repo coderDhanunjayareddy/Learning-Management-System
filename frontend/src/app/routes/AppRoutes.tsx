@@ -1,4 +1,4 @@
-﻿import { Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '@/app/providers/AuthProvider';
 import Spinner from '@/components/ui/Spinner';
 import ProtectedRoute from './ProtectedRoute';
@@ -67,6 +67,10 @@ import QuestionChapterEditPage from '@/pages/questions/QuestionChapterEditPage';
 import QuestionTopicsPage from '@/pages/questions/QuestionTopicsPage';
 import QuestionTopicCreatePage from '@/pages/questions/QuestionTopicCreatePage';
 import QuestionTopicEditPage from '@/pages/questions/QuestionTopicEditPage';
+import ExamListPage from '@/pages/exams/ExamListPage';
+import ExamCreatePage from '@/pages/exams/ExamCreatePage';
+import ExamBuilderPage from '@/pages/exams/ExamBuilderPage';
+import ExamSectionQuestionsPage from '@/pages/exams/ExamSectionQuestionsPage';
 
 export default function AppRoutes() {
   const { loading } = useAuth();
@@ -194,14 +198,30 @@ export default function AppRoutes() {
         <Route path="/question-bank/folders/:id/edit" element={<QuestionFolderEditPage />} />
       </Route>
 
+      {/* Exam Management */}
+      <Route
+        element={
+          <Protect
+            roles={[
+              'super_admin',
+              'client_admin',
+              'content_authorizer',
+              'school_owner',
+              'teacher',
+            ]}
+          />
+        }
+      >
+        <Route path="/exams" element={<ExamListPage />} />
+        <Route path="/exams/new" element={<ExamCreatePage />} />
+        <Route path="/exams/:id/builder" element={<ExamBuilderPage />} />
+        <Route path="/exams/:id/sections/:sectionId/questions" element={<ExamSectionQuestionsPage />} />
+      </Route>
+
       {/* Fallback */}
       <Route path="*" element={<Navigate to="/login" replace />} />
-
-
-
 
     </Routes>
   );
 }
-
 

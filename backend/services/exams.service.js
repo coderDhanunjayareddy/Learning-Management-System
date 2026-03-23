@@ -41,12 +41,8 @@ const parsePagination = (query) => {
   return { page, pageSize, offset: (page - 1) * pageSize };
 };
 
-const ensureClientScope = (user, sourceClientId = null) => {
-  if (isPlatformAdmin(user?.role)) {
-    const clientId = parseNullableInt(sourceClientId, 'client_id');
-    return clientId;
-  }
-  const clientId = user?.client_id ?? null;
+const ensureClientScope = (clientId, role) => {
+  if (isPlatformAdmin(role)) return null;
   if (!clientId) {
     throw new AppError('client_id is required for this role', 400);
   }
@@ -104,7 +100,7 @@ const buildExamWhere = async ({ user, query }) => {
   };
 
   const explicitClientId = parseNullableInt(query?.client_id, 'client_id');
-  const clientId = ensureClientScope(user, explicitClientId);
+  const clientId = isPlatformAdmin(user?.role) ? explicitClientId : (user?.client_id ?? null);
 
   if (clientId) {
     conditions.push(`e.client_id = ${addParam(clientId)}`);
@@ -168,8 +164,8 @@ const getExamByIdForAccess = async ({ examId, user, requireOwner = false }) => {
   const exam = result.rows[0];
 
   if (!isPlatformAdmin(user?.role)) {
-    const clientId = ensureClientScope(user);
-    if (Number(exam.client_id) !== Number(clientId)) {
+    const clientId = user?.client_id;
+    if (!clientId || Number(exam.client_id) !== Number(clientId)) {
       throw new AppError('Exam not found', 404);
     }
   }
@@ -335,6 +331,7 @@ export const publishExam = async (req, res) => {
 };
 
 export const listExams = async (req, res) => {
+
   try {
     if (!req.user?.id || !req.user?.role) {
       return res.status(401).json({ error: 'Unauthorized' });
@@ -439,16 +436,21 @@ export const createExam = async (req, res) => {
       throw new AppError('end_datetime must be after start_datetime', 400);
     }
 
-    const initialClientId = ensureClientScope(req.user, req.body?.client_id);
-    const schoolIdInput = parseNullableInt(req.body?.school_id, 'school_id');
-    const { schoolId, resolvedClientId } = await resolveSchoolScope({
-      schoolId: schoolIdInput,
-      user: req.user,
-      clientId: initialClientId,
-    });
-
-    const clientId = resolvedClientId;
+    const clientId = isPlatformAdmin(req.user.role) ? parseRequiredInt(req.body?.client_id, 'client_id') : (req.clientId || req.user.client_id);
     if (!clientId) throw new AppError('client_id is required', 400);
+
+    const schoolIdInput = parseNullableInt(req.body?.school_id, 'school_id');
+    if (schoolIdInput) {
+      const schoolResult = await dbQuery(`SELECT id, client_id FROM schools WHERE id = $1`, [schoolIdInput]);
+      if (schoolResult.rows.length === 0) {
+        throw new AppError('School not found', 404);
+      }
+      const school = schoolResult.rows[0];
+      if (Number(school.client_id) !== Number(clientId)) {
+        throw new AppError('School does not belong to this client', 403);
+      }
+    }
+    const schoolId = schoolIdInput;
 
     const shuffleQuestions = parseBoolean(req.body?.shuffle_questions, 'shuffle_questions');
     const shuffleOptions = parseBoolean(req.body?.shuffle_options, 'shuffle_options');

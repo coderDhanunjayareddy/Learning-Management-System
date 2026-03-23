@@ -60,6 +60,13 @@ export default function SchoolOwnerDashboard() {
       onClick: () => navigate("/question-bank"),
     },
     {
+      key: "exams",
+      label: "Exams",
+      icon: <RiFileList3Line />,
+      active: false,
+      onClick: () => navigate("/exams"),
+    },
+    {
       key: "users",
       label: "Users",
       icon: <PiUsersBold />,

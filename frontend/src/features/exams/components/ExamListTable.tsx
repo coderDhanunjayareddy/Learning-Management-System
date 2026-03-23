@@ -1,0 +1,183 @@
+import { computeExamStatus } from "../utils/computeExamStatus";
+import type { ExamStatus, ExamSummary } from "../types";
+import ExamStatusBadge from "@/components/ui/ExamStatusBadge";
+
+interface ExamListTableProps {
+  exams: ExamSummary[];
+  onAction: (action: string, exam: ExamSummary) => void;
+}
+
+const normalizeStatus = (value?: string | null): ExamStatus | null => {
+  if (!value) return null;
+  const normalized = value.toLowerCase();
+  if (normalized === "draft" || normalized === "active" || normalized === "completed") {
+    return normalized;
+  }
+  return null;
+};
+
+const formatDateTime = (value?: string | null) => {
+  if (!value) return "--";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "--";
+  return date.toLocaleString();
+};
+
+const formatWindow = (start?: string | null, end?: string | null) => {
+  if (!start && !end) return "--";
+  if (start && end) return `${formatDateTime(start)} -> ${formatDateTime(end)}`;
+  if (start) return `${formatDateTime(start)} -> --`;
+  return `-- -> ${formatDateTime(end)}`;
+};
+
+const getActionState = (status: ExamStatus | null) => {
+  const isDraft = status === "draft";
+  const isActive = status === "active";
+  const isCompleted = status === "completed";
+
+  return {
+    canEdit: isDraft,
+    canBuilder: isDraft,
+    canAssign: isDraft,
+    canLive: isActive,
+    canResults: isCompleted,
+  };
+};
+
+const ActionButton = ({
+  label,
+  disabled,
+  onClick,
+}: {
+  label: string;
+  disabled: boolean;
+  onClick: () => void;
+}) => (
+  <button
+    type="button"
+    disabled={disabled}
+    onClick={onClick}
+    className={`rounded-lg border px-2.5 py-1 text-xs font-semibold ${
+      disabled
+        ? "border-slate-200 text-slate-400 cursor-not-allowed"
+        : "border-slate-200 text-slate-600 hover:bg-slate-50"
+    }`}
+  >
+    {label}
+  </button>
+);
+
+export default function ExamListTable({ exams, onAction }: ExamListTableProps) {
+  return (
+    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-x-auto">
+        <table className="min-w-full divide-y divide-slate-100 text-sm">
+          <thead className="bg-slate-50">
+            <tr className="text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+              <th className="px-4 py-3">Title</th>
+              <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3">Window</th>
+              <th className="px-4 py-3">Duration</th>
+              <th className="px-4 py-3">Courses</th>
+              <th className="px-4 py-3">Attempts</th>
+              <th className="px-4 py-3">Created By</th>
+              <th className="px-4 py-3">Tags</th>
+              <th className="px-4 py-3">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {exams.map((exam) => {
+              const status =
+                normalizeStatus(exam.status) ??
+                computeExamStatus(exam);
+              const actionState = getActionState(status);
+              const description = exam.description?.trim() || "";
+              const snippet =
+                description.length > 120 ? `${description.slice(0, 117)}...` : description;
+              const tags = Array.isArray(exam.tags) ? exam.tags : [];
+              const duration =
+                exam.duration_minutes !== null && exam.duration_minutes !== undefined
+                  ? `${exam.duration_minutes} min`
+                  : "--";
+              const courses =
+                exam.course_count !== null && exam.course_count !== undefined
+                  ? exam.course_count
+                  : "--";
+              const attempts =
+                exam.attempts_count !== null && exam.attempts_count !== undefined
+                  ? exam.attempts_count
+                  : "--";
+              const createdBy = exam.created_by_name || "--";
+
+              return (
+                <tr key={exam.id} className="hover:bg-slate-50/50">
+                  <td className="px-4 py-3">
+                    <div className="font-semibold text-slate-900">{exam.title}</div>
+                    {snippet && (
+                      <div className="mt-1 text-xs text-slate-500">{snippet}</div>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    <ExamStatusBadge status={status} />
+                  </td>
+                  <td className="px-4 py-3 text-xs text-slate-600">
+                    {formatWindow(exam.start_datetime, exam.end_datetime)}
+                  </td>
+                  <td className="px-4 py-3 text-xs text-slate-600">{duration}</td>
+                  <td className="px-4 py-3 text-xs text-slate-600">{courses}</td>
+                  <td className="px-4 py-3 text-xs text-slate-600">{attempts}</td>
+                  <td className="px-4 py-3 text-xs text-slate-600">{createdBy}</td>
+                  <td className="px-4 py-3">
+                    {tags.length === 0 ? (
+                      <span className="text-xs text-slate-400">--</span>
+                    ) : (
+                      <div className="flex flex-wrap gap-1">
+                        {tags.map((tag) => (
+                          <span
+                            key={`${exam.id}-${tag}`}
+                            className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600"
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-wrap gap-2">
+                      <ActionButton
+                        label="Edit"
+                        disabled={!actionState.canEdit}
+                        onClick={() => onAction("edit", exam)}
+                      />
+                      <ActionButton
+                        label="Builder"
+                        disabled={!actionState.canBuilder}
+                        onClick={() => onAction("builder", exam)}
+                      />
+                      <ActionButton
+                        label="Assign"
+                        disabled={!actionState.canAssign}
+                        onClick={() => onAction("assign", exam)}
+                      />
+                      <ActionButton
+                        label="Live"
+                        disabled={!actionState.canLive}
+                        onClick={() => onAction("live", exam)}
+                      />
+                      <ActionButton
+                        label="Results"
+                        disabled={!actionState.canResults}
+                        onClick={() => onAction("results", exam)}
+                      />
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
