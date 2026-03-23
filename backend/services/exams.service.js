@@ -1,4 +1,4 @@
-import { query as dbQuery } from '../repositories/db.repository.js';
+import { query as dbQuery, getClient } from '../repositories/db.repository.js';
 import { AppError, handleServiceError } from '../utils/errors.js';
 import { parseNullableInt, parseRequiredInt, requireString } from '../schemas/questions.schema.js';
 
@@ -214,6 +214,79 @@ const ensureExamEditable = (exam) => {
   }
 };
 
+const ensureCourseExamsTable = async () => {
+  await dbQuery(`
+    CREATE TABLE IF NOT EXISTS course_exams (
+      id SERIAL PRIMARY KEY,
+      course_id INTEGER NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+      exam_id INTEGER NOT NULL REFERENCES exams(id) ON DELETE CASCADE,
+      assigned_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      assigned_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(course_id, exam_id)
+    )
+  `);
+  await dbQuery(`CREATE INDEX IF NOT EXISTS idx_course_exams_exam_id ON course_exams(exam_id)`);
+  await dbQuery(`CREATE INDEX IF NOT EXISTS idx_course_exams_course_id ON course_exams(course_id)`);
+};
+
+const parseCourseIds = (value) => {
+  if (!Array.isArray(value)) {
+    throw new AppError('course_ids must be an array', 400);
+  }
+
+  const normalized = [...new Set(value.map((item) => Number(item)).filter((id) => Number.isInteger(id) && id > 0))];
+  if (normalized.length !== value.length) {
+    throw new AppError('course_ids must contain unique positive integers', 400);
+  }
+  return normalized;
+};
+
+const listAssignedCoursesForExam = async (examId) => {
+  const assignedResult = await dbQuery(
+    `
+      SELECT c.id, c.title, c.description, c.published, c.created_at, ce.assigned_at, ce.assigned_by
+      FROM course_exams ce
+      JOIN courses c ON c.id = ce.course_id
+      WHERE ce.exam_id = $1
+      ORDER BY c.title ASC, c.id ASC
+    `,
+    [examId]
+  );
+  return assignedResult.rows;
+};
+
+const validateCoursesForExamAssignment = async ({ courseIds, exam, user }) => {
+  if (courseIds.length === 0) return;
+
+  const courseResult = await dbQuery(
+    `SELECT id, client_id, school_id FROM courses WHERE id = ANY($1::int[])`,
+    [courseIds]
+  );
+
+  if (courseResult.rows.length !== courseIds.length) {
+    throw new AppError('One or more course_ids are invalid', 404);
+  }
+
+  let scopedSchoolIds = null;
+  if (isSchoolOwner(user?.role) || isTeacher(user?.role)) {
+    scopedSchoolIds = await fetchUserSchoolIds(user.id);
+  }
+
+  for (const course of courseResult.rows) {
+    if (Number(course.client_id) !== Number(exam.client_id)) {
+      throw new AppError('Course does not belong to the same client as the exam', 403);
+    }
+
+    if (exam.school_id && Number(course.school_id) !== Number(exam.school_id)) {
+      throw new AppError('Course does not belong to the same school as the exam', 403);
+    }
+
+    if (scopedSchoolIds && course.school_id && !scopedSchoolIds.includes(Number(course.school_id))) {
+      throw new AppError('Access denied for one or more courses', 403);
+    }
+  }
+};
+
 export const addQuestionToSection = async (req, res) => {
   try {
     if (!req.user?.id || !req.user?.role) {
@@ -330,12 +403,92 @@ export const publishExam = async (req, res) => {
   }
 };
 
+export const getExamAssignedCourses = async (req, res) => {
+  try {
+    if (!req.user?.id || !req.user?.role) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    await ensureCourseExamsTable();
+
+    const exam = await getExamByIdForAccess({
+      examId: req.params.id,
+      user: req.user,
+      requireOwner: isTeacher(req.user.role),
+    });
+
+    const courses = await listAssignedCoursesForExam(exam.id);
+    res.json({
+      exam_id: Number(exam.id),
+      assigned_count: courses.length,
+      courses,
+    });
+  } catch (err) {
+    handleServiceError(res, err, 'Failed to load assigned courses');
+  }
+};
+
+export const assignExamCourses = async (req, res) => {
+  try {
+    if (!req.user?.id || !req.user?.role) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    await ensureCourseExamsTable();
+
+    const exam = await getExamByIdForAccess({
+      examId: req.params.id,
+      user: req.user,
+      requireOwner: isTeacher(req.user.role),
+    });
+
+    const courseIds = parseCourseIds(req.body?.course_ids);
+    await validateCoursesForExamAssignment({ courseIds, exam, user: req.user });
+
+    const tx = await getClient();
+    try {
+      await tx.query('BEGIN');
+      await tx.query('DELETE FROM course_exams WHERE exam_id = $1', [exam.id]);
+
+      if (courseIds.length > 0) {
+        await tx.query(
+          `
+            INSERT INTO course_exams (course_id, exam_id, assigned_by)
+            SELECT UNNEST($1::int[]), $2, $3
+            ON CONFLICT (course_id, exam_id) DO UPDATE
+            SET assigned_by = EXCLUDED.assigned_by,
+                assigned_at = NOW()
+          `,
+          [courseIds, exam.id, req.user.id]
+        );
+      }
+
+      await tx.query('COMMIT');
+    } catch (error) {
+      await tx.query('ROLLBACK');
+      throw error;
+    } finally {
+      tx.release();
+    }
+
+    const courses = await listAssignedCoursesForExam(exam.id);
+    res.json({
+      exam_id: Number(exam.id),
+      assigned_count: courses.length,
+      courses,
+    });
+  } catch (err) {
+    handleServiceError(res, err, 'Failed to assign exam courses');
+  }
+};
+
 export const listExams = async (req, res) => {
 
   try {
     if (!req.user?.id || !req.user?.role) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
+    await ensureCourseExamsTable();
 
     const { page, pageSize, offset } = parsePagination(req.query);
     const { conditions, params } = await buildExamWhere({ user: req.user, query: req.query });
@@ -349,9 +502,11 @@ export const listExams = async (req, res) => {
       `
       SELECT
         e.*,
+        COALESCE(COUNT(DISTINCT ce.course_id), 0)::int AS course_count,
         COALESCE(COUNT(DISTINCT es.id), 0)::int AS section_count,
         COALESCE(COUNT(eq.id), 0)::int AS question_count
       FROM exams e
+      LEFT JOIN course_exams ce ON ce.exam_id = e.id
       LEFT JOIN exam_sections es ON es.exam_id = e.id
       LEFT JOIN exam_questions eq ON eq.section_id = es.id
       ${whereClause}
@@ -378,6 +533,7 @@ export const getExamById = async (req, res) => {
     if (!req.user?.id || !req.user?.role) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
+    await ensureCourseExamsTable();
 
     const exam = await getExamByIdForAccess({ examId: req.params.id, user: req.user, requireOwner: isTeacher(req.user.role) });
 
@@ -385,9 +541,11 @@ export const getExamById = async (req, res) => {
       `
       SELECT
         e.*,
+        COALESCE(COUNT(DISTINCT ce.course_id), 0)::int AS course_count,
         COALESCE(COUNT(DISTINCT es.id), 0)::int AS section_count,
         COALESCE(COUNT(eq.id), 0)::int AS question_count
       FROM exams e
+      LEFT JOIN course_exams ce ON ce.exam_id = e.id
       LEFT JOIN exam_sections es ON es.exam_id = e.id
       LEFT JOIN exam_questions eq ON eq.section_id = es.id
       WHERE e.id = $1
@@ -410,9 +568,12 @@ export const getExamById = async (req, res) => {
       [exam.id]
     );
 
+    const assignedCourses = await listAssignedCoursesForExam(exam.id);
+
     res.json({
       ...examResult.rows[0],
       sections: sectionsResult.rows,
+      assigned_courses: assignedCourses,
     });
   } catch (err) {
     handleServiceError(res, err, 'Failed to load exam');

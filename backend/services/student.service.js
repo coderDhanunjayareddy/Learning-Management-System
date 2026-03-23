@@ -1,6 +1,232 @@
 import { query as dbQuery, getClient } from "../repositories/db.repository.js"; // or your db connection
 import { AppError } from "../utils/errors.js";
 
+let enrollmentsUserColumnCache = null;
+
+const ensureCourseExamsTable = async () => {
+  await dbQuery(`
+    CREATE TABLE IF NOT EXISTS course_exams (
+      id SERIAL PRIMARY KEY,
+      course_id INTEGER NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+      exam_id INTEGER NOT NULL REFERENCES exams(id) ON DELETE CASCADE,
+      assigned_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      assigned_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(course_id, exam_id)
+    )
+  `);
+  await dbQuery(`CREATE INDEX IF NOT EXISTS idx_course_exams_exam_id ON course_exams(exam_id)`);
+  await dbQuery(`CREATE INDEX IF NOT EXISTS idx_course_exams_course_id ON course_exams(course_id)`);
+};
+
+const resolveEnrollmentUserColumn = async () => {
+  if (enrollmentsUserColumnCache) return enrollmentsUserColumnCache;
+
+  const columnResult = await dbQuery(
+    `
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'enrollments'
+        AND column_name IN ('user_id', 'student_id')
+      ORDER BY CASE WHEN column_name = 'user_id' THEN 0 ELSE 1 END
+      LIMIT 1
+    `
+  );
+
+  const columnName = columnResult.rows[0]?.column_name;
+  if (!columnName) {
+    throw new AppError('Enrollments table is missing user linkage column', 500);
+  }
+
+  enrollmentsUserColumnCache = columnName;
+  return enrollmentsUserColumnCache;
+};
+
+const getStudentCourseIds = async (studentId) => {
+  const enrollmentUserColumn = await resolveEnrollmentUserColumn();
+  const courseRes = await dbQuery(
+    `SELECT course_id FROM enrollments WHERE ${enrollmentUserColumn} = $1`,
+    [studentId]
+  );
+  return courseRes.rows.map((r) => Number(r.course_id)).filter((courseId) => Number.isInteger(courseId) && courseId > 0);
+};
+
+const assertStudentCanAccessExam = async ({ examId, courseIds }) => {
+  if (!Array.isArray(courseIds) || courseIds.length === 0) {
+    return false;
+  }
+
+  const accessRes = await dbQuery(
+    `
+      SELECT 1
+      FROM course_exams ce
+      WHERE ce.exam_id = $1
+        AND ce.course_id = ANY($2::int[])
+      LIMIT 1
+    `,
+    [examId, courseIds]
+  );
+
+  return accessRes.rows.length > 0;
+};
+
+const computeRemainingSeconds = ({ startedAtRaw, totalDurationMinutes }) => {
+  const startedAt = startedAtRaw ? new Date(startedAtRaw) : null;
+  const durationSeconds = totalDurationMinutes ? Number(totalDurationMinutes) * 60 : null;
+  if (!startedAt || durationSeconds === null || durationSeconds < 0) return null;
+
+  const elapsed = Math.max(0, Math.floor((Date.now() - startedAt.getTime()) / 1000));
+  return Math.max(0, durationSeconds - elapsed);
+};
+
+const maybeAutoSubmitExpiredAttempt = async (attempt) => {
+  if (!attempt || attempt.status !== 'in_progress') return attempt;
+
+  const remainingSeconds = computeRemainingSeconds({
+    startedAtRaw: attempt.started_at,
+    totalDurationMinutes: attempt.total_duration_minutes,
+  });
+  if (remainingSeconds === null || remainingSeconds > 0) {
+    return attempt;
+  }
+
+  const updateResult = await dbQuery(
+    `UPDATE exam_attempts
+     SET status = 'submitted',
+         submitted_at = COALESCE(submitted_at, NOW()),
+         auto_submitted = TRUE
+     WHERE id = $1
+     RETURNING *`,
+    [attempt.id]
+  );
+  const updatedAttempt = updateResult.rows[0];
+
+  return {
+    ...attempt,
+    ...updatedAttempt,
+  };
+};
+
+const getAttemptQuestionsAndSections = async (examId) => {
+  const result = await dbQuery(
+    `
+      SELECT
+        es.id AS section_id,
+        es.title AS section_title,
+        es.order_index AS section_order,
+        es.instructions AS section_instructions,
+        eq.question_id,
+        eq.order_index AS question_order,
+        q.question_type,
+        q.question_text,
+        q.options,
+        q.marks_positive,
+        q.marks_negative
+      FROM exam_sections es
+      JOIN exam_questions eq ON eq.section_id = es.id
+      JOIN questions q ON q.id = eq.question_id
+      WHERE es.exam_id = $1
+      ORDER BY es.order_index, eq.order_index, eq.id
+    `,
+    [examId]
+  );
+
+  const sectionMap = new Map();
+  const questions = [];
+
+  result.rows.forEach((row, index) => {
+    const sectionId = Number(row.section_id);
+    if (!sectionMap.has(sectionId)) {
+      sectionMap.set(sectionId, {
+        id: sectionId,
+        title: row.section_title,
+        order_index: row.section_order,
+        instructions: row.section_instructions ?? null,
+        question_count: 0,
+      });
+    }
+
+    const section = sectionMap.get(sectionId);
+    section.question_count += 1;
+
+    questions.push({
+      id: Number(row.question_id),
+      question_id: Number(row.question_id),
+      section_id: sectionId,
+      section_order: row.section_order,
+      section_title: row.section_title,
+      question_order: row.question_order,
+      sequence: index + 1,
+      question_type: row.question_type,
+      question_text: row.question_text,
+      options: row.options,
+      marks_positive: row.marks_positive,
+      marks_negative: row.marks_negative,
+    });
+  });
+
+  const sections = Array.from(sectionMap.values()).sort((a, b) => {
+    if (a.order_index === b.order_index) return a.id - b.id;
+    return a.order_index - b.order_index;
+  });
+
+  return { sections, questions };
+};
+
+const getAttemptStateInternal = async ({ attemptId, studentId }) => {
+  const attemptResult = await dbQuery(
+    `SELECT ea.*, e.total_duration_minutes, e.start_datetime, e.end_datetime, e.title AS exam_title
+     FROM exam_attempts ea
+     JOIN exams e ON e.id = ea.exam_id
+     WHERE ea.id = $1`,
+    [attemptId]
+  );
+
+  if (attemptResult.rows.length === 0) {
+    throw new AppError('Attempt not found', 404);
+  }
+
+  const rawAttempt = attemptResult.rows[0];
+  if (Number(rawAttempt.student_id) !== Number(studentId)) {
+    throw new AppError('Access denied', 403);
+  }
+
+  const attempt = await maybeAutoSubmitExpiredAttempt(rawAttempt);
+
+  const [responsesResult, questionBundle] = await Promise.all([
+    dbQuery(
+      `SELECT id, question_id, section_id, student_answer, is_marked_for_review, is_attempted, answered_at
+       FROM exam_responses
+       WHERE attempt_id = $1
+       ORDER BY id ASC`,
+      [attemptId]
+    ),
+    getAttemptQuestionsAndSections(attempt.exam_id),
+  ]);
+
+  const remainingSeconds = computeRemainingSeconds({
+    startedAtRaw: attempt.started_at,
+    totalDurationMinutes: attempt.total_duration_minutes,
+  });
+
+  return {
+    attempt,
+    exam: {
+      id: attempt.exam_id,
+      title: attempt.exam_title,
+      total_duration_minutes: attempt.total_duration_minutes,
+      start_datetime: attempt.start_datetime,
+      end_datetime: attempt.end_datetime,
+    },
+    sections: questionBundle.sections,
+    questions: questionBundle.questions,
+    responses: responsesResult.rows,
+    remaining_seconds: remainingSeconds,
+    status: attempt.status,
+    is_read_only: attempt.status !== 'in_progress',
+  };
+};
+
 export const getStudentContentById = async (req, res) => {
     const { id } = req.params;
     const userId = req.user?.id;
@@ -63,65 +289,46 @@ export const getStudentExams = async (req, res) => {
     }
 
     const studentId = req.user.id;
-    const courseRes = await dbQuery(
-      'SELECT course_id FROM enrollments WHERE student_id = $1',
-      [studentId]
-    );
-
-    const courseIds = courseRes.rows.map((r) => r.course_id);
+    await ensureCourseExamsTable();
+    const courseIds = await getStudentCourseIds(studentId);
     if (courseIds.length === 0) {
       return res.json([]);
     }
 
-    const courseExamsExistRes = await dbQuery("SELECT to_regclass('public.course_exams') AS table_name");
-    const useCourseExams = Boolean(courseExamsExistRes.rows[0]?.table_name);
-
-    let examsResult;
-
-    if (useCourseExams) {
-      examsResult = await dbQuery(
-        `
-          SELECT
-            e.*, ce.course_id,
-            COALESCE(a.attempt_count, 0) AS attempt_count,
-            COALESCE(a.completed, false) AS has_completed
-          FROM course_exams ce
-          JOIN exams e ON e.id = ce.exam_id
-          LEFT JOIN (
-            SELECT exam_id,
-              COUNT(*)::int AS attempt_count,
-              MAX(CASE WHEN status IN ('submitted', 'graded') THEN 1 ELSE 0 END)::boolean AS completed
-            FROM exam_attempts
-            WHERE student_id = $1
-            GROUP BY exam_id
-          ) a ON a.exam_id = e.id
-          WHERE ce.course_id = ANY($2)
-          ORDER BY e.start_datetime DESC, e.id DESC
-        `,
-        [studentId, courseIds]
-      );
-    } else {
-      examsResult = await dbQuery(
-        `
-          SELECT
-            e.*, NULL AS course_id,
-            COALESCE(a.attempt_count, 0) AS attempt_count,
-            COALESCE(a.completed, false) AS has_completed
-          FROM exams e
-          LEFT JOIN (
-            SELECT exam_id,
-              COUNT(*)::int AS attempt_count,
-              MAX(CASE WHEN status IN ('submitted', 'graded') THEN 1 ELSE 0 END)::boolean AS completed
-            FROM exam_attempts
-            WHERE student_id = $1
-            GROUP BY exam_id
-          ) a ON a.exam_id = e.id
-          WHERE e.status IN ('published', 'active', 'completed')
-          ORDER BY e.start_datetime DESC, e.id DESC
-        `,
-        [studentId]
-      );
-    }
+    const examsResult = await dbQuery(
+      `
+        SELECT
+          e.*,
+          MIN(ce.course_id)::int AS course_id,
+          COALESCE(a.attempt_count, 0) AS attempt_count,
+          COALESCE(a.completed, false) AS has_completed,
+          MAX(ip.id)::int AS in_progress_attempt_id
+        FROM course_exams ce
+        JOIN exams e ON e.id = ce.exam_id
+        LEFT JOIN (
+          SELECT exam_id,
+            COUNT(*)::int AS attempt_count,
+            MAX(CASE WHEN status IN ('submitted', 'graded') THEN 1 ELSE 0 END)::boolean AS completed
+          FROM exam_attempts
+          WHERE student_id = $1
+          GROUP BY exam_id
+        ) a ON a.exam_id = e.id
+        LEFT JOIN LATERAL (
+          SELECT ea.id
+          FROM exam_attempts ea
+          WHERE ea.exam_id = e.id
+            AND ea.student_id = $1
+            AND ea.status = 'in_progress'
+          ORDER BY ea.started_at DESC, ea.id DESC
+          LIMIT 1
+        ) ip ON TRUE
+        WHERE ce.course_id = ANY($2::int[])
+          AND e.status IN ('published', 'active', 'completed')
+        GROUP BY e.id, a.attempt_count, a.completed
+        ORDER BY e.start_datetime DESC, e.id DESC
+      `,
+      [studentId, courseIds]
+    );
 
     const now = new Date();
     const exams = examsResult.rows.map((item) => {
@@ -147,6 +354,8 @@ export const getStudentExams = async (req, res) => {
         ...item,
         course_id: item.course_id || null,
         computed_status,
+        in_progress_attempt_id: item.in_progress_attempt_id ? Number(item.in_progress_attempt_id) : null,
+        has_in_progress_attempt: Boolean(item.in_progress_attempt_id),
       };
     });
 
@@ -155,55 +364,6 @@ export const getStudentExams = async (req, res) => {
     console.error('Error fetching student exams:', err);
     res.status(500).json({ message: 'Error fetching student exams' });
   }
-};
-
-const getAttemptStateInternal = async ({ attemptId, studentId }) => {
-  const attemptResult = await dbQuery(
-    `SELECT ea.*, e.total_duration_minutes, e.start_datetime, e.end_datetime, e.title AS exam_title
-     FROM exam_attempts ea
-     JOIN exams e ON e.id = ea.exam_id
-     WHERE ea.id = $1`,
-    [attemptId]
-  );
-
-  if (attemptResult.rows.length === 0) {
-    throw new AppError('Attempt not found', 404);
-  }
-
-  const attempt = attemptResult.rows[0];
-  if (Number(attempt.student_id) !== Number(studentId)) {
-    throw new AppError('Access denied', 403);
-  }
-
-  const responsesResult = await dbQuery(
-    `SELECT id, question_id, section_id, student_answer, is_marked_for_review, is_attempted, answered_at
-     FROM exam_responses
-     WHERE attempt_id = $1`,
-    [attemptId]
-  );
-
-  const startedAt = attempt.started_at ? new Date(attempt.started_at) : null;
-  const durationSeconds = attempt.total_duration_minutes ? Number(attempt.total_duration_minutes) * 60 : null;
-  let remainingSeconds = null;
-
-  if (startedAt && durationSeconds !== null && durationSeconds >= 0) {
-    const elapsed = Math.max(0, Math.floor((Date.now() - startedAt.getTime()) / 1000));
-    remainingSeconds = Math.max(0, durationSeconds - elapsed);
-  }
-
-  return {
-    attempt,
-    exam: {
-      id: attempt.exam_id,
-      title: attempt.exam_title,
-      total_duration_minutes: attempt.total_duration_minutes,
-      start_datetime: attempt.start_datetime,
-      end_datetime: attempt.end_datetime,
-    },
-    responses: responsesResult.rows,
-    remaining_seconds: remainingSeconds,
-    status: attempt.status,
-  };
 };
 
 export const getAttemptState = async (req, res) => {
@@ -244,6 +404,16 @@ export const startExamAttempt = async (req, res) => {
       return res.status(404).json({ message: 'Exam not found' });
     }
 
+    await ensureCourseExamsTable();
+    const enrolledCourseIds = await getStudentCourseIds(req.user.id);
+    const hasAccess = await assertStudentCanAccessExam({
+      examId,
+      courseIds: enrolledCourseIds,
+    });
+    if (!hasAccess) {
+      return res.status(403).json({ message: 'Exam is not assigned to your enrolled courses' });
+    }
+
     const exam = examResult.rows[0];
     const now = new Date();
     const startDt = new Date(exam.start_datetime);
@@ -259,11 +429,30 @@ export const startExamAttempt = async (req, res) => {
       return res.status(403).json({ message: 'Exam has already ended' });
     }
 
+    const existingAttemptResult = await dbQuery(
+      `SELECT id
+       FROM exam_attempts
+       WHERE exam_id = $1
+         AND student_id = $2
+         AND status = 'in_progress'
+       ORDER BY started_at DESC, id DESC
+       LIMIT 1`,
+      [examId, req.user.id]
+    );
+    const existingAttemptId = existingAttemptResult.rows[0]?.id;
+    if (existingAttemptId) {
+      const runtimeState = await getAttemptStateInternal({
+        attemptId: existingAttemptId,
+        studentId: req.user.id,
+      });
+      return res.json(runtimeState);
+    }
+
     const previousAttempts = await dbQuery(
       'SELECT COUNT(*)::int AS count FROM exam_attempts WHERE exam_id = $1 AND student_id = $2',
       [examId, req.user.id]
     );
-    const attemptCount = previousAttempts.rows[0]?.count || 0;
+    const attemptCount = Number(previousAttempts.rows[0]?.count || 0);
 
     const maxAttempts = exam.max_attempts ? Number(exam.max_attempts) : 1;
     if (attemptCount >= maxAttempts) {
@@ -306,32 +495,11 @@ export const startExamAttempt = async (req, res) => {
       }
 
       await client.query('COMMIT');
-
-      const totalDurationSeconds = exam.total_duration_minutes ? Number(exam.total_duration_minutes) * 60 : null;
-      const remainingSeconds = totalDurationSeconds
-        ? Math.max(0, totalDurationSeconds - Math.floor((Date.now() - new Date(attempt.started_at).getTime()) / 1000))
-        : null;
-
-      const responseRows = await dbQuery(
-        `SELECT id, question_id, section_id, student_answer, is_marked_for_review, is_attempted, answered_at
-         FROM exam_responses
-         WHERE attempt_id = $1`,
-        [attempt.id]
-      );
-
-      return res.json({
-        attempt,
-        exam: {
-          id: exam.id,
-          title: exam.title,
-          total_duration_minutes: exam.total_duration_minutes,
-          start_datetime: exam.start_datetime,
-          end_datetime: exam.end_datetime,
-        },
-        remaining_seconds: remainingSeconds,
-        questions: questionRows,
-        responses: responseRows.rows,
+      const runtimeState = await getAttemptStateInternal({
+        attemptId: attempt.id,
+        studentId: req.user.id,
       });
+      return res.json(runtimeState);
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;

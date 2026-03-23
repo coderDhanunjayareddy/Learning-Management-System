@@ -10,6 +10,8 @@ import {
   deleteExamSection,
   addQuestionToSection,
   publishExam,
+  getExamAssignedCourses,
+  assignExamCourses,
 } from '../controllers/exams.controller.js';
 import { authenticateToken, requireRole, attachClientContext, loadPermissions, checkPermission } from '../middleware/auth.js';
 
@@ -33,5 +35,7 @@ router.delete('/exams/:id/sections/:sectionId', checkPermission('exams.update'),
 
 router.post('/exams/:id/sections/:sectionId/questions', checkPermission('exams.update'), addQuestionToSection);
 router.post('/exams/:id/publish', checkPermission('exams.publish'), publishExam);
+router.get('/exams/:id/courses', checkPermission('exams.read'), getExamAssignedCourses);
+router.put('/exams/:id/courses', checkPermission('exams.update'), assignExamCourses);
 
 export default router;

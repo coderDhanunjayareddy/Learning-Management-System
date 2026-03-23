@@ -1,16 +1,23 @@
-﻿// src/pages/student/StudentDashboard.tsx
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+// src/pages/student/StudentDashboard.tsx
+import { useMemo } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/features/auth/hooks/useAuth';
 import spectropyLogo from "/logo.png";
 import gvjbLogo from "/gvjb.png";
 import AdminCourseManager from '@/features/courses/components/list/AdminCourseManager';
 import { getDashboardTheme } from '@/components/layout/dashboardTheme';
 
+type StudentTab = 'courses' | 'exams';
+
 export default function StudentDashboard() {
-  const [activeTab] = useState<'courses'>('courses');
+  const location = useLocation();
   const navigate = useNavigate();
   const { logout, user } = useAuth();
+
+  const activeTab = useMemo<StudentTab>(() => {
+    if (location.pathname.startsWith('/student/exams')) return 'exams';
+    return 'courses';
+  }, [location.pathname]);
 
   const isClientTenant = Boolean(user?.client_id);
   const brandLogo = isClientTenant ? gvjbLogo : spectropyLogo;
@@ -55,7 +62,7 @@ export default function StudentDashboard() {
 
           <nav className="flex-1 p-4 space-y-2">
             <button
-              onClick={() => { }}
+              onClick={() => navigate('/student/dashboard')}
               className={`w-full flex items-center px-4 py-3 text-sm font-medium rounded-2xl transition-colors ${activeTab === 'courses'
                 ? isClientTenant
                   ? 'bg-amber-100 text-amber-900 border-l-4 border-amber-600'
@@ -80,6 +87,34 @@ export default function StudentDashboard() {
                 />
               </svg>
               Courses
+            </button>
+
+            <button
+              onClick={() => navigate('/student/exams')}
+              className={`w-full flex items-center px-4 py-3 text-sm font-medium rounded-2xl transition-colors ${activeTab === 'exams'
+                ? isClientTenant
+                  ? 'bg-amber-100 text-amber-900 border-l-4 border-amber-600'
+                  : 'bg-blue-100 text-blue-900 border-l-4 border-blue-700'
+                : isClientTenant
+                  ? 'text-slate-700 hover:bg-amber-50'
+                  : 'text-slate-700 hover:bg-gray-100'
+                }`}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-5 w-5 mr-3"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+                />
+              </svg>
+              Exams
             </button>
           </nav>
 
@@ -140,11 +175,12 @@ export default function StudentDashboard() {
               }`}
           >
             <h1 className="text-2xl font-bold">
-              {activeTab === 'courses' && 'Active Courses'}
+              {activeTab === 'courses' ? 'Active Courses' : 'Exams'}
             </h1>
             <p className="text-slate-600 mt-1">
-              {activeTab === 'courses' &&
-                `Continue your learning with ${brandName} course modules.`}
+              {activeTab === 'courses'
+                ? `Continue your learning with ${brandName} course modules.`
+                : 'View your assigned exams and result availability.'}
             </p>
           </div>
 
@@ -171,5 +207,3 @@ export default function StudentDashboard() {
     </div>
   );
 }
-
-

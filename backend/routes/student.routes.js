@@ -8,12 +8,12 @@ const router = Router();
 
 router.get('/content/:id', authenticateToken, getStudentContentById);
 router.get('/enrolled-courses', authenticateToken, getStudentEnrolledCourses);
-router.get('/student/exams', authenticateToken, getStudentExams);
+router.get('/exams', authenticateToken, getStudentExams);
 
-router.post('/student/exams/:id/start', authenticateToken, startExamAttempt);
-router.post('/student/attempts/:aid/save', authenticateToken, saveExamResponse);
-router.post('/student/attempts/:aid/submit', authenticateToken, submitExamAttempt);
-router.get('/student/attempts/:aid', authenticateToken, getAttemptState);
+router.post('/exams/:id/start', authenticateToken, startExamAttempt);
+router.post('/attempts/:aid/save', authenticateToken, saveExamResponse);
+router.post('/attempts/:aid/submit', authenticateToken, submitExamAttempt);
+router.get('/attempts/:aid', authenticateToken, getAttemptState);
 
 router.get('/course/:courseId', authenticateToken, getStudentCourse);
 

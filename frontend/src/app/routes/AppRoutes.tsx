@@ -28,6 +28,9 @@ import TeacherDashboard from '@/pages/dashboard/teacher/Dashboard';
 // Student
 import StudentDashboard from '@/pages/dashboard/student/StudentDashboard';
 import StudentCourseView from '@/pages/course/student/StudentCourseView';
+import StudentExamListPage from '@/pages/exams/student/StudentExamListPage';
+import StudentExamResultPlaceholderPage from '@/pages/exams/student/StudentExamResultPlaceholderPage';
+import StudentExamRuntimePage from '@/pages/exams/student/StudentExamRuntimePage';
 
 // Common
 import ContentViewer from '@/features/courses/components/player/ContentViewer';
@@ -153,6 +156,9 @@ export default function AppRoutes() {
       {/* Student */}
       <Route element={<Protect roles={['student']} />}>
         <Route path="/student/dashboard" element={<StudentDashboard />} />
+        <Route path="/student/exams" element={<StudentExamListPage />} />
+        <Route path="/student/exams/:examId/result" element={<StudentExamResultPlaceholderPage />} />
+        <Route path="/student/exams/attempt/:attemptId" element={<StudentExamRuntimePage />} />
         <Route path="/student/course/:courseId" element={<StudentCourseView />}>
           <Route index element={<div className="p-6 text-gray-500">Select a topic from the left to view content.</div>} />
           <Route path="content/:contentId" element={<ContentViewer />} />
@@ -224,4 +230,3 @@ export default function AppRoutes() {
     </Routes>
   );
 }
-

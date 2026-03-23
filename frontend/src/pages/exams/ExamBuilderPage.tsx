@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import toast from "react-hot-toast";
+import axios from "axios";
 import api from "@/lib/api";
+import { useAuth } from "@/features/auth/hooks/useAuth";
 import ExamShell from "@/features/exams/components/ExamShell";
 import ExamStatusBadge from "@/components/ui/ExamStatusBadge";
 import { computeExamStatus } from "@/features/exams/utils/computeExamStatus";
 import type { ExamSection, ExamSummary, ExamStatus } from "@/features/exams/types";
+import { getExamPermissions } from "@/features/exams/utils/examPermissions";
 
 interface ExamDetail extends ExamSummary {
   sections?: ExamSection[];
@@ -13,6 +16,17 @@ interface ExamDetail extends ExamSummary {
   question_count?: number | null;
   section_count?: number | null;
 }
+
+const asRecord = (value: unknown): Record<string, unknown> =>
+  value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+
+const readApiErrorMessage = (error: unknown, fallback: string) => {
+  if (!axios.isAxiosError(error)) return fallback;
+  const data = asRecord(error.response?.data);
+  if (typeof data.error === "string" && data.error.trim()) return data.error;
+  if (typeof data.message === "string" && data.message.trim()) return data.message;
+  return fallback;
+};
 
 const normalizeStatus = (value?: string | null): ExamStatus | null => {
   if (!value) return null;
@@ -92,6 +106,8 @@ const buildDemoExam = (): ExamDetail => {
 
 export default function ExamBuilderPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const examPermissions = useMemo(() => getExamPermissions(user), [user]);
   const { id } = useParams();
   const [exam, setExam] = useState<ExamDetail | null>(null);
   const [sections, setSections] = useState<ExamSection[]>([]);
@@ -145,7 +161,8 @@ export default function ExamBuilderPage() {
   }, [id]);
 
   const effectiveStatus = normalizeStatus(exam?.status ?? null) ?? computeExamStatus(exam ?? {});
-  const isReadOnly = exam?.status ? exam.status !== "draft" : effectiveStatus !== "draft";
+  const statusReadOnly = exam?.status ? exam.status !== "draft" : effectiveStatus !== "draft";
+  const isReadOnly = statusReadOnly || !examPermissions.canUpdate;
 
   const sectionCount = sections.length;
   const totalQuestionCount = useMemo(
@@ -168,6 +185,10 @@ export default function ExamBuilderPage() {
   const canPublish = publishValidation.every((item) => item.valid);
 
   const handleAddSection = async () => {
+    if (!examPermissions.canUpdate) {
+      toast.error("You don't have permission to update exams.");
+      return;
+    }
     if (!id) return;
     if (!newSection.title.trim()) {
       toast.error("Section name is required");
@@ -208,13 +229,17 @@ export default function ExamBuilderPage() {
       }));
       setNewSection({ title: "", marks_per_question: "4", negative_marks: "1" });
       toast.success("Section added");
-    } catch (err: any) {
-      const message = err?.response?.data?.error || "Failed to add section.";
+    } catch (err: unknown) {
+      const message = readApiErrorMessage(err, "Failed to add section.");
       toast.error(message);
     }
   };
 
   const handleSaveSection = async (section: ExamSection) => {
+    if (!examPermissions.canUpdate) {
+      toast.error("You don't have permission to update exams.");
+      return;
+    }
     if (!id) return;
     const draft = sectionEdits[String(section.id)];
     if (!draft) return;
@@ -247,8 +272,8 @@ export default function ExamBuilderPage() {
         prev.map((item) => (item.id === section.id ? { ...item, ...updated } : item))
       );
       toast.success("Section updated");
-    } catch (err: any) {
-      const message = err?.response?.data?.error || "Failed to update section.";
+    } catch (err: unknown) {
+      const message = readApiErrorMessage(err, "Failed to update section.");
       toast.error(message);
     } finally {
       setSavingSectionId(null);
@@ -256,6 +281,10 @@ export default function ExamBuilderPage() {
   };
 
   const handleDeleteSection = async (section: ExamSection) => {
+    if (!examPermissions.canUpdate) {
+      toast.error("You don't have permission to update exams.");
+      return;
+    }
     if (!id) return;
     const ok = window.confirm("Delete this section? This cannot be undone.");
     if (!ok) return;
@@ -269,13 +298,17 @@ export default function ExamBuilderPage() {
         return next;
       });
       toast.success("Section deleted");
-    } catch (err: any) {
-      const message = err?.response?.data?.error || "Failed to delete section.";
+    } catch (err: unknown) {
+      const message = readApiErrorMessage(err, "Failed to delete section.");
       toast.error(message);
     }
   };
 
   const handlePublish = async () => {
+    if (!examPermissions.canPublish) {
+      toast.error("You don't have permission to publish exams.");
+      return;
+    }
     if (!id || !canPublish) return;
     try {
       setPublishing(true);
@@ -283,8 +316,8 @@ export default function ExamBuilderPage() {
       setExam((prev) => (prev ? { ...prev, status: res.data?.status ?? "published" } : prev));
       toast.success("Exam published");
       setPublishModalOpen(false);
-    } catch (err: any) {
-      const message = err?.response?.data?.error || "Failed to publish exam.";
+    } catch (err: unknown) {
+      const message = readApiErrorMessage(err, "Failed to publish exam.");
       toast.error(message);
     } finally {
       setPublishing(false);
@@ -316,7 +349,7 @@ export default function ExamBuilderPage() {
             </div>
             <div className="flex items-center gap-2">
               <ExamStatusBadge status={effectiveStatus} />
-              {!isReadOnly && (
+              {!statusReadOnly && examPermissions.canPublish && (
                 <button
                   onClick={() => setPublishModalOpen(true)}
                   className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
@@ -333,7 +366,13 @@ export default function ExamBuilderPage() {
             </div>
           </div>
 
-          {isReadOnly && (
+          {!examPermissions.canUpdate && (
+            <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+              You do not have permission to update this exam.
+            </div>
+          )}
+
+          {statusReadOnly && (
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700">
               This exam is not in draft state. Section edits are disabled.
             </div>
