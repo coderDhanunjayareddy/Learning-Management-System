@@ -1156,103 +1156,193 @@ export const submitExamAttempt = async (req, res) => {
 // TASK 2 & 3: Grading Functions by Question Type
 // ============================================
 
+const isObject = (value) => value !== null && typeof value === "object";
+
+const isBlankValue = (value) => {
+  if (value === null || value === undefined) return true;
+  if (typeof value === "string") return value.trim() === "";
+  if (Array.isArray(value)) return value.length === 0;
+  return false;
+};
+
+const toFiniteNumber = (value, fallback = 0) => {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : fallback;
+};
+
+const normalizeToken = (value) => {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "boolean") return value ? "true" : "false";
+  return String(value).trim();
+};
+
+const normalizeTrueFalseToken = (value) => {
+  const raw = normalizeToken(value).toLowerCase();
+  if (["true", "1", "yes"].includes(raw)) return "true";
+  if (["false", "0", "no"].includes(raw)) return "false";
+  return raw;
+};
+
+const extractSingleValue = (value) => {
+  if (isBlankValue(value)) return null;
+
+  if (Array.isArray(value)) {
+    return value.length > 0 ? value[0] : null;
+  }
+
+  if (isObject(value)) {
+    if (Array.isArray(value.answer_ids) && value.answer_ids.length > 0) return value.answer_ids[0];
+    if (Array.isArray(value.answers) && value.answers.length > 0) return value.answers[0];
+    if (value.answer !== undefined) return value.answer;
+    if (value.value !== undefined) return value.value;
+    if (value.raw !== undefined) return value.raw;
+    return null;
+  }
+
+  return value;
+};
+
+const extractMultipleValues = (value) => {
+  if (isBlankValue(value)) return [];
+
+  if (Array.isArray(value)) return value;
+
+  if (isObject(value)) {
+    if (Array.isArray(value.answer_ids)) return value.answer_ids;
+    if (Array.isArray(value.answers)) return value.answers;
+    if (value.answer !== undefined) return [value.answer];
+    return [];
+  }
+
+  return [value];
+};
+
+const extractNumericValueAndTolerance = (value, defaultTolerance = 0.01) => {
+  if (isBlankValue(value)) return { value: null, tolerance: defaultTolerance };
+
+  if (isObject(value)) {
+    const resolvedValue = value.value !== undefined ? value.value : value.answer;
+    const resolvedTolerance = value.tolerance !== undefined
+      ? toFiniteNumber(value.tolerance, defaultTolerance)
+      : defaultTolerance;
+    return { value: resolvedValue, tolerance: resolvedTolerance };
+  }
+
+  return { value, tolerance: defaultTolerance };
+};
+
 // Grade single MCQ - exact match
 const gradeMCQSingle = (studentAnswer, correctAnswer) => {
-  if (studentAnswer === null || studentAnswer === '' || studentAnswer === undefined) {
+  const studentValue = extractSingleValue(studentAnswer);
+  if (isBlankValue(studentValue)) {
     return { isCorrect: false, isUnattempted: true };
   }
-  // Normalize to string for comparison
-  const normalizedStudent = String(studentAnswer).trim();
-  const normalizedCorrect = String(correctAnswer).trim();
+
+  const correctValue = extractSingleValue(correctAnswer);
+  if (isBlankValue(correctValue)) {
+    return { isCorrect: false, isUnattempted: false };
+  }
+
   return {
-    isCorrect: normalizedStudent === normalizedCorrect,
-    isUnattempted: false
+    isCorrect: normalizeToken(studentValue) === normalizeToken(correctValue),
+    isUnattempted: false,
   };
 };
 
 // Grade multiple MCQ - exact full set match
 const gradeMCQMultiple = (studentAnswer, correctAnswer) => {
-  if (!studentAnswer || (Array.isArray(studentAnswer) && studentAnswer.length === 0)) {
+  const studentArray = extractMultipleValues(studentAnswer)
+    .map((item) => normalizeToken(item))
+    .filter((item) => item.length > 0);
+
+  if (studentArray.length === 0) {
     return { isCorrect: false, isUnattempted: true };
   }
 
-  const studentArray = Array.isArray(studentAnswer) ? studentAnswer : [studentAnswer];
-  const correctArray = Array.isArray(correctAnswer) ? correctAnswer : [correctAnswer];
+  const correctArray = extractMultipleValues(correctAnswer)
+    .map((item) => normalizeToken(item))
+    .filter((item) => item.length > 0);
 
-  // Normalize and sort for comparison
-  const studentNorm = studentArray.map(s => String(s).trim()).sort();
-  const correctNorm = correctArray.map(c => String(c).trim()).sort();
+  if (correctArray.length === 0) {
+    return { isCorrect: false, isUnattempted: false };
+  }
 
+  const studentNorm = [...new Set(studentArray)].sort();
+  const correctNorm = [...new Set(correctArray)].sort();
   const isExactMatch = studentNorm.length === correctNorm.length &&
     studentNorm.every((val, idx) => val === correctNorm[idx]);
 
   return {
     isCorrect: isExactMatch,
-    isUnattempted: false
+    isUnattempted: false,
   };
 };
 
 // Grade numerical - tolerance check (default 0.01)
-const gradeNumerical = (studentAnswer, correctAnswer, tolerance = 0.01) => {
-  if (studentAnswer === null || studentAnswer === '' || studentAnswer === undefined) {
+const gradeNumerical = (studentAnswer, correctAnswer, defaultTolerance = 0.01) => {
+  const studentValue = extractSingleValue(studentAnswer);
+  if (isBlankValue(studentValue)) {
     return { isCorrect: false, isUnattempted: true };
   }
 
-  try {
-    const studentNum = parseFloat(studentAnswer);
-    const correctNum = parseFloat(correctAnswer);
-
-    if (Number.isNaN(studentNum) || Number.isNaN(correctNum)) {
-      return { isCorrect: false, isUnattempted: false };
-    }
-
-    const diff = Math.abs(studentNum - correctNum);
-    return {
-      isCorrect: diff <= tolerance,
-      isUnattempted: false
-    };
-  } catch (e) {
+  const { value: correctValue, tolerance } = extractNumericValueAndTolerance(correctAnswer, defaultTolerance);
+  if (isBlankValue(correctValue)) {
     return { isCorrect: false, isUnattempted: false };
   }
+
+  const studentNum = parseFloat(String(studentValue).replace(/,/g, ""));
+  const correctNum = parseFloat(String(correctValue).replace(/,/g, ""));
+
+  if (Number.isNaN(studentNum) || Number.isNaN(correctNum)) {
+    return { isCorrect: false, isUnattempted: false };
+  }
+
+  return {
+    isCorrect: Math.abs(studentNum - correctNum) <= Math.max(0, toFiniteNumber(tolerance, defaultTolerance)),
+    isUnattempted: false,
+  };
 };
 
 // Grade true/false - exact match
 const gradeTrueFalse = (studentAnswer, correctAnswer) => {
-  if (studentAnswer === null || studentAnswer === '' || studentAnswer === undefined) {
+  const studentValue = extractSingleValue(studentAnswer);
+  if (isBlankValue(studentValue)) {
     return { isCorrect: false, isUnattempted: true };
   }
 
-  // Normalize to lowercase string
-  const normalizedStudent = String(studentAnswer).toLowerCase().trim();
-  const normalizedCorrect = String(correctAnswer).toLowerCase().trim();
+  const correctValue = extractSingleValue(correctAnswer);
+  if (isBlankValue(correctValue)) {
+    return { isCorrect: false, isUnattempted: false };
+  }
 
   return {
-    isCorrect: normalizedStudent === normalizedCorrect,
-    isUnattempted: false
+    isCorrect: normalizeTrueFalseToken(studentValue) === normalizeTrueFalseToken(correctValue),
+    isUnattempted: false,
   };
 };
 
 // Grade integer - exact match after parsing
 const gradeInteger = (studentAnswer, correctAnswer) => {
-  if (studentAnswer === null || studentAnswer === '' || studentAnswer === undefined) {
+  const studentValue = extractSingleValue(studentAnswer);
+  if (isBlankValue(studentValue)) {
     return { isCorrect: false, isUnattempted: true };
   }
 
-  try {
-    const studentInt = parseInt(studentAnswer, 10);
-    const correctInt = parseInt(correctAnswer, 10);
-
-    if (Number.isNaN(studentInt) || Number.isNaN(correctInt)) {
-      return { isCorrect: false, isUnattempted: false };
-    }
-
-    return {
-      isCorrect: studentInt === correctInt,
-      isUnattempted: false
-    };
-  } catch (e) {
+  const correctValue = extractSingleValue(correctAnswer);
+  if (isBlankValue(correctValue)) {
     return { isCorrect: false, isUnattempted: false };
   }
+
+  const studentInt = parseInt(String(studentValue), 10);
+  const correctInt = parseInt(String(correctValue), 10);
+  if (Number.isNaN(studentInt) || Number.isNaN(correctInt)) {
+    return { isCorrect: false, isUnattempted: false };
+  }
+
+  return {
+    isCorrect: studentInt === correctInt,
+    isUnattempted: false,
+  };
 };
 
 // ============================================
@@ -1305,13 +1395,18 @@ const gradeAttempt = async (client, attemptId) => {
     } = response;
 
     // Mark source resolution: override → section default → question default
-    const posMarks = marksOverride !== null ? Number(marksOverride) :
-      (markPerQuestion !== null ? Number(markPerQuestion) :
-        (markPositive !== null ? Number(markPositive) : 0));
+    const posMarks = marksOverride !== null
+      ? toFiniteNumber(marksOverride, 0)
+      : (markPerQuestion !== null
+        ? toFiniteNumber(markPerQuestion, 0)
+        : (markPositive !== null ? toFiniteNumber(markPositive, 0) : 0));
 
-    const negMarks = negativeOverride !== null ? Number(negativeOverride) :
-      (negativeMarks !== null ? Number(negativeMarks) :
-        (markNegative !== null ? Number(markNegative) : 0));
+    const rawNegMarks = negativeOverride !== null
+      ? toFiniteNumber(negativeOverride, 0)
+      : (negativeMarks !== null
+        ? toFiniteNumber(negativeMarks, 0)
+        : (markNegative !== null ? toFiniteNumber(markNegative, 0) : 0));
+    const negMarks = Math.abs(rawNegMarks);
 
     let isCorrect = false;
     let isUnattempted = false;
