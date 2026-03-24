@@ -1,8 +1,10 @@
 import { query as dbQuery, getClient } from '../repositories/db.repository.js';
 import { AppError, handleServiceError } from '../utils/errors.js';
 import { parseNullableInt, parseRequiredInt, requireString } from '../schemas/questions.schema.js';
+import { getAttemptResultPayloadByAttemptId } from './student.service.js';
 
 const VALID_EXAM_STATUSES = ['draft', 'published', 'active', 'completed'];
+let examResultColumnsEnsured = false;
 
 const isSuperAdmin = (role) => role === 'super_admin';
 const isPlatformAdmin = (role) => role === 'super_admin' || role === 'content_authorizer';
@@ -39,6 +41,17 @@ const parsePagination = (query) => {
   const page = Math.max(parseInt(query?.page || '1', 10), 1);
   const pageSize = Math.min(Math.max(parseInt(query?.page_size || '20', 10), 1), 100);
   return { page, pageSize, offset: (page - 1) * pageSize };
+};
+
+const ensureExamResultConfigColumns = async () => {
+  if (examResultColumnsEnsured) return;
+  await dbQuery(`
+    ALTER TABLE exams
+    ADD COLUMN IF NOT EXISTS show_score BOOLEAN DEFAULT TRUE,
+    ADD COLUMN IF NOT EXISTS show_pass_or_fail BOOLEAN DEFAULT TRUE,
+    ADD COLUMN IF NOT EXISTS show_solutions_to_user BOOLEAN DEFAULT FALSE
+  `);
+  examResultColumnsEnsured = true;
 };
 
 const ensureClientScope = (clientId, role) => {
@@ -488,6 +501,7 @@ export const listExams = async (req, res) => {
     if (!req.user?.id || !req.user?.role) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
+    await ensureExamResultConfigColumns();
     await ensureCourseExamsTable();
 
     const { page, pageSize, offset } = parsePagination(req.query);
@@ -533,6 +547,7 @@ export const getExamById = async (req, res) => {
     if (!req.user?.id || !req.user?.role) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
+    await ensureExamResultConfigColumns();
     await ensureCourseExamsTable();
 
     const exam = await getExamByIdForAccess({ examId: req.params.id, user: req.user, requireOwner: isTeacher(req.user.role) });
@@ -580,11 +595,109 @@ export const getExamById = async (req, res) => {
   }
 };
 
+export const getExamResults = async (req, res) => {
+  try {
+    if (!req.user?.id || !req.user?.role) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    await ensureExamResultConfigColumns();
+
+    const exam = await getExamByIdForAccess({
+      examId: req.params.id,
+      user: req.user,
+      requireOwner: isTeacher(req.user.role),
+    });
+
+    const { page, pageSize, offset } = parsePagination(req.query);
+
+    const countResult = await dbQuery(
+      `SELECT COUNT(*)::int AS total FROM exam_attempts WHERE exam_id = $1`,
+      [exam.id]
+    );
+    const total = Number(countResult.rows[0]?.total || 0);
+
+    const attemptsResult = await dbQuery(
+      `
+      SELECT
+        ea.id,
+        ea.student_id,
+        ea.attempt_number,
+        ea.status,
+        ea.started_at,
+        ea.submitted_at,
+        ea.auto_submitted,
+        u.full_name,
+        u.name,
+        u.email
+      FROM exam_attempts ea
+      LEFT JOIN users u ON u.id = ea.student_id
+      WHERE ea.exam_id = $1
+      ORDER BY ea.started_at DESC, ea.id DESC
+      LIMIT $2 OFFSET $3
+      `,
+      [exam.id, pageSize, offset]
+    );
+
+    const results = await Promise.all(
+      attemptsResult.rows.map(async (attemptRow) => {
+        try {
+          const payload = await getAttemptResultPayloadByAttemptId({
+            attemptId: Number(attemptRow.id),
+            allowUnreleased: true,
+          });
+          return {
+            ...payload,
+            student: {
+              id: Number(attemptRow.student_id),
+              name: attemptRow.full_name || attemptRow.name || null,
+              email: attemptRow.email || null,
+            },
+          };
+        } catch (err) {
+          if (err instanceof AppError && err.status === 409) {
+            return {
+              attempt: {
+                id: Number(attemptRow.id),
+                exam_id: Number(exam.id),
+                student_id: Number(attemptRow.student_id),
+                attempt_number: attemptRow.attempt_number,
+                status: attemptRow.status,
+                started_at: attemptRow.started_at,
+                submitted_at: attemptRow.submitted_at,
+                auto_submitted: attemptRow.auto_submitted,
+              },
+              student: {
+                id: Number(attemptRow.student_id),
+                name: attemptRow.full_name || attemptRow.name || null,
+                email: attemptRow.email || null,
+              },
+              summary: null,
+              responses: [],
+            };
+          }
+          throw err;
+        }
+      })
+    );
+
+    return res.json({
+      exam_id: Number(exam.id),
+      page,
+      page_size: pageSize,
+      total,
+      results,
+    });
+  } catch (err) {
+    handleServiceError(res, err, 'Failed to load exam results');
+  }
+};
+
 export const createExam = async (req, res) => {
   try {
     if (!req.user?.id || !req.user?.role) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
+    await ensureExamResultConfigColumns();
 
     const title = requireString(req.body?.title, 'title');
     const description = req.body?.description ? String(req.body.description).trim() : null;
@@ -616,6 +729,9 @@ export const createExam = async (req, res) => {
     const shuffleQuestions = parseBoolean(req.body?.shuffle_questions, 'shuffle_questions');
     const shuffleOptions = parseBoolean(req.body?.shuffle_options, 'shuffle_options');
     const showResultImmediately = parseBoolean(req.body?.show_result_immediately, 'show_result_immediately');
+    const showScore = parseBoolean(req.body?.show_score, 'show_score');
+    const showPassOrFail = parseBoolean(req.body?.show_pass_or_fail, 'show_pass_or_fail');
+    const showSolutionsToUser = parseBoolean(req.body?.show_solutions_to_user, 'show_solutions_to_user');
 
     const maxAttempts = req.body?.max_attempts === undefined || req.body?.max_attempts === null || req.body?.max_attempts === ''
       ? 1
@@ -630,9 +746,11 @@ export const createExam = async (req, res) => {
       `
       INSERT INTO exams
         (client_id, school_id, title, description, total_duration_minutes, start_datetime, end_datetime,
-         shuffle_questions, shuffle_options, show_result_immediately, max_attempts, status, created_by)
+         shuffle_questions, shuffle_options, show_result_immediately, show_score, show_pass_or_fail, show_solutions_to_user,
+         max_attempts, status, created_by)
       VALUES
-        ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, FALSE), COALESCE($9, FALSE), COALESCE($10, TRUE), $11, $12, $13)
+        ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, FALSE), COALESCE($9, FALSE), COALESCE($10, TRUE),
+         COALESCE($11, TRUE), COALESCE($12, TRUE), COALESCE($13, FALSE), $14, $15, $16)
       RETURNING *
       `,
       [
@@ -646,6 +764,9 @@ export const createExam = async (req, res) => {
         shuffleQuestions,
         shuffleOptions,
         showResultImmediately,
+        showScore,
+        showPassOrFail,
+        showSolutionsToUser,
         maxAttempts,
         status,
         req.user.id,
@@ -663,6 +784,7 @@ export const updateExam = async (req, res) => {
     if (!req.user?.id || !req.user?.role) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
+    await ensureExamResultConfigColumns();
 
     const exam = await getExamByIdForAccess({
       examId: req.params.id,
@@ -708,6 +830,15 @@ export const updateExam = async (req, res) => {
     }
     if (req.body?.show_result_immediately !== undefined) {
       addUpdate('show_result_immediately', parseBoolean(req.body.show_result_immediately, 'show_result_immediately'));
+    }
+    if (req.body?.show_score !== undefined) {
+      addUpdate('show_score', parseBoolean(req.body.show_score, 'show_score'));
+    }
+    if (req.body?.show_pass_or_fail !== undefined) {
+      addUpdate('show_pass_or_fail', parseBoolean(req.body.show_pass_or_fail, 'show_pass_or_fail'));
+    }
+    if (req.body?.show_solutions_to_user !== undefined) {
+      addUpdate('show_solutions_to_user', parseBoolean(req.body.show_solutions_to_user, 'show_solutions_to_user'));
     }
     if (req.body?.max_attempts !== undefined) {
       const attempts = parseRequiredInt(req.body.max_attempts, 'max_attempts');

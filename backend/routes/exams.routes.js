@@ -12,8 +12,9 @@ import {
   publishExam,
   getExamAssignedCourses,
   assignExamCourses,
+  getExamResults,
 } from '../controllers/exams.controller.js';
-import { authenticateToken, requireRole, attachClientContext, loadPermissions, checkPermission } from '../middleware/auth.js';
+import { authenticateToken, attachClientContext, loadPermissions, checkPermission } from '../middleware/auth.js';
 
 const router = Router();
 
@@ -35,6 +36,7 @@ router.delete('/exams/:id/sections/:sectionId', checkPermission('exams.update'),
 
 router.post('/exams/:id/sections/:sectionId/questions', checkPermission('exams.update'), addQuestionToSection);
 router.post('/exams/:id/publish', checkPermission('exams.publish'), publishExam);
+router.get('/exams/:id/results', checkPermission('exams.read'), getExamResults);
 router.get('/exams/:id/courses', checkPermission('exams.read'), getExamAssignedCourses);
 router.put('/exams/:id/courses', checkPermission('exams.update'), assignExamCourses);
 
