@@ -2,51 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
-import api from "@/lib/api";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { getDashboardTheme } from "@/components/layout/dashboardTheme";
 import spectropyLogo from "/logo.png";
-import gvjbLogo from "/gvjb.png";
 import type { StudentExam, StudentExamStatus } from "@/features/exams/types/studentExam";
 import { computeStudentExamStatus } from "@/features/exams/utils/studentExamStatus";
-import { startOrResumeExam } from "@/features/exam-runtime/api";
-
-const asRecord = (value: unknown): Record<string, unknown> =>
-  value && typeof value === "object" ? (value as Record<string, unknown>) : {};
-
-const normalizeNumber = (value: unknown): number | null => {
-  if (value === null || value === undefined || value === "") return null;
-  const num = Number(value);
-  return Number.isNaN(num) ? null : num;
-};
-
-const normalizeExam = (item: unknown): StudentExam => {
-  const source = asRecord(item);
-  return {
-    id: Number(source.id ?? source.exam_id ?? 0),
-    title: String(source.title ?? source.name ?? "Untitled exam"),
-    description: source.description ? String(source.description) : null,
-    start_datetime:
-      typeof source.start_datetime === "string"
-        ? source.start_datetime
-        : typeof source.startDate === "string"
-          ? source.startDate
-          : null,
-    end_datetime:
-      typeof source.end_datetime === "string"
-        ? source.end_datetime
-        : typeof source.endDate === "string"
-          ? source.endDate
-          : null,
-    total_duration_minutes: normalizeNumber(
-      source.total_duration_minutes ?? source.duration_minutes ?? source.duration
-    ),
-    computed_status: source.computed_status ? String(source.computed_status) : null,
-    status: source.status ? String(source.status) : null,
-    in_progress_attempt_id: normalizeNumber(source.in_progress_attempt_id),
-    has_in_progress_attempt: Boolean(source.has_in_progress_attempt),
-  };
-};
+import { getStudentExams, startOrResumeExam } from "@/features/exam-runtime/api";
+import { EXAM_ATTEMPT_SYNC_KEY } from "@/features/exam-runtime/constants";
 
 const formatDateTime = (value?: string | null) => {
   if (!value) return "--";
@@ -77,6 +39,49 @@ const statusClassMap: Record<StudentExamStatus, string> = {
   unknown: "bg-slate-100 text-slate-700 border-slate-200",
 };
 
+interface ExamWithStatus {
+  exam: StudentExam;
+  status: StudentExamStatus;
+}
+
+const isResultReleased = (exam: StudentExam): boolean => {
+  if (exam.show_result_immediately) return true;
+  if (!exam.end_datetime) return false;
+  const endDate = new Date(exam.end_datetime);
+  if (Number.isNaN(endDate.getTime())) return false;
+  return new Date() >= endDate;
+};
+
+const resolveMaxAttempts = (exam: StudentExam): number => {
+  if (typeof exam.max_attempts === "number" && Number.isFinite(exam.max_attempts) && exam.max_attempts > 0) {
+    return exam.max_attempts;
+  }
+  return 1;
+};
+
+const isExamWindowOpen = (exam: StudentExam, now: Date = new Date()): boolean => {
+  if (!exam.start_datetime || !exam.end_datetime) return false;
+  const start = new Date(exam.start_datetime);
+  const end = new Date(exam.end_datetime);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return false;
+  return now >= start && now <= end;
+};
+
+const canRetakeExam = (exam: StudentExam, status: StudentExamStatus): boolean => {
+  if (status !== "completed") return false;
+  if (exam.in_progress_attempt_id || exam.has_in_progress_attempt) return false;
+
+  const examStatus = String(exam.status ?? "").toLowerCase();
+  if (examStatus && !["published", "active"].includes(examStatus)) return false;
+
+  const attemptsUsed = exam.attempt_count ?? 0;
+  const maxAttempts = resolveMaxAttempts(exam);
+  if (attemptsUsed >= maxAttempts) return false;
+
+  return isExamWindowOpen(exam);
+};
+
+
 export default function StudentExamListPage() {
   const navigate = useNavigate();
   const { logout, user } = useAuth();
@@ -86,46 +91,46 @@ export default function StudentExamListPage() {
   const [error, setError] = useState<string | null>(null);
   const [startingExamId, setStartingExamId] = useState<number | null>(null);
 
-  const isClientTenant = Boolean(user?.client_id);
-  const brandLogo = isClientTenant ? gvjbLogo : spectropyLogo;
-  const brandName = isClientTenant ? "GVB" : "Spectropy";
+  const isClientTenant = false;
+  const brandLogo = spectropyLogo;
+  const brandName = "Spectropy";
   const dashboardTitle = "Student Dashboard";
-  const theme = getDashboardTheme(isClientTenant);
+  const theme = getDashboardTheme(false);
 
   const userFullName = user?.full_name || "Student";
   const userEmail = user?.email || "student@lms.com";
 
-  const handleBackToLogin = async () => {
+  const handleBackToLogin = useCallback(async () => {
     await logout();
     navigate("/login", { replace: true });
-  };
+  }, [logout, navigate]);
 
   const fetchExams = useCallback(async () => {
     setLoading(true);
     setError(null);
 
     try {
-      const response = await api.get("/student/exams");
-      const payload = Array.isArray(response.data)
-        ? response.data
-        : Array.isArray(response.data?.data)
-          ? response.data.data
-          : [];
-
-      const normalized = payload
-        .map(normalizeExam)
-        .filter((exam) => Number.isFinite(exam.id) && exam.id > 0);
-
-      setExams(normalized);
+      const list = await getStudentExams();
+      setExams(list);
     } catch (err: unknown) {
-      if (axios.isAxiosError(err) && err.response?.status === 404) {
-        setError("Student exams endpoint was not found (404). Please contact your administrator.");
-      } else if (axios.isAxiosError(err)) {
-        const message =
-          err.response?.data?.message ||
-          err.response?.data?.error ||
-          "Failed to load exams.";
-        setError(String(message));
+      if (axios.isAxiosError(err)) {
+        const status = err.response?.status;
+        if (status === 401) {
+          setError("Your session has expired. Please login again.");
+          void handleBackToLogin();
+        } else if (status === 403) {
+          setError(String(err.response?.data?.message ?? "You do not have access to student exams."));
+        } else if (status === 404) {
+          setError("Student exams endpoint was not found (404). Please contact your administrator.");
+        } else if (!err.response) {
+          setError("Network error while loading exams. Please check your connection and retry.");
+        } else {
+          const message =
+            err.response?.data?.message ||
+            err.response?.data?.error ||
+            "Failed to load exams.";
+          setError(String(message));
+        }
       } else {
         setError("Failed to load exams.");
       }
@@ -133,19 +138,59 @@ export default function StudentExamListPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [handleBackToLogin]);
 
   useEffect(() => {
     void fetchExams();
   }, [fetchExams]);
 
-  const examsWithStatus = useMemo(
+  useEffect(() => {
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key !== EXAM_ATTEMPT_SYNC_KEY) return;
+      void fetchExams();
+    };
+
+    const handleFocus = () => {
+      void fetchExams();
+    };
+
+    window.addEventListener("storage", handleStorage);
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      window.removeEventListener("storage", handleStorage);
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, [fetchExams]);
+
+  const examsWithStatus = useMemo<ExamWithStatus[]>(
     () => exams.map((exam) => ({ exam, status: computeStudentExamStatus(exam) })),
     [exams]
   );
 
+  const groupedExams = useMemo(() => {
+    const available: ExamWithStatus[] = [];
+    const upcoming: ExamWithStatus[] = [];
+    const past: ExamWithStatus[] = [];
+
+    examsWithStatus.forEach((item) => {
+      const canResume = Boolean(item.exam.in_progress_attempt_id || item.exam.has_in_progress_attempt);
+      const canRetake = canRetakeExam(item.exam, item.status);
+      if (canResume || item.status === "ongoing" || canRetake) {
+        available.push(item);
+      } else if (item.status === "upcoming") {
+        upcoming.push(item);
+      } else {
+        past.push(item);
+      }
+    });
+
+    return { available, upcoming, past };
+  }, [examsWithStatus]);
+
   const handleStartOrResume = async (exam: StudentExam) => {
     setStartingExamId(exam.id);
+
     try {
       const runtimeState = await startOrResumeExam(exam.id);
       const attemptId = runtimeState?.attempt?.id;
@@ -153,6 +198,7 @@ export default function StudentExamListPage() {
         toast.error("Could not open exam attempt. Please try again.");
         return;
       }
+
       navigate(`/student/exams/attempt/${attemptId}`);
     } catch (err: unknown) {
       if (axios.isAxiosError(err)) {
@@ -167,6 +213,132 @@ export default function StudentExamListPage() {
     } finally {
       setStartingExamId(null);
     }
+  };
+
+  const renderExamCard = ({ exam, status }: ExamWithStatus) => {
+    const canResume = Boolean(exam.in_progress_attempt_id || exam.has_in_progress_attempt);
+    const canRetake = canRetakeExam(exam, status);
+    const canStart = canResume || status === "ongoing" || canRetake;
+    const ctaLabel = canResume ? "Resume Exam" : canRetake ? "Retake Exam" : "Start Exam";
+    const isStarting = startingExamId === exam.id;
+    const resultReleased = isResultReleased(exam);
+    const maxAttempts = resolveMaxAttempts(exam);
+    const attemptsUsed = exam.attempt_count ?? 0;
+    const showResultButton = status === "completed" && resultReleased;
+    const showResultNotReleased = status === "completed" && !resultReleased;
+    const showInfoState = !canStart && !showResultButton;
+
+    return (
+      <article
+        key={exam.id}
+        className="flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <h2 className="text-base font-semibold text-slate-900">{exam.title}</h2>
+          <span
+            className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${statusClassMap[status]}`}
+          >
+            {statusLabelMap[status]}
+          </span>
+        </div>
+
+        {exam.description && (
+          <p className="mt-3 line-clamp-3 text-sm text-slate-600">{exam.description}</p>
+        )}
+
+        <dl className="mt-4 space-y-2 text-sm">
+          <div className="flex justify-between gap-3">
+            <dt className="text-slate-500">Start</dt>
+            <dd className="text-right font-medium text-slate-800">{formatDateTime(exam.start_datetime)}</dd>
+          </div>
+          <div className="flex justify-between gap-3">
+            <dt className="text-slate-500">End</dt>
+            <dd className="text-right font-medium text-slate-800">{formatDateTime(exam.end_datetime)}</dd>
+          </div>
+          <div className="flex justify-between gap-3">
+            <dt className="text-slate-500">Duration</dt>
+            <dd className="font-medium text-slate-800">
+              {exam.total_duration_minutes !== null ? `${exam.total_duration_minutes} mins` : "--"}
+            </dd>
+          </div>
+          <div className="flex justify-between gap-3">
+            <dt className="text-slate-500">Attempts</dt>
+            <dd className="font-medium text-slate-800">
+              {attemptsUsed} / {maxAttempts}
+            </dd>
+          </div>
+        </dl>
+
+        <div className="mt-5 space-y-2">
+          {canStart ? (
+            <button
+              type="button"
+              onClick={() => {
+                void handleStartOrResume(exam);
+              }}
+              disabled={isStarting}
+              className="w-full rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isStarting ? "Opening..." : ctaLabel}
+            </button>
+          ) : null}
+
+          {showResultButton ? (
+            <button
+              type="button"
+              onClick={() => navigate(`/student/exams/${exam.id}/result`)}
+              className={`w-full rounded-lg px-4 py-2 text-sm font-semibold ${
+                canStart
+                  ? "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                  : "bg-slate-900 text-white hover:bg-slate-800"
+              }`}
+            >
+              View Result
+            </button>
+          ) : null}
+
+          {showResultNotReleased ? (
+            <div className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-medium text-indigo-700">
+              Result not released yet.
+            </div>
+          ) : null}
+
+          {showInfoState && status === "max_attempts_reached" ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">
+              Maximum attempts reached.
+            </div>
+          ) : null}
+
+          {showInfoState && status === "expired" ? (
+            <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">
+              Exam window has closed.
+            </div>
+          ) : null}
+
+          {showInfoState && status !== "max_attempts_reached" && status !== "expired" ? (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600">
+              Exam not started yet.
+            </div>
+          ) : null}
+        </div>
+      </article>
+    );
+  };
+
+  const renderSection = (title: string, examsInSection: ExamWithStatus[]) => {
+    if (examsInSection.length === 0) return null;
+
+    return (
+      <section className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
+          <span className="text-xs font-medium text-slate-500">{examsInSection.length}</span>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {examsInSection.map(renderExamCard)}
+        </div>
+      </section>
+    );
   };
 
   return (
@@ -319,7 +491,9 @@ export default function StudentExamListPage() {
                 <p className="text-sm font-medium text-rose-700">{error}</p>
                 <button
                   type="button"
-                  onClick={fetchExams}
+                  onClick={() => {
+                    void fetchExams();
+                  }}
                   className="mt-4 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700"
                 >
                   Retry
@@ -333,85 +507,10 @@ export default function StudentExamListPage() {
                 </p>
               </div>
             ) : (
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {examsWithStatus.map(({ exam, status }) => {
-                  const canResume = Boolean(exam.in_progress_attempt_id || exam.has_in_progress_attempt);
-                  const canStart = canResume || status === "ongoing";
-                  const ctaLabel = exam.in_progress_attempt_id || exam.has_in_progress_attempt ? "Resume Exam" : "Start Exam";
-                  const isStarting = startingExamId === exam.id;
-
-                  return (
-                    <article
-                      key={exam.id}
-                      className="flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <h2 className="text-base font-semibold text-slate-900">{exam.title}</h2>
-                        <span
-                          className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${statusClassMap[status]}`}
-                        >
-                          {statusLabelMap[status]}
-                        </span>
-                      </div>
-
-                      {exam.description && (
-                        <p className="mt-3 line-clamp-3 text-sm text-slate-600">{exam.description}</p>
-                      )}
-
-                      <dl className="mt-4 space-y-2 text-sm">
-                        <div className="flex justify-between gap-3">
-                          <dt className="text-slate-500">Start</dt>
-                          <dd className="text-right font-medium text-slate-800">{formatDateTime(exam.start_datetime)}</dd>
-                        </div>
-                        <div className="flex justify-between gap-3">
-                          <dt className="text-slate-500">End</dt>
-                          <dd className="text-right font-medium text-slate-800">{formatDateTime(exam.end_datetime)}</dd>
-                        </div>
-                        <div className="flex justify-between gap-3">
-                          <dt className="text-slate-500">Duration</dt>
-                          <dd className="font-medium text-slate-800">
-                            {exam.total_duration_minutes !== null ? `${exam.total_duration_minutes} mins` : "--"}
-                          </dd>
-                        </div>
-                      </dl>
-
-                      <div className="mt-5">
-                        {status === "completed" ? (
-                          <button
-                            type="button"
-                            onClick={() => navigate(`/student/exams/${exam.id}/result`)}
-                            className="w-full rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
-                          >
-                            View Result
-                          </button>
-                        ) : canStart ? (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              void handleStartOrResume(exam);
-                            }}
-                            disabled={isStarting}
-                            className="w-full rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            {isStarting ? "Opening..." : ctaLabel}
-                          </button>
-                        ) : status === "max_attempts_reached" ? (
-                          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">
-                            Maximum attempts reached.
-                          </div>
-                        ) : status === "expired" ? (
-                          <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">
-                            Exam window has closed.
-                          </div>
-                        ) : (
-                          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600">
-                            Exam not started yet.
-                          </div>
-                        )}
-                      </div>
-                    </article>
-                  );
-                })}
+              <div className="space-y-8">
+                {renderSection("Available Exams", groupedExams.available)}
+                {renderSection("Upcoming Exams", groupedExams.upcoming)}
+                {renderSection("Past Attempts", groupedExams.past)}
               </div>
             )}
           </div>
@@ -420,4 +519,10 @@ export default function StudentExamListPage() {
     </div>
   );
 }
+
+
+
+
+
+
 

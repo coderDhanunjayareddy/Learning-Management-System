@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import {
-  getAttemptRuntime,
-  isRuntimePayloadRich,
+  getAttemptById,
+  getAttemptResult,
   saveAttemptResponses,
+  submitAttempt,
 } from "@/features/exam-runtime/api";
 import type {
   AutosaveState,
@@ -40,6 +41,22 @@ interface UseExamRuntimeParams {
   attemptId: number;
 }
 
+interface SubmitOutcome {
+  submitted: boolean;
+  resultAvailable: boolean;
+  attemptId: number | null;
+  examId: number | null;
+  message: string | null;
+}
+
+const defaultSubmitOutcome = (): SubmitOutcome => ({
+  submitted: false,
+  resultAvailable: false,
+  attemptId: null,
+  examId: null,
+  message: null,
+});
+
 export const useExamRuntime = ({ attemptId }: UseExamRuntimeParams) => {
   const [runtime, setRuntime] = useState<ExamAttemptRuntime | null>(null);
   const [loading, setLoading] = useState(true);
@@ -57,9 +74,13 @@ export const useExamRuntime = ({ attemptId }: UseExamRuntimeParams) => {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [focusWarning, setFocusWarning] = useState(false);
   const [submitRequested, setSubmitRequested] = useState(false);
+  const [submitLoading, setSubmitLoading] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [lastSubmitOutcome, setLastSubmitOutcome] = useState<SubmitOutcome | null>(null);
   const [omrLocked, setOmrLocked] = useState(false);
 
   const dirtyQuestionIdsRef = useRef<Set<number>>(new Set());
+  const autoSubmitTriggeredRef = useRef(false);
   const [autosaveTick, setAutosaveTick] = useState(0);
 
   const loadAttempt = useCallback(async () => {
@@ -67,6 +88,7 @@ export const useExamRuntime = ({ attemptId }: UseExamRuntimeParams) => {
     setError(null);
     setUnsupportedData(false);
     dirtyQuestionIdsRef.current = new Set();
+    autoSubmitTriggeredRef.current = false;
     setRuntime(null);
     setCurrentQuestionId(null);
     setAnswersByQuestionId({});
@@ -76,6 +98,9 @@ export const useExamRuntime = ({ attemptId }: UseExamRuntimeParams) => {
     setAutosaveError(null);
     setRemainingSeconds(null);
     setSubmitRequested(false);
+    setSubmitLoading(false);
+    setSubmitError(null);
+    setLastSubmitOutcome(null);
     setFocusWarning(false);
 
     if (!Number.isInteger(attemptId) || attemptId <= 0) {
@@ -85,14 +110,14 @@ export const useExamRuntime = ({ attemptId }: UseExamRuntimeParams) => {
     }
 
     try {
-      const payload = await getAttemptRuntime(attemptId);
+      const payload = await getAttemptById(attemptId);
       if (!payload) {
         setRuntime(null);
         setUnsupportedData(true);
         return;
       }
 
-      if (!isRuntimePayloadRich(payload)) {
+      if (!payload.questions.length || !payload.sections.length) {
         setRuntime(payload);
         setUnsupportedData(true);
         return;
@@ -114,11 +139,20 @@ export const useExamRuntime = ({ attemptId }: UseExamRuntimeParams) => {
       setOmrLocked(Boolean(payload.attempt.omr_lock));
     } catch (err: unknown) {
       if (axios.isAxiosError(err)) {
-        const message =
-          err.response?.data?.message ||
-          err.response?.data?.error ||
-          "Failed to load exam attempt.";
-        setError(String(message));
+        const status = err.response?.status;
+        if (status === 401) {
+          setError("Your session expired. Please login again.");
+        } else if (status === 403) {
+          setError(String(err.response?.data?.message ?? "You are not allowed to access this attempt."));
+        } else if (status === 404) {
+          setError("Exam attempt not found.");
+        } else {
+          const message =
+            err.response?.data?.message ??
+            err.response?.data?.error ??
+            "Failed to load exam attempt.";
+          setError(String(message));
+        }
       } else {
         setError("Failed to load exam attempt.");
       }
@@ -156,7 +190,9 @@ export const useExamRuntime = ({ attemptId }: UseExamRuntimeParams) => {
     return sections.find((section) => section.id === currentSectionId) ?? null;
   }, [sections, currentSectionId]);
 
-  const readOnly = Boolean(runtime?.is_read_only || runtime?.status !== "in_progress" || omrLocked || remainingSeconds === 0);
+  const readOnly = Boolean(
+    runtime?.is_read_only || runtime?.status !== "in_progress" || omrLocked || remainingSeconds === 0
+  );
 
   const queueAutosave = useCallback((questionId: number) => {
     dirtyQuestionIdsRef.current.add(questionId);
@@ -193,16 +229,6 @@ export const useExamRuntime = ({ attemptId }: UseExamRuntimeParams) => {
     markVisited(next.id);
   }, [currentQuestionIndex, questions, markVisited]);
 
-  const selectSection = useCallback(
-    (sectionId: number) => {
-      const targetQuestion = questions.find((question) => question.section_id === sectionId);
-      if (!targetQuestion) return;
-      setCurrentQuestionId(targetQuestion.id);
-      markVisited(targetQuestion.id);
-    },
-    [questions, markVisited]
-  );
-
   const setQuestionAnswer = useCallback(
     (questionId: number, value: unknown) => {
       if (readOnly) return;
@@ -234,11 +260,12 @@ export const useExamRuntime = ({ attemptId }: UseExamRuntimeParams) => {
     (questionId: number) => {
       if (readOnly) return;
       setAnswersByQuestionId((prev) => ({ ...prev, [questionId]: null }));
+      markVisited(questionId);
       queueAutosave(questionId);
       setAutosaveState("idle");
       setAutosaveError(null);
     },
-    [queueAutosave, readOnly]
+    [markVisited, queueAutosave, readOnly]
   );
 
   const flushSave = useCallback(
@@ -252,17 +279,19 @@ export const useExamRuntime = ({ attemptId }: UseExamRuntimeParams) => {
       if (uniqueIds.length === 0) return true;
 
       const payload: RuntimeResponse[] = uniqueIds.map((questionId) => {
-        const question = questionById.get(questionId)!;
+        const question = questionById.get(questionId);
         const answer = answersByQuestionId[questionId] ?? null;
 
         return {
-          question_id: question.id,
-          section_id: question.section_id,
+          question_id: question ? question.id : questionId,
+          section_id: question ? question.section_id : 0,
           student_answer: answer,
           is_marked_for_review: Boolean(reviewByQuestionId[questionId]),
           is_attempted: isQuestionAttempted(answer),
         };
-      });
+      }).filter((item) => item.section_id > 0);
+
+      if (payload.length === 0) return true;
 
       setAutosaveState("saving");
       setAutosaveError(null);
@@ -298,6 +327,23 @@ export const useExamRuntime = ({ attemptId }: UseExamRuntimeParams) => {
     [runtime, readOnly, questionById, answersByQuestionId, reviewByQuestionId, omrLocked]
   );
 
+  const selectSection = useCallback(
+    async (sectionId: number) => {
+      const targetQuestion = questions.find((question) => question.section_id === sectionId);
+      if (!targetQuestion) return;
+
+      if (!readOnly && dirtyQuestionIdsRef.current.size > 0) {
+        const pending = Array.from(dirtyQuestionIdsRef.current.values());
+        const saved = await flushSave(pending);
+        if (!saved) return;
+      }
+
+      setCurrentQuestionId(targetQuestion.id);
+      markVisited(targetQuestion.id);
+    },
+    [flushSave, markVisited, questions, readOnly]
+  );
+
   useEffect(() => {
     if (autosaveTick === 0 || readOnly) return;
 
@@ -310,6 +356,19 @@ export const useExamRuntime = ({ attemptId }: UseExamRuntimeParams) => {
     };
   }, [autosaveTick, flushSave, readOnly]);
 
+  useEffect(() => {
+    if (readOnly) return;
+
+    const timer = window.setInterval(() => {
+      if (dirtyQuestionIdsRef.current.size === 0) return;
+      void flushSave();
+    }, 30000);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [flushSave, readOnly]);
+
   const saveAndNext = useCallback(async () => {
     if (!currentQuestionId) return;
     const success = await flushSave([currentQuestionId]);
@@ -317,6 +376,130 @@ export const useExamRuntime = ({ attemptId }: UseExamRuntimeParams) => {
       goToNext();
     }
   }, [currentQuestionId, flushSave, goToNext]);
+
+  const markForReviewAndNext = useCallback(async () => {
+    if (!currentQuestionId || readOnly) return;
+
+    setReviewByQuestionId((prev) => ({ ...prev, [currentQuestionId]: true }));
+    markVisited(currentQuestionId);
+    queueAutosave(currentQuestionId);
+    setAutosaveState("idle");
+    setAutosaveError(null);
+
+    const success = await flushSave([currentQuestionId]);
+    if (success) {
+      goToNext();
+    }
+  }, [currentQuestionId, flushSave, goToNext, markVisited, queueAutosave, readOnly]);
+
+  const clearResponseAndSave = useCallback(
+    async (questionId: number) => {
+      if (readOnly) return false;
+      setAnswersByQuestionId((prev) => ({ ...prev, [questionId]: null }));
+      markVisited(questionId);
+      queueAutosave(questionId);
+      setAutosaveState("idle");
+      setAutosaveError(null);
+      return flushSave([questionId]);
+    },
+    [flushSave, markVisited, queueAutosave, readOnly]
+  );
+
+  const submitCurrentAttempt = useCallback(async (): Promise<SubmitOutcome> => {
+    if (!runtime || submitLoading) {
+      const outcome = defaultSubmitOutcome();
+      setLastSubmitOutcome(outcome);
+      return outcome;
+    }
+
+    const pending = Array.from(dirtyQuestionIdsRef.current.values());
+    if (pending.length > 0) {
+      const saved = await flushSave(pending);
+      if (!saved) {
+        const outcome: SubmitOutcome = {
+          ...defaultSubmitOutcome(),
+          attemptId: runtime.attempt.id,
+          examId: runtime.exam.id,
+          message: "Please resolve save errors before submitting.",
+        };
+        setLastSubmitOutcome(outcome);
+        return outcome;
+      }
+    }
+
+    setSubmitLoading(true);
+    setSubmitError(null);
+
+    try {
+      const submitResult = await submitAttempt(runtime.attempt.id);
+      const nextStatus = String(submitResult.attempt.status ?? "submitted");
+
+      setRuntime((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          attempt: {
+            ...prev.attempt,
+            status: nextStatus,
+            submitted_at: submitResult.attempt.submitted_at ?? prev.attempt.submitted_at ?? null,
+            auto_submitted: submitResult.attempt.auto_submitted ?? prev.attempt.auto_submitted ?? null,
+          },
+          status: nextStatus,
+          is_read_only: true,
+        };
+      });
+      setRemainingSeconds((prev) => (prev === null ? null : 0));
+      setSubmitRequested(false);
+      dirtyQuestionIdsRef.current.clear();
+
+      let resultAvailable = false;
+      try {
+        await getAttemptResult(runtime.attempt.id);
+        resultAvailable = true;
+      } catch (resultErr: unknown) {
+        if (axios.isAxiosError(resultErr)) {
+          const status = resultErr.response?.status;
+          if (status === 401) {
+            setSubmitError("Session expired while checking result visibility.");
+          }
+        }
+      }
+
+      const outcome: SubmitOutcome = {
+        submitted: true,
+        resultAvailable,
+        attemptId: runtime.attempt.id,
+        examId: runtime.exam.id,
+        message: submitResult.message,
+      };
+      setLastSubmitOutcome(outcome);
+      return outcome;
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        const message =
+          err.response?.data?.message ||
+          err.response?.data?.error ||
+          "Failed to submit exam.";
+        setSubmitError(String(message));
+
+        if (err.response?.status === 409) {
+          void loadAttempt();
+        }
+      } else {
+        setSubmitError("Failed to submit exam.");
+      }
+
+      const outcome: SubmitOutcome = {
+        ...defaultSubmitOutcome(),
+        attemptId: runtime.attempt.id,
+        examId: runtime.exam.id,
+      };
+      setLastSubmitOutcome(outcome);
+      return outcome;
+    } finally {
+      setSubmitLoading(false);
+    }
+  }, [flushSave, loadAttempt, runtime, submitLoading]);
 
   useEffect(() => {
     if (remainingSeconds === null) return;
@@ -335,6 +518,19 @@ export const useExamRuntime = ({ attemptId }: UseExamRuntimeParams) => {
       window.clearInterval(timer);
     };
   }, [remainingSeconds, runtime?.status]);
+
+  useEffect(() => {
+    if (remainingSeconds !== 0) return;
+    if (!runtime || runtime.status !== "in_progress") return;
+    if (submitLoading || autoSubmitTriggeredRef.current) return;
+
+    autoSubmitTriggeredRef.current = true;
+    void submitCurrentAttempt().then((result) => {
+      if (!result.submitted) {
+        autoSubmitTriggeredRef.current = false;
+      }
+    });
+  }, [remainingSeconds, runtime, submitLoading, submitCurrentAttempt]);
 
   useEffect(() => {
     const wasHiddenRef = { current: false };
@@ -451,14 +647,21 @@ export const useExamRuntime = ({ attemptId }: UseExamRuntimeParams) => {
     setFocusWarning,
     submitRequested,
     setSubmitRequested,
+    submitLoading,
+    submitError,
+    lastSubmitOutcome,
+    setSubmitError,
     setQuestionAnswer,
     toggleQuestionReview,
     clearQuestionAnswer,
     goToPrevious,
     goToNext,
     saveAndNext,
+    markForReviewAndNext,
+    clearResponseAndSave,
     jumpToQuestion,
     selectSection,
     flushSave,
+    submitCurrentAttempt,
   };
 };

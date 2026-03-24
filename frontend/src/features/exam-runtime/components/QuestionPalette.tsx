@@ -27,6 +27,11 @@ export default function QuestionPalette({
   statusByQuestionId,
   onJump,
 }: QuestionPaletteProps) {
+  const safeStudentName =
+    typeof studentName === "string" && studentName.trim().length > 0
+      ? studentName
+      : "Student";
+
   const counts = allQuestionIds.reduce(
     (acc, questionId) => {
       const state = statusByQuestionId[questionId] ?? "not_visited";
@@ -53,9 +58,9 @@ export default function QuestionPalette({
     <aside className="flex h-full flex-col overflow-hidden border border-slate-400 bg-[#f5dcdc] shadow-sm">
       <div className="flex items-center justify-center gap-4 border-b border-slate-300 bg-white px-4 py-2">
         <div className="flex h-18 w-18 items-center justify-center rounded-full bg-[#b6d06e] text-3xl font-bold text-[#34506d]">
-          {studentName.trim().charAt(0).toUpperCase() || "S"}
+          {safeStudentName.charAt(0).toUpperCase() || "S"}
         </div>
-        <p className=" truncate text-xl font-semibold text-slate-900">{studentName}</p>
+        <p className=" truncate text-xl font-semibold text-slate-900">{safeStudentName}</p>
       </div>
 
       <div className="grid grid-cols-2 gap-3 border-b border-slate-300 bg-white px-2 py-2">

@@ -3,6 +3,7 @@ import { AppError } from "../utils/errors.js";
 
 let enrollmentsUserColumnCache = null;
 let examResultColumnsEnsured = false;
+let examInstructionsColumnKnown = null;
 let attemptSweepTimer = null;
 let attemptSweepInProgress = false;
 
@@ -28,10 +29,30 @@ const ensureExamResultConfigColumns = async () => {
     ALTER TABLE exams
     ADD COLUMN IF NOT EXISTS show_score BOOLEAN DEFAULT TRUE,
     ADD COLUMN IF NOT EXISTS show_pass_or_fail BOOLEAN DEFAULT TRUE,
-    ADD COLUMN IF NOT EXISTS show_solutions_to_user BOOLEAN DEFAULT FALSE
+    ADD COLUMN IF NOT EXISTS show_solutions_to_user BOOLEAN DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS instructions TEXT
   `);
 
+  examInstructionsColumnKnown = true;
   examResultColumnsEnsured = true;
+};
+
+const hasExamInstructionsColumn = async () => {
+  if (examInstructionsColumnKnown !== null) return examInstructionsColumnKnown;
+
+  const result = await dbQuery(
+    `
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'exams'
+        AND column_name = 'instructions'
+      LIMIT 1
+    `
+  );
+
+  examInstructionsColumnKnown = result.rows.length > 0;
+  return examInstructionsColumnKnown;
 };
 
 const resolveEnrollmentUserColumn = async () => {
@@ -115,6 +136,10 @@ const resolveExamResultVisibility = (exam) => {
 const fetchAttemptWithExam = async ({ attemptId, client = null }) => {
   await ensureExamResultConfigColumns();
   const runner = client || { query: dbQuery };
+  const supportsExamInstructions = await hasExamInstructionsColumn();
+  const instructionsSelect = supportsExamInstructions
+    ? 'e.instructions AS instructions,'
+    : 'NULL::text AS instructions,';
   const result = await runner.query(
     `SELECT
        ea.*,
@@ -122,6 +147,7 @@ const fetchAttemptWithExam = async ({ attemptId, client = null }) => {
        e.start_datetime,
        e.end_datetime,
        e.title AS exam_title,
+       ${instructionsSelect}
        e.show_result_immediately,
        e.show_score,
        e.show_pass_or_fail,
@@ -212,6 +238,10 @@ const maybeAutoSubmitExpiredAttempt = async (attempt) => {
   const tx = await getClient();
   try {
     await tx.query("BEGIN");
+    const supportsExamInstructions = await hasExamInstructionsColumn();
+    const instructionsSelect = supportsExamInstructions
+      ? 'e.instructions AS instructions,'
+      : 'NULL::text AS instructions,';
     const lockResult = await tx.query(
       `
         SELECT
@@ -220,6 +250,7 @@ const maybeAutoSubmitExpiredAttempt = async (attempt) => {
           e.start_datetime,
           e.end_datetime,
           e.title AS exam_title,
+          ${instructionsSelect}
           e.show_result_immediately,
           e.show_score,
           e.show_pass_or_fail,
@@ -386,6 +417,7 @@ const getAttemptStateInternal = async ({ attemptId, studentId }) => {
     exam: {
       id: attempt.exam_id,
       title: attempt.exam_title,
+      instructions: attempt.instructions ?? null,
       total_duration_minutes: attempt.total_duration_minutes,
       start_datetime: attempt.start_datetime,
       end_datetime: attempt.end_datetime,
@@ -422,6 +454,8 @@ const fetchAttemptQuestionResults = async ({ attemptId }) => {
         q.correct_answer,
         q.solution,
         q.solution_video_url,
+        COALESCE(eq.marks_override, es.marks_per_question, q.marks_positive, 0) AS max_marks,
+        COALESCE(q.marks_negative, 0) AS negative_marks,
         es.title AS section_title,
         es.order_index AS section_order,
         eq.order_index AS question_order
@@ -477,6 +511,12 @@ const buildAttemptResultPayload = async ({ attempt, allowUnreleased = false }) =
     if (visibility.show_score && visibility.is_released) {
       response.is_correct = item.is_correct;
       response.marks_awarded = item.marks_awarded;
+      response.max_marks = item.max_marks === null || item.max_marks === undefined
+        ? null
+        : Number(item.max_marks);
+      response.negative_marks = item.negative_marks === null || item.negative_marks === undefined
+        ? null
+        : Number(item.negative_marks);
     }
 
     if (visibility.show_solutions_to_user && visibility.is_released) {
@@ -526,58 +566,58 @@ const buildAttemptResultPayload = async ({ attempt, allowUnreleased = false }) =
 };
 
 export const getStudentContentById = async (req, res) => {
-    const { id } = req.params;
-    const userId = req.user?.id;
-    const role = req.user?.role;
-    const clientId = req.user?.client_id;
+  const { id } = req.params;
+  const userId = req.user?.id;
+  const role = req.user?.role;
+  const clientId = req.user?.client_id;
 
-    try {
-        if (!userId || !role) {
-            return res.status(401).json({ message: "Unauthorized" });
-        }
+  try {
+    if (!userId || !role) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
 
-        const isSuperAdmin = role === "super_admin";
-        const adminRoles = ["client_admin", "school_owner", "content_authorizer"];
-        const isAdminRole = adminRoles.includes(role) || isSuperAdmin;
-        const shouldScope = Boolean(clientId) && !isSuperAdmin;
+    const isSuperAdmin = role === "super_admin";
+    const adminRoles = ["client_admin", "school_owner", "content_authorizer"];
+    const isAdminRole = adminRoles.includes(role) || isSuperAdmin;
+    const shouldScope = Boolean(clientId) && !isSuperAdmin;
 
-        const params = [id];
-        let query = `
+    const params = [id];
+    let query = `
             SELECT ci.*
             FROM content_items ci
             JOIN courses c ON ci.course_id = c.id
         `;
 
-        if (!isAdminRole) {
-            query += `
+    if (!isAdminRole) {
+      query += `
                 JOIN enrollments e
                   ON e.course_id = c.id
                  AND e.user_id = $2
             `;
-            params.push(userId);
-        }
-
-        if (shouldScope) {
-            query += `WHERE ci.id = $1 AND c.client_id = $${params.length + 1}`;
-            params.push(clientId);
-        } else {
-            query += `WHERE ci.id = $1`;
-        }
-
-        const result = await dbQuery(query, params);
-
-        // result.rows is always an array
-        if (result.rows.length === 0) {
-            return res.status(404).json({ message: "Content not found" });
-        }
-
-        const content = result.rows[0];
-
-        res.json(content);
-    } catch (err) {
-        console.error("Error fetching content:", err);
-        res.status(500).json({ message: "Error fetching content" });
+      params.push(userId);
     }
+
+    if (shouldScope) {
+      query += `WHERE ci.id = $1 AND c.client_id = $${params.length + 1}`;
+      params.push(clientId);
+    } else {
+      query += `WHERE ci.id = $1`;
+    }
+
+    const result = await dbQuery(query, params);
+
+    // result.rows is always an array
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: "Content not found" });
+    }
+
+    const content = result.rows[0];
+
+    res.json(content);
+  } catch (err) {
+    console.error("Error fetching content:", err);
+    res.status(500).json({ message: "Error fetching content" });
+  }
 };
 
 export const getStudentExams = async (req, res) => {
@@ -600,7 +640,8 @@ export const getStudentExams = async (req, res) => {
           MIN(ce.course_id)::int AS course_id,
           COALESCE(a.attempt_count, 0) AS attempt_count,
           COALESCE(a.completed, false) AS has_completed,
-          MAX(ip.id)::int AS in_progress_attempt_id
+          MAX(ip.id)::int AS in_progress_attempt_id,
+          MAX(lca.id)::int AS latest_completed_attempt_id
         FROM course_exams ce
         JOIN exams e ON e.id = ce.exam_id
         LEFT JOIN (
@@ -620,6 +661,15 @@ export const getStudentExams = async (req, res) => {
           ORDER BY ea.started_at DESC, ea.id DESC
           LIMIT 1
         ) ip ON TRUE
+        LEFT JOIN LATERAL (
+          SELECT ea.id
+          FROM exam_attempts ea
+          WHERE ea.exam_id = e.id
+            AND ea.student_id = $1
+            AND ea.status IN ('submitted', 'graded')
+          ORDER BY COALESCE(ea.submitted_at, ea.started_at) DESC, ea.id DESC
+          LIMIT 1
+        ) lca ON TRUE
         WHERE ce.course_id = ANY($2::int[])
           AND e.status IN ('published', 'active', 'completed')
         GROUP BY e.id, a.attempt_count, a.completed
@@ -654,6 +704,9 @@ export const getStudentExams = async (req, res) => {
         computed_status,
         in_progress_attempt_id: item.in_progress_attempt_id ? Number(item.in_progress_attempt_id) : null,
         has_in_progress_attempt: Boolean(item.in_progress_attempt_id),
+        latest_completed_attempt_id: item.latest_completed_attempt_id
+          ? Number(item.latest_completed_attempt_id)
+          : null,
       };
     });
 
@@ -895,6 +948,30 @@ export const saveExamResponse = async (req, res) => {
       return acc;
     }, {});
 
+    const toJsonColumnValue = (value) => {
+      if (value === undefined || value === null || value === '') {
+        return { answer: null, answerJson: null };
+      }
+
+      if (typeof value === 'number' && !Number.isFinite(value)) {
+        return { answer: null, answerJson: null };
+      }
+
+      let normalized = value;
+      if (typeof normalized === 'bigint') {
+        normalized = normalized.toString();
+      }
+
+      try {
+        return {
+          answer: normalized,
+          answerJson: JSON.stringify(normalized),
+        };
+      } catch (error) {
+        throw new AppError('student_answer must be JSON-serializable', 400);
+      }
+    };
+
     const client = await getClient();
     try {
       await client.query('BEGIN');
@@ -909,7 +986,7 @@ export const saveExamResponse = async (req, res) => {
           continue;
         }
 
-        const studentAnswer = item.student_answer === undefined ? null : item.student_answer;
+        const { answer: studentAnswer, answerJson: studentAnswerJson } = toJsonColumnValue(item.student_answer);
         const isAttempted = item.is_attempted !== undefined
           ? Boolean(item.is_attempted)
           : !(studentAnswer === null || studentAnswer === '');
@@ -918,13 +995,13 @@ export const saveExamResponse = async (req, res) => {
         await client.query(
           `INSERT INTO exam_responses
              (attempt_id, question_id, section_id, student_answer, is_attempted, answered_at, is_marked_for_review)
-           VALUES ($1, $2, $3, $4, $5, NOW(), $6)
+           VALUES ($1, $2, $3, $4::jsonb, $5, NOW(), $6)
            ON CONFLICT (attempt_id, question_id)
            DO UPDATE SET student_answer = EXCLUDED.student_answer,
                          is_attempted = EXCLUDED.is_attempted,
                          answered_at = EXCLUDED.answered_at,
                          is_marked_for_review = EXCLUDED.is_marked_for_review`,
-          [attemptId, questionId, sectionId, studentAnswer, isAttempted, isMarkedForReview]
+          [attemptId, questionId, sectionId, studentAnswerJson, isAttempted, isMarkedForReview]
         );
       }
       await client.query('COMMIT');
@@ -1361,7 +1438,7 @@ export const sweepExpiredInProgressAttempts = async ({ batchSize = 100 } = {}) =
 
 export const startAttemptExpiryCron = (intervalMs = Number(process.env.EXAM_ATTEMPT_SWEEP_INTERVAL_MS || 30000)) => {
   if (attemptSweepTimer) {
-    return () => {};
+    return () => { };
   }
 
   const normalizedInterval = Number.isFinite(intervalMs) && intervalMs >= 5000 ? Math.floor(intervalMs) : 30000;

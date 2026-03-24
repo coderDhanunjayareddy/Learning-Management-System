@@ -179,6 +179,7 @@ export default function ExamCreatePage() {
       const payload = {
         title: form.title.trim(),
         description: form.description.trim() || null,
+        instructions: form.instructions.trim() || null,
         total_duration_minutes: Number(form.total_duration_minutes),
         start_datetime: new Date(form.start_datetime).toISOString(),
         end_datetime: new Date(form.end_datetime).toISOString(),
@@ -193,7 +194,11 @@ export default function ExamCreatePage() {
       toast.success("Exam created successfully");
       navigate("/exams");
     } catch (err: any) {
-      const message = err?.response?.data?.error || "Failed to create exam.";
+      const message =
+        err?.response?.data?.error ||
+        err?.response?.data?.message ||
+        err?.message ||
+        "Failed to create exam.";
       setSubmitError(message);
     } finally {
       setSubmitting(false);
@@ -302,22 +307,15 @@ export default function ExamCreatePage() {
                 {renderError("end_datetime")}
               </div>
               <div className="md:col-span-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-slate-500">Instructions</label>
-                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-500">
-                    Coming soon
-                  </span>
-                </div>
-                <div className="mt-2 rounded-lg border border-dashed border-slate-200 bg-slate-50 p-3">
-                  <div className="pointer-events-none opacity-60">
-                    <RichTextEditor
-                      value={form.instructions}
-                      onChange={() => undefined}
-                      placeholder="Exam instructions"
-                      height={180}
-                      resizable={false}
-                    />
-                  </div>
+                <label className="text-xs font-semibold text-slate-500">Instructions</label>
+                <div className="mt-2 rounded-lg border border-slate-200 bg-white p-3">
+                  <RichTextEditor
+                    value={form.instructions}
+                    onChange={(value) => handleChange("instructions", value.html)}
+                    placeholder="Exam instructions"
+                    height={180}
+                    resizable={false}
+                  />
                 </div>
               </div>
             </div>
