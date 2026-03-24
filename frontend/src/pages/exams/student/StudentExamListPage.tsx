@@ -11,22 +11,42 @@ import type { StudentExam, StudentExamStatus } from "@/features/exams/types/stud
 import { computeStudentExamStatus } from "@/features/exams/utils/studentExamStatus";
 import { startOrResumeExam } from "@/features/exam-runtime/api";
 
+const asRecord = (value: unknown): Record<string, unknown> =>
+  value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+
 const normalizeNumber = (value: unknown): number | null => {
   if (value === null || value === undefined || value === "") return null;
   const num = Number(value);
   return Number.isNaN(num) ? null : num;
 };
 
-const normalizeExam = (item: any): StudentExam => ({
-  id: Number(item?.id ?? item?.exam_id ?? 0),
-  title: String(item?.title ?? item?.name ?? "Untitled exam"),
-  description: item?.description ? String(item.description) : null,
-  start_datetime: item?.start_datetime ?? item?.startDate ?? null,
-  end_datetime: item?.end_datetime ?? item?.endDate ?? null,
-  total_duration_minutes: normalizeNumber(item?.total_duration_minutes ?? item?.duration_minutes ?? item?.duration),
-  in_progress_attempt_id: normalizeNumber(item?.in_progress_attempt_id),
-  has_in_progress_attempt: Boolean(item?.has_in_progress_attempt),
-});
+const normalizeExam = (item: unknown): StudentExam => {
+  const source = asRecord(item);
+  return {
+    id: Number(source.id ?? source.exam_id ?? 0),
+    title: String(source.title ?? source.name ?? "Untitled exam"),
+    description: source.description ? String(source.description) : null,
+    start_datetime:
+      typeof source.start_datetime === "string"
+        ? source.start_datetime
+        : typeof source.startDate === "string"
+          ? source.startDate
+          : null,
+    end_datetime:
+      typeof source.end_datetime === "string"
+        ? source.end_datetime
+        : typeof source.endDate === "string"
+          ? source.endDate
+          : null,
+    total_duration_minutes: normalizeNumber(
+      source.total_duration_minutes ?? source.duration_minutes ?? source.duration
+    ),
+    computed_status: source.computed_status ? String(source.computed_status) : null,
+    status: source.status ? String(source.status) : null,
+    in_progress_attempt_id: normalizeNumber(source.in_progress_attempt_id),
+    has_in_progress_attempt: Boolean(source.has_in_progress_attempt),
+  };
+};
 
 const formatDateTime = (value?: string | null) => {
   if (!value) return "--";
@@ -43,6 +63,8 @@ const statusLabelMap: Record<StudentExamStatus, string> = {
   upcoming: "Upcoming",
   ongoing: "Ongoing",
   completed: "Completed",
+  max_attempts_reached: "Attempts Exhausted",
+  expired: "Expired",
   unknown: "Unknown",
 };
 
@@ -50,6 +72,8 @@ const statusClassMap: Record<StudentExamStatus, string> = {
   upcoming: "bg-sky-100 text-sky-700 border-sky-200",
   ongoing: "bg-emerald-100 text-emerald-700 border-emerald-200",
   completed: "bg-indigo-100 text-indigo-700 border-indigo-200",
+  max_attempts_reached: "bg-amber-100 text-amber-700 border-amber-200",
+  expired: "bg-rose-100 text-rose-700 border-rose-200",
   unknown: "bg-slate-100 text-slate-700 border-slate-200",
 };
 
@@ -311,7 +335,8 @@ export default function StudentExamListPage() {
             ) : (
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                 {examsWithStatus.map(({ exam, status }) => {
-                  const canStart = status === "ongoing" || status === "unknown";
+                  const canResume = Boolean(exam.in_progress_attempt_id || exam.has_in_progress_attempt);
+                  const canStart = canResume || status === "ongoing";
                   const ctaLabel = exam.in_progress_attempt_id || exam.has_in_progress_attempt ? "Resume Exam" : "Start Exam";
                   const isStarting = startingExamId === exam.id;
 
@@ -370,6 +395,14 @@ export default function StudentExamListPage() {
                           >
                             {isStarting ? "Opening..." : ctaLabel}
                           </button>
+                        ) : status === "max_attempts_reached" ? (
+                          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">
+                            Maximum attempts reached.
+                          </div>
+                        ) : status === "expired" ? (
+                          <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">
+                            Exam window has closed.
+                          </div>
                         ) : (
                           <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600">
                             Exam not started yet.

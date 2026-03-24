@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
+import axios from "axios";
 import api from "@/lib/api";
+import { useAuth } from "@/features/auth/hooks/useAuth";
 import Pagination from "@/components/ui/Pagination";
 import ExamShell from "@/features/exams/components/ExamShell";
 import ExamFilters from "@/features/exams/components/ExamFilters";
 import ExamListTable from "@/features/exams/components/ExamListTable";
 import type { ExamFiltersState, ExamSummary } from "@/features/exams/types";
+import { getExamPermissions } from "@/features/exams/utils/examPermissions";
 
 interface CourseOption {
   id: number;
@@ -15,48 +18,132 @@ interface CourseOption {
   published?: boolean | null;
 }
 
-const normalizeNumber = (value: any) => {
+interface ExamEditForm {
+  title: string;
+  description: string;
+  total_duration_minutes: string;
+  start_datetime: string;
+  end_datetime: string;
+  max_attempts: string;
+}
+
+type UnknownRecord = Record<string, unknown>;
+
+const asRecord = (value: unknown): UnknownRecord =>
+  value && typeof value === "object" ? (value as UnknownRecord) : {};
+
+const readApiErrorMessage = (error: unknown, fallback: string) => {
+  if (!axios.isAxiosError(error)) return fallback;
+  const data = asRecord(error.response?.data);
+  if (typeof data.error === "string" && data.error.trim()) return data.error;
+  if (typeof data.message === "string" && data.message.trim()) return data.message;
+  return fallback;
+};
+
+const normalizeNumber = (value: unknown) => {
   if (value === null || value === undefined || value === "") return null;
   const num = Number(value);
   return Number.isNaN(num) ? null : num;
 };
 
-const normalizeExam = (item: any): ExamSummary => {
-  const tags = Array.isArray(item?.tags)
-    ? item.tags
-    : Array.isArray(item?.exam_tags)
-      ? item.exam_tags
+const normalizeId = (...values: unknown[]): string | number => {
+  for (const value of values) {
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string" && value.trim().length > 0) return value;
+  }
+  return `${Math.random()}`;
+};
+
+const isPositiveInteger = (value: unknown): value is number =>
+  typeof value === "number" && Number.isInteger(value) && value > 0;
+
+const resolveExamId = (value: unknown): number | null => {
+  const id = Number(value);
+  return Number.isInteger(id) && id > 0 ? id : null;
+};
+
+const toDateTimeLocalValue = (value: unknown): string => {
+  if (typeof value !== "string" || !value) return "";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "";
+  const timezoneOffsetMs = parsed.getTimezoneOffset() * 60000;
+  return new Date(parsed.getTime() - timezoneOffsetMs).toISOString().slice(0, 16);
+};
+
+const normalizeExam = (item: unknown): ExamSummary => {
+  const source = asRecord(item);
+  const rawTags = Array.isArray(source.tags)
+    ? source.tags
+    : Array.isArray(source.exam_tags)
+      ? source.exam_tags
       : null;
+  const tags =
+    rawTags?.map((tag) => String(tag)).filter((tag) => tag.trim().length > 0) ?? null;
 
   return {
-    id: item?.id ?? item?.exam_id ?? `${Math.random()}`,
-    title: item?.title ?? item?.name ?? "Untitled exam",
-    description: item?.description ?? null,
-    start_datetime: item?.start_datetime ?? item?.startDate ?? item?.start_time ?? null,
-    end_datetime: item?.end_datetime ?? item?.endDate ?? item?.end_time ?? null,
-    duration_minutes: normalizeNumber(item?.duration_minutes ?? item?.duration ?? item?.durationMinutes),
-    status: item?.status ?? item?.state ?? null,
-    course_count: normalizeNumber(item?.course_count ?? item?.courses_count ?? item?.courseCount),
-    attempts_count: normalizeNumber(item?.attempts_count ?? item?.attempts ?? item?.attemptCount),
-    created_by_name: item?.created_by_name ?? item?.createdByName ?? item?.created_by ?? null,
+    id: normalizeId(source.id, source.exam_id),
+    title: String(source.title ?? source.name ?? "Untitled exam"),
+    description: typeof source.description === "string" ? source.description : null,
+    start_datetime:
+      typeof source.start_datetime === "string"
+        ? source.start_datetime
+        : typeof source.startDate === "string"
+          ? source.startDate
+          : typeof source.start_time === "string"
+            ? source.start_time
+            : null,
+    end_datetime:
+      typeof source.end_datetime === "string"
+        ? source.end_datetime
+        : typeof source.endDate === "string"
+          ? source.endDate
+          : typeof source.end_time === "string"
+            ? source.end_time
+            : null,
+    duration_minutes: normalizeNumber(
+      source.duration_minutes ?? source.duration ?? source.durationMinutes
+    ),
+    status:
+      typeof source.status === "string"
+        ? source.status
+        : typeof source.state === "string"
+          ? source.state
+          : null,
+    course_count: normalizeNumber(
+      source.course_count ?? source.courses_count ?? source.courseCount
+    ),
+    attempts_count: normalizeNumber(
+      source.attempts_count ?? source.attempts ?? source.attemptCount
+    ),
+    created_by_name:
+      typeof source.created_by_name === "string"
+        ? source.created_by_name
+        : typeof source.createdByName === "string"
+          ? source.createdByName
+          : typeof source.created_by === "string"
+            ? source.created_by
+            : null,
     tags,
   };
 };
 
-const normalizeCourse = (item: any): CourseOption | null => {
-  const id = Number(item?.id);
+const normalizeCourse = (item: unknown): CourseOption | null => {
+  const source = asRecord(item);
+  const id = Number(source.id);
   if (!Number.isInteger(id) || id <= 0) return null;
 
   return {
     id,
-    title: String(item?.title ?? "Untitled course"),
-    description: item?.description ?? null,
-    published: item?.published ?? null,
+    title: String(source.title ?? "Untitled course"),
+    description: typeof source.description === "string" ? source.description : null,
+    published: typeof source.published === "boolean" ? source.published : null,
   };
 };
 
 export default function ExamListPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const examPermissions = useMemo(() => getExamPermissions(user), [user]);
   const [exams, setExams] = useState<ExamSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -79,6 +166,19 @@ export default function ExamListPage() {
   const [selectedExam, setSelectedExam] = useState<ExamSummary | null>(null);
   const [courses, setCourses] = useState<CourseOption[]>([]);
   const [selectedCourseIds, setSelectedCourseIds] = useState<number[]>([]);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editLoading, setEditLoading] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [editingExamId, setEditingExamId] = useState<number | null>(null);
+  const [editForm, setEditForm] = useState<ExamEditForm>({
+    title: "",
+    description: "",
+    total_duration_minutes: "",
+    start_datetime: "",
+    end_datetime: "",
+    max_attempts: "1",
+  });
 
   useEffect(() => {
     setPage(1);
@@ -107,8 +207,8 @@ export default function ExamListPage() {
 
       setExams(payload.map(normalizeExam));
       setTotal(Number.isNaN(totalCount) ? payload.length : totalCount);
-    } catch (err: any) {
-      const message = err?.response?.data?.error || "Failed to load exams.";
+    } catch (err: unknown) {
+      const message = readApiErrorMessage(err, "Failed to load exams.");
       setExams([]);
       setTotal(0);
       setError(message);
@@ -160,17 +260,19 @@ export default function ExamListPage() {
           ? assignedRes.data
           : [];
 
-      const assignedIds = assignedPayload
-        .map((item: any) => Number(item?.id ?? item?.course_id))
-        .filter((id: number) => Number.isInteger(id) && id > 0);
+      const assignedIds: number[] = assignedPayload
+        .map((item: unknown) => {
+          const source = asRecord(item);
+          return Number(source.id ?? source.course_id);
+        })
+        .filter(isPositiveInteger);
+
+      const uniqueAssignedIds = Array.from(new Set<number>(assignedIds));
 
       setCourses(normalizedCourses);
-      setSelectedCourseIds([...new Set(assignedIds)]);
-    } catch (err: any) {
-      const message =
-        err?.response?.data?.error ||
-        err?.response?.data?.message ||
-        "Failed to load assignment data.";
+      setSelectedCourseIds(uniqueAssignedIds);
+    } catch (err: unknown) {
+      const message = readApiErrorMessage(err, "Failed to load assignment data.");
       setAssignError(message);
       setCourses([]);
       setSelectedCourseIds([]);
@@ -201,6 +303,10 @@ export default function ExamListPage() {
   };
 
   const saveAssignments = async () => {
+    if (!examPermissions.canAssign) {
+      toast.error("You don't have permission to assign exams.");
+      return;
+    }
     if (!selectedExam) return;
     setAssignSaving(true);
     setAssignError(null);
@@ -211,25 +317,190 @@ export default function ExamListPage() {
       toast.success("Exam course assignment updated.");
       await loadExams();
       closeAssignModal();
-    } catch (err: any) {
-      const message =
-        err?.response?.data?.error ||
-        err?.response?.data?.message ||
-        "Failed to save assignments.";
+    } catch (err: unknown) {
+      const message = readApiErrorMessage(err, "Failed to save assignments.");
       setAssignError(message);
     } finally {
       setAssignSaving(false);
     }
   };
 
+  const closeEditModal = () => {
+    setEditOpen(false);
+    setEditLoading(false);
+    setEditError(null);
+    setEditingExamId(null);
+    setEditForm({
+      title: "",
+      description: "",
+      total_duration_minutes: "",
+      start_datetime: "",
+      end_datetime: "",
+      max_attempts: "1",
+    });
+  };
+
+  const openEditModal = async (exam: ExamSummary) => {
+    const examId = resolveExamId(exam.id);
+    if (!examId) {
+      toast.error("Invalid exam id.");
+      return;
+    }
+
+    setEditOpen(true);
+    setEditLoading(true);
+    setEditError(null);
+    setEditingExamId(examId);
+
+    try {
+      const response = await api.get(`/exams/${examId}`);
+      const payload = asRecord(response.data);
+      const durationValue = normalizeNumber(
+        payload.total_duration_minutes ?? payload.duration_minutes ?? payload.duration
+      );
+      const maxAttemptsValue = normalizeNumber(payload.max_attempts);
+
+      setEditForm({
+        title:
+          typeof payload.title === "string" && payload.title.trim()
+            ? payload.title
+            : exam.title,
+        description:
+          typeof payload.description === "string"
+            ? payload.description
+            : exam.description ?? "",
+        total_duration_minutes:
+          durationValue !== null ? String(durationValue) : "",
+        start_datetime: toDateTimeLocalValue(payload.start_datetime ?? exam.start_datetime),
+        end_datetime: toDateTimeLocalValue(payload.end_datetime ?? exam.end_datetime),
+        max_attempts: maxAttemptsValue !== null ? String(maxAttemptsValue) : "1",
+      });
+    } catch (err: unknown) {
+      const message = readApiErrorMessage(err, "Failed to load exam details.");
+      setEditError(message);
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  const saveEditedExam = async () => {
+    if (!examPermissions.canUpdate) {
+      toast.error("You don't have permission to update exams.");
+      return;
+    }
+    if (!editingExamId) return;
+
+    const trimmedTitle = editForm.title.trim();
+    if (!trimmedTitle) {
+      setEditError("Title is required.");
+      return;
+    }
+
+    const duration = Number(editForm.total_duration_minutes);
+    if (!Number.isFinite(duration) || duration <= 0) {
+      setEditError("Duration must be greater than 0.");
+      return;
+    }
+
+    const maxAttempts = Number(editForm.max_attempts);
+    if (!Number.isFinite(maxAttempts) || maxAttempts <= 0) {
+      setEditError("Max attempts must be greater than 0.");
+      return;
+    }
+
+    if (!editForm.start_datetime || !editForm.end_datetime) {
+      setEditError("Start and end datetime are required.");
+      return;
+    }
+
+    const startIso = new Date(editForm.start_datetime).toISOString();
+    const endIso = new Date(editForm.end_datetime).toISOString();
+    if (new Date(endIso) <= new Date(startIso)) {
+      setEditError("End datetime must be after start datetime.");
+      return;
+    }
+
+    setEditSaving(true);
+    setEditError(null);
+
+    try {
+      await api.put(`/exams/${editingExamId}`, {
+        title: trimmedTitle,
+        description: editForm.description.trim() || null,
+        total_duration_minutes: duration,
+        start_datetime: startIso,
+        end_datetime: endIso,
+        max_attempts: maxAttempts,
+      });
+      toast.success("Exam updated successfully.");
+      closeEditModal();
+      await loadExams();
+    } catch (err: unknown) {
+      const message = readApiErrorMessage(err, "Failed to update exam.");
+      setEditError(message);
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
+  const deleteExamById = async (exam: ExamSummary) => {
+    if (!examPermissions.canDelete) {
+      toast.error("You don't have permission to delete exams.");
+      return;
+    }
+    const examId = resolveExamId(exam.id);
+    if (!examId) {
+      toast.error("Invalid exam id.");
+      return;
+    }
+    const confirmed = window.confirm(`Delete exam "${exam.title}"? This cannot be undone.`);
+    if (!confirmed) return;
+
+    try {
+      await api.delete(`/exams/${examId}`);
+      toast.success("Exam deleted successfully.");
+      await loadExams();
+    } catch (err: unknown) {
+      const message = readApiErrorMessage(err, "Failed to delete exam.");
+      toast.error(message);
+    }
+  };
+
   const handleAction = (action: string, exam: ExamSummary) => {
     if (action === "builder") {
+      if (!examPermissions.canUpdate) {
+        toast.error("You don't have permission to update exams.");
+        return;
+      }
       navigate(`/exams/${exam.id}/builder`);
       return;
     }
 
     if (action === "assign") {
+      if (!examPermissions.canAssign) {
+        toast.error("You don't have permission to assign exams.");
+        return;
+      }
       openAssignModal(exam);
+      return;
+    }
+
+    if (action === "edit") {
+      if (!examPermissions.canUpdate) {
+        toast.error("You don't have permission to update exams.");
+        return;
+      }
+      void openEditModal(exam);
+      return;
+    }
+
+    if (action === "delete") {
+      void deleteExamById(exam);
+      return;
+    }
+
+    if (action === "live" && !examPermissions.canPublish) {
+      toast.error("You don't have permission to publish exams.");
       return;
     }
 
@@ -258,13 +529,15 @@ export default function ExamListPage() {
               <h2 className="text-lg font-semibold text-slate-900">All Exams</h2>
               <p className="text-sm text-slate-500">{total} exams found</p>
             </div>
-            <button
-              type="button"
-              onClick={() => navigate("/exams/new")}
-              className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
-            >
-              Create Exam
-            </button>
+            {examPermissions.canCreate && (
+              <button
+                type="button"
+                onClick={() => navigate("/exams/new")}
+                className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+              >
+                Create Exam
+              </button>
+            )}
           </div>
 
           <details className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -297,7 +570,7 @@ export default function ExamListPage() {
             </div>
           ) : (
             <div className="space-y-4">
-              <ExamListTable exams={exams} onAction={handleAction} />
+              <ExamListTable exams={exams} onAction={handleAction} permissions={examPermissions} />
               <Pagination
                 page={page}
                 pageSize={pageSize}
@@ -392,6 +665,140 @@ export default function ExamListPage() {
                   {assignSaving ? "Saving..." : "Save Assignment"}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4">
+          <div className="w-full max-w-2xl rounded-2xl bg-white shadow-xl">
+            <div className="flex items-start justify-between border-b border-slate-200 px-6 py-4">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900">Edit Exam</h3>
+                <p className="mt-1 text-sm text-slate-600">
+                  Update exam details and save changes.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeEditModal}
+                className="rounded-md px-2 py-1 text-slate-500 hover:bg-slate-100"
+                disabled={editSaving}
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="max-h-[70vh] overflow-y-auto px-6 py-4">
+              {editLoading ? (
+                <p className="text-sm text-slate-600">Loading exam details...</p>
+              ) : (
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="md:col-span-2">
+                    <label className="text-xs font-semibold text-slate-500">Title</label>
+                    <input
+                      type="text"
+                      value={editForm.title}
+                      onChange={(event) =>
+                        setEditForm((prev) => ({ ...prev, title: event.target.value }))
+                      }
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+                      disabled={editSaving}
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="text-xs font-semibold text-slate-500">Description</label>
+                    <textarea
+                      value={editForm.description}
+                      onChange={(event) =>
+                        setEditForm((prev) => ({ ...prev, description: event.target.value }))
+                      }
+                      rows={3}
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+                      disabled={editSaving}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-500">Duration (minutes)</label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={editForm.total_duration_minutes}
+                      onChange={(event) =>
+                        setEditForm((prev) => ({
+                          ...prev,
+                          total_duration_minutes: event.target.value,
+                        }))
+                      }
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+                      disabled={editSaving}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-500">Max Attempts</label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={editForm.max_attempts}
+                      onChange={(event) =>
+                        setEditForm((prev) => ({ ...prev, max_attempts: event.target.value }))
+                      }
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+                      disabled={editSaving}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-500">Start Date & Time</label>
+                    <input
+                      type="datetime-local"
+                      value={editForm.start_datetime}
+                      onChange={(event) =>
+                        setEditForm((prev) => ({ ...prev, start_datetime: event.target.value }))
+                      }
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+                      disabled={editSaving}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-500">End Date & Time</label>
+                    <input
+                      type="datetime-local"
+                      value={editForm.end_datetime}
+                      onChange={(event) =>
+                        setEditForm((prev) => ({ ...prev, end_datetime: event.target.value }))
+                      }
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+                      disabled={editSaving}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {editError && (
+                <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+                  {editError}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-6 py-4">
+              <button
+                type="button"
+                onClick={closeEditModal}
+                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                disabled={editSaving}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={saveEditedExam}
+                className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={editSaving || editLoading}
+              >
+                {editSaving ? "Saving..." : "Save Changes"}
+              </button>
             </div>
           </div>
         </div>

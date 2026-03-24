@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
-import api from "@/lib/api";
+import { createExam } from "@/features/exams/api";
 import ExamShell from "@/features/exams/components/ExamShell";
 import RichTextEditor from "@/components/ui/RichTextEditor";
 import type { ExamCreateFormState } from "@/features/exams/types";
@@ -130,7 +130,8 @@ export default function ExamCreatePage() {
 
   const handleBlur = (field: keyof ExamCreateFormState) => {
     setTouched((prev) => ({ ...prev, [field]: true }));
-    const message = validateField(field, form[field]);
+    const value = typeof form[field] === "string" ? form[field] : String(form[field]);
+    const message = validateField(field, value);
     setErrors((prev) => ({ ...prev, [field]: message }));
   };
 
@@ -188,7 +189,7 @@ export default function ExamCreatePage() {
         status: "draft",
       };
 
-      await api.post("/exams", payload);
+      await createExam(payload);
       toast.success("Exam created successfully");
       navigate("/exams");
     } catch (err: any) {

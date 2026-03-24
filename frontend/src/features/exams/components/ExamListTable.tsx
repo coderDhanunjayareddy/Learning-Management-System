@@ -1,10 +1,12 @@
 import { computeExamStatus } from "../utils/computeExamStatus";
 import type { ExamStatus, ExamSummary } from "../types";
 import ExamStatusBadge from "@/components/ui/ExamStatusBadge";
+import type { ExamPermissions } from "@/features/exams/utils/examPermissions";
 
 interface ExamListTableProps {
   exams: ExamSummary[];
   onAction: (action: string, exam: ExamSummary) => void;
+  permissions: ExamPermissions;
 }
 
 const normalizeStatus = (value?: string | null): ExamStatus | null => {
@@ -30,17 +32,18 @@ const formatWindow = (start?: string | null, end?: string | null) => {
   return `-- -> ${formatDateTime(end)}`;
 };
 
-const getActionState = (status: ExamStatus | null) => {
+const getActionState = (status: ExamStatus | null, permissions: ExamPermissions) => {
   const isDraft = status === "draft";
   const isActive = status === "active";
   const isCompleted = status === "completed";
 
   return {
-    canEdit: isDraft,
-    canBuilder: isDraft,
-    canAssign: true,
-    canLive: isActive,
+    canEdit: permissions.canUpdate && isDraft,
+    canBuilder: permissions.canUpdate && isDraft,
+    canAssign: permissions.canAssign,
+    canLive: permissions.canPublish && isActive,
     canResults: isCompleted,
+    canDelete: permissions.canDelete && isDraft,
   };
 };
 
@@ -67,7 +70,7 @@ const ActionButton = ({
   </button>
 );
 
-export default function ExamListTable({ exams, onAction }: ExamListTableProps) {
+export default function ExamListTable({ exams, onAction, permissions }: ExamListTableProps) {
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="overflow-x-auto">
@@ -90,7 +93,7 @@ export default function ExamListTable({ exams, onAction }: ExamListTableProps) {
               const status =
                 normalizeStatus(exam.status) ??
                 computeExamStatus(exam);
-              const actionState = getActionState(status);
+              const actionState = getActionState(status, permissions);
               const description = exam.description?.trim() || "";
               const snippet =
                 description.length > 120 ? `${description.slice(0, 117)}...` : description;
@@ -108,7 +111,6 @@ export default function ExamListTable({ exams, onAction }: ExamListTableProps) {
                   ? exam.attempts_count
                   : "--";
               const createdBy = exam.created_by_name || "--";
-
               return (
                 <tr key={exam.id} className="hover:bg-slate-50/50">
                   <td className="px-4 py-3">
@@ -169,6 +171,11 @@ export default function ExamListTable({ exams, onAction }: ExamListTableProps) {
                         label="Results"
                         disabled={!actionState.canResults}
                         onClick={() => onAction("results", exam)}
+                      />
+                      <ActionButton
+                        label="Delete"
+                        disabled={!actionState.canDelete}
+                        onClick={() => onAction("delete", exam)}
                       />
                     </div>
                   </td>

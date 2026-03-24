@@ -2,6 +2,9 @@ import { query as dbQuery, getClient } from "../repositories/db.repository.js"; 
 import { AppError } from "../utils/errors.js";
 
 let enrollmentsUserColumnCache = null;
+let examResultColumnsEnsured = false;
+let attemptSweepTimer = null;
+let attemptSweepInProgress = false;
 
 const ensureCourseExamsTable = async () => {
   await dbQuery(`
@@ -16,6 +19,19 @@ const ensureCourseExamsTable = async () => {
   `);
   await dbQuery(`CREATE INDEX IF NOT EXISTS idx_course_exams_exam_id ON course_exams(exam_id)`);
   await dbQuery(`CREATE INDEX IF NOT EXISTS idx_course_exams_course_id ON course_exams(course_id)`);
+};
+
+const ensureExamResultConfigColumns = async () => {
+  if (examResultColumnsEnsured) return;
+
+  await dbQuery(`
+    ALTER TABLE exams
+    ADD COLUMN IF NOT EXISTS show_score BOOLEAN DEFAULT TRUE,
+    ADD COLUMN IF NOT EXISTS show_pass_or_fail BOOLEAN DEFAULT TRUE,
+    ADD COLUMN IF NOT EXISTS show_solutions_to_user BOOLEAN DEFAULT FALSE
+  `);
+
+  examResultColumnsEnsured = true;
 };
 
 const resolveEnrollmentUserColumn = async () => {
@@ -70,6 +86,73 @@ const assertStudentCanAccessExam = async ({ examId, courseIds }) => {
   return accessRes.rows.length > 0;
 };
 
+const normalizeExamFlag = (value, defaultValue) => {
+  if (value === undefined || value === null) return defaultValue;
+  if (typeof value === "boolean") return value;
+  const normalized = String(value).trim().toLowerCase();
+  if (["1", "true", "yes"].includes(normalized)) return true;
+  if (["0", "false", "no"].includes(normalized)) return false;
+  return defaultValue;
+};
+
+const resolveExamResultVisibility = (exam) => {
+  const showResultImmediately = normalizeExamFlag(exam?.show_result_immediately, true);
+  const showScore = normalizeExamFlag(exam?.show_score, true);
+  const showPassOrFail = normalizeExamFlag(exam?.show_pass_or_fail, true);
+  const showSolutionsToUser = normalizeExamFlag(exam?.show_solutions_to_user, false);
+  const endDate = exam?.end_datetime ? new Date(exam.end_datetime) : null;
+  const isReleased = showResultImmediately || (endDate instanceof Date && !Number.isNaN(endDate.getTime()) && new Date() >= endDate);
+
+  return {
+    show_result_immediately: showResultImmediately,
+    show_score: showScore,
+    show_pass_or_fail: showPassOrFail,
+    show_solutions_to_user: showSolutionsToUser,
+    is_released: Boolean(isReleased),
+  };
+};
+
+const fetchAttemptWithExam = async ({ attemptId, client = null }) => {
+  await ensureExamResultConfigColumns();
+  const runner = client || { query: dbQuery };
+  const result = await runner.query(
+    `SELECT
+       ea.*,
+       e.total_duration_minutes,
+       e.start_datetime,
+       e.end_datetime,
+       e.title AS exam_title,
+       e.show_result_immediately,
+       e.show_score,
+       e.show_pass_or_fail,
+       e.show_solutions_to_user
+     FROM exam_attempts ea
+     JOIN exams e ON e.id = ea.exam_id
+     WHERE ea.id = $1`,
+    [attemptId]
+  );
+  return result.rows[0] || null;
+};
+
+const fetchAttemptTotalPossibleMarks = async ({ attemptId, client = null }) => {
+  const runner = client || { query: dbQuery };
+  const result = await runner.query(
+    `
+      SELECT COALESCE(
+        SUM(COALESCE(eq.marks_override, es.marks_per_question, q.marks_positive, 0)),
+        0
+      )::numeric AS total_possible_marks
+      FROM exam_attempts ea
+      JOIN exam_sections es ON es.exam_id = ea.exam_id
+      JOIN exam_questions eq ON eq.section_id = es.id
+      JOIN questions q ON q.id = eq.question_id
+      WHERE ea.id = $1
+    `,
+    [attemptId]
+  );
+  return Number(result.rows[0]?.total_possible_marks || 0);
+};
+
 const computeRemainingSeconds = ({ startedAtRaw, totalDurationMinutes }) => {
   const startedAt = startedAtRaw ? new Date(startedAtRaw) : null;
   const durationSeconds = totalDurationMinutes ? Number(totalDurationMinutes) * 60 : null;
@@ -79,8 +162,44 @@ const computeRemainingSeconds = ({ startedAtRaw, totalDurationMinutes }) => {
   return Math.max(0, durationSeconds - elapsed);
 };
 
+const gradeSubmittedAttempt = async ({ attemptId }) => {
+  const tx = await getClient();
+  try {
+    await tx.query("BEGIN");
+    const lockedAttemptResult = await tx.query(
+      `
+        SELECT
+          ea.id,
+          ea.status
+        FROM exam_attempts ea
+        WHERE ea.id = $1
+        FOR UPDATE
+      `,
+      [attemptId]
+    );
+
+    if (lockedAttemptResult.rows.length === 0) {
+      await tx.query("ROLLBACK");
+      return null;
+    }
+
+    if (lockedAttemptResult.rows[0].status === "submitted") {
+      await gradeAttempt(tx, attemptId);
+    }
+
+    const finalizedAttempt = await fetchAttemptWithExam({ attemptId, client: tx });
+    await tx.query("COMMIT");
+    return finalizedAttempt;
+  } catch (error) {
+    await tx.query("ROLLBACK");
+    throw error;
+  } finally {
+    tx.release();
+  }
+};
+
 const maybeAutoSubmitExpiredAttempt = async (attempt) => {
-  if (!attempt || attempt.status !== 'in_progress') return attempt;
+  if (!attempt || attempt.status !== "in_progress") return attempt;
 
   const remainingSeconds = computeRemainingSeconds({
     startedAtRaw: attempt.started_at,
@@ -90,21 +209,91 @@ const maybeAutoSubmitExpiredAttempt = async (attempt) => {
     return attempt;
   }
 
-  const updateResult = await dbQuery(
-    `UPDATE exam_attempts
-     SET status = 'submitted',
-         submitted_at = COALESCE(submitted_at, NOW()),
-         auto_submitted = TRUE
-     WHERE id = $1
-     RETURNING *`,
-    [attempt.id]
-  );
-  const updatedAttempt = updateResult.rows[0];
+  const tx = await getClient();
+  try {
+    await tx.query("BEGIN");
+    const lockResult = await tx.query(
+      `
+        SELECT
+          ea.*,
+          e.total_duration_minutes,
+          e.start_datetime,
+          e.end_datetime,
+          e.title AS exam_title,
+          e.show_result_immediately,
+          e.show_score,
+          e.show_pass_or_fail,
+          e.show_solutions_to_user
+        FROM exam_attempts ea
+        JOIN exams e ON e.id = ea.exam_id
+        WHERE ea.id = $1
+        FOR UPDATE
+      `,
+      [attempt.id]
+    );
 
-  return {
-    ...attempt,
-    ...updatedAttempt,
-  };
+    if (lockResult.rows.length === 0) {
+      await tx.query("ROLLBACK");
+      return attempt;
+    }
+
+    let lockedAttempt = lockResult.rows[0];
+    const lockedRemaining = computeRemainingSeconds({
+      startedAtRaw: lockedAttempt.started_at,
+      totalDurationMinutes: lockedAttempt.total_duration_minutes,
+    });
+
+    if (lockedAttempt.status !== "in_progress" || lockedRemaining === null || lockedRemaining > 0) {
+      if (lockedAttempt.status === "submitted") {
+        await gradeAttempt(tx, lockedAttempt.id);
+        lockedAttempt = await fetchAttemptWithExam({ attemptId: lockedAttempt.id, client: tx }) || lockedAttempt;
+      }
+      await tx.query("COMMIT");
+      return lockedAttempt;
+    }
+
+    await tx.query(
+      `
+        UPDATE exam_attempts
+        SET status = 'submitted',
+            submitted_at = COALESCE(submitted_at, NOW()),
+            auto_submitted = TRUE
+        WHERE id = $1
+      `,
+      [lockedAttempt.id]
+    );
+    await gradeAttempt(tx, lockedAttempt.id);
+
+    const finalizedAttempt = await fetchAttemptWithExam({ attemptId: lockedAttempt.id, client: tx });
+    await tx.query("COMMIT");
+    return finalizedAttempt || lockedAttempt;
+  } catch (error) {
+    await tx.query("ROLLBACK");
+    throw error;
+  } finally {
+    tx.release();
+  }
+};
+
+const ensureAttemptFinalized = async ({ attemptId, studentId = null }) => {
+  const attempt = await fetchAttemptWithExam({ attemptId });
+  if (!attempt) {
+    throw new AppError("Attempt not found", 404);
+  }
+
+  if (studentId !== null && Number(attempt.student_id) !== Number(studentId)) {
+    throw new AppError("Access denied", 403);
+  }
+
+  if (attempt.status === "in_progress") {
+    return maybeAutoSubmitExpiredAttempt(attempt);
+  }
+
+  if (attempt.status === "submitted") {
+    return (await gradeSubmittedAttempt({ attemptId })) || attempt;
+  }
+
+  return attempt;
 };
 
 const getAttemptQuestionsAndSections = async (examId) => {
@@ -174,24 +363,7 @@ const getAttemptQuestionsAndSections = async (examId) => {
 };
 
 const getAttemptStateInternal = async ({ attemptId, studentId }) => {
-  const attemptResult = await dbQuery(
-    `SELECT ea.*, e.total_duration_minutes, e.start_datetime, e.end_datetime, e.title AS exam_title
-     FROM exam_attempts ea
-     JOIN exams e ON e.id = ea.exam_id
-     WHERE ea.id = $1`,
-    [attemptId]
-  );
-
-  if (attemptResult.rows.length === 0) {
-    throw new AppError('Attempt not found', 404);
-  }
-
-  const rawAttempt = attemptResult.rows[0];
-  if (Number(rawAttempt.student_id) !== Number(studentId)) {
-    throw new AppError('Access denied', 403);
-  }
-
-  const attempt = await maybeAutoSubmitExpiredAttempt(rawAttempt);
+  const attempt = await ensureAttemptFinalized({ attemptId, studentId });
 
   const [responsesResult, questionBundle] = await Promise.all([
     dbQuery(
@@ -217,6 +389,10 @@ const getAttemptStateInternal = async ({ attemptId, studentId }) => {
       total_duration_minutes: attempt.total_duration_minutes,
       start_datetime: attempt.start_datetime,
       end_datetime: attempt.end_datetime,
+      show_result_immediately: attempt.show_result_immediately,
+      show_score: attempt.show_score,
+      show_pass_or_fail: attempt.show_pass_or_fail,
+      show_solutions_to_user: attempt.show_solutions_to_user,
     },
     sections: questionBundle.sections,
     questions: questionBundle.questions,
@@ -224,6 +400,128 @@ const getAttemptStateInternal = async ({ attemptId, studentId }) => {
     remaining_seconds: remainingSeconds,
     status: attempt.status,
     is_read_only: attempt.status !== 'in_progress',
+  };
+};
+
+const fetchAttemptQuestionResults = async ({ attemptId }) => {
+  const result = await dbQuery(
+    `
+      SELECT
+        er.id AS response_id,
+        er.question_id,
+        er.section_id,
+        er.student_answer,
+        er.is_attempted,
+        er.is_marked_for_review,
+        er.answered_at,
+        er.is_correct,
+        er.marks_awarded,
+        q.question_type,
+        q.question_text,
+        q.options,
+        q.correct_answer,
+        q.solution,
+        q.solution_video_url,
+        es.title AS section_title,
+        es.order_index AS section_order,
+        eq.order_index AS question_order
+      FROM exam_responses er
+      JOIN questions q ON q.id = er.question_id
+      JOIN exam_sections es ON es.id = er.section_id
+      JOIN exam_questions eq ON eq.section_id = er.section_id AND eq.question_id = er.question_id
+      WHERE er.attempt_id = $1
+      ORDER BY es.order_index ASC, eq.order_index ASC, er.id ASC
+    `,
+    [attemptId]
+  );
+  return result.rows;
+};
+
+const buildAttemptResultPayload = async ({ attempt, allowUnreleased = false }) => {
+  const visibility = resolveExamResultVisibility(attempt);
+  if (!allowUnreleased && !visibility.is_released) {
+    throw new AppError("Result not available yet", 403);
+  }
+
+  const [questionResults, totalPossibleMarks] = await Promise.all([
+    fetchAttemptQuestionResults({ attemptId: attempt.id }),
+    fetchAttemptTotalPossibleMarks({ attemptId: attempt.id }),
+  ]);
+
+  const attemptedCount = questionResults.filter((item) => Boolean(item.is_attempted)).length;
+  const correctCount = questionResults.filter((item) => item.is_correct === true).length;
+  const wrongCount = questionResults.filter((item) => item.is_correct === false && item.is_attempted === true).length;
+  const unattemptedCount = questionResults.length - attemptedCount;
+  const totalScore = attempt.total_score === null || attempt.total_score === undefined ? null : Number(attempt.total_score);
+  const percentage = totalScore === null || totalPossibleMarks <= 0 ? null : Number(((totalScore / totalPossibleMarks) * 100).toFixed(2));
+  const passStatus = totalScore === null || totalPossibleMarks <= 0
+    ? null
+    : totalScore >= (totalPossibleMarks * 0.5);
+
+  const responses = questionResults.map((item) => {
+    const response = {
+      question_id: Number(item.question_id),
+      section_id: Number(item.section_id),
+      section_title: item.section_title,
+      section_order: item.section_order,
+      question_order: item.question_order,
+      question_type: item.question_type,
+      question_text: item.question_text,
+      options: item.options,
+      student_answer: item.student_answer,
+      is_attempted: item.is_attempted,
+      is_marked_for_review: item.is_marked_for_review,
+      answered_at: item.answered_at,
+    };
+
+    if (visibility.show_score && visibility.is_released) {
+      response.is_correct = item.is_correct;
+      response.marks_awarded = item.marks_awarded;
+    }
+
+    if (visibility.show_solutions_to_user && visibility.is_released) {
+      response.correct_answer = item.correct_answer;
+      response.solution = item.solution;
+      response.solution_video_url = item.solution_video_url;
+    }
+
+    return response;
+  });
+
+  const summary = {
+    total_questions: questionResults.length,
+    attempted: attemptedCount,
+    unattempted: unattemptedCount,
+    correct: visibility.show_score && visibility.is_released ? correctCount : null,
+    wrong: visibility.show_score && visibility.is_released ? wrongCount : null,
+    total_possible_marks: visibility.show_score && visibility.is_released ? totalPossibleMarks : null,
+    total_score: visibility.show_score && visibility.is_released ? totalScore : null,
+    percentage: visibility.show_score && visibility.is_released ? percentage : null,
+    is_passed: visibility.show_pass_or_fail && visibility.is_released ? passStatus : null,
+  };
+
+  return {
+    attempt: {
+      id: Number(attempt.id),
+      exam_id: Number(attempt.exam_id),
+      student_id: Number(attempt.student_id),
+      attempt_number: attempt.attempt_number,
+      status: attempt.status,
+      started_at: attempt.started_at,
+      submitted_at: attempt.submitted_at,
+      auto_submitted: attempt.auto_submitted,
+      graded_at: attempt.status === "graded" ? attempt.submitted_at : null,
+    },
+    exam: {
+      id: Number(attempt.exam_id),
+      title: attempt.exam_title,
+      start_datetime: attempt.start_datetime,
+      end_datetime: attempt.end_datetime,
+      total_duration_minutes: attempt.total_duration_minutes,
+    },
+    visibility,
+    summary,
+    responses,
   };
 };
 
@@ -388,6 +686,40 @@ export const getAttemptState = async (req, res) => {
   }
 };
 
+export const getAttemptResult = async (req, res) => {
+  try {
+    if (!req.user?.id || !req.user?.role) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const attemptId = Number(req.params.aid);
+    if (!attemptId || Number.isNaN(attemptId)) {
+      return res.status(400).json({ message: "Invalid attempt id" });
+    }
+
+    const resultPayload = await getAttemptResultPayloadByAttemptId({
+      attemptId,
+      studentId: req.user.id,
+      allowUnreleased: false,
+    });
+    return res.json(resultPayload);
+  } catch (err) {
+    if (err instanceof AppError) {
+      return res.status(err.status).json({ message: err.message });
+    }
+    console.error("Error fetching attempt result:", err);
+    return res.status(500).json({ message: "Error fetching attempt result" });
+  }
+};
+
+export const getAttemptResultPayloadByAttemptId = async ({ attemptId, studentId = null, allowUnreleased = false }) => {
+  const attempt = await ensureAttemptFinalized({ attemptId, studentId });
+  if (attempt.status === "in_progress") {
+    throw new AppError("Attempt is still in progress", 409);
+  }
+  return buildAttemptResultPayload({ attempt, allowUnreleased });
+};
+
 export const startExamAttempt = async (req, res) => {
   try {
     if (!req.user?.id || !req.user?.role) {
@@ -531,37 +863,10 @@ export const saveExamResponse = async (req, res) => {
       return res.status(400).json({ message: 'responses must be a non-empty array' });
     }
 
-    const attemptResult = await dbQuery(
-      `SELECT ea.*, e.total_duration_minutes, e.start_datetime, e.end_datetime
-       FROM exam_attempts ea
-       JOIN exams e ON e.id = ea.exam_id
-       WHERE ea.id = $1`,
-      [attemptId]
-    );
-
-    if (attemptResult.rows.length === 0) {
-      return res.status(404).json({ message: 'Attempt not found' });
-    }
-
-    const attempt = attemptResult.rows[0];
-    if (Number(attempt.student_id) !== Number(req.user.id)) {
-      return res.status(403).json({ message: 'Access denied' });
-    }
-
-    if (attempt.status !== 'in_progress') {
-      return res.status(409).json({ message: 'Cannot save responses for a non-active attempt' });
-    }
-
-    const durationSeconds = attempt.total_duration_minutes ? Number(attempt.total_duration_minutes) * 60 : null;
-    if (durationSeconds !== null && durationSeconds >= 0) {
-      const elapsed = Math.floor((Date.now() - new Date(attempt.started_at).getTime()) / 1000);
-      if (elapsed > durationSeconds) {
-        await dbQuery(
-          `UPDATE exam_attempts SET status = 'submitted', submitted_at = NOW(), auto_submitted = TRUE WHERE id = $1`,
-          [attemptId]
-        );
-        return res.status(403).json({ message: 'Exam time expired' });
-      }
+    const attempt = await ensureAttemptFinalized({ attemptId, studentId: req.user.id });
+    if (attempt.status !== "in_progress") {
+      const statusCode = attempt.status === "graded" || attempt.status === "submitted" ? 409 : 403;
+      return res.status(statusCode).json({ message: "Cannot save responses for a non-active attempt" });
     }
 
     if (req.body?.omr_lock) {
@@ -639,6 +944,455 @@ export const saveExamResponse = async (req, res) => {
     console.error('Error saving exam response:', err);
     res.status(500).json({ message: 'Error saving exam response' });
   }
+};
+
+// ============================================
+// TASK 1: Submit Exam API
+// ============================================
+export const submitExamAttempt = async (req, res) => {
+  const attemptId = Number(req.params.aid);
+  const studentId = req.user?.id;
+
+  if (!attemptId || Number.isNaN(attemptId)) {
+    return res.status(400).json({ error: 'Invalid attempt ID' });
+  }
+
+  if (!studentId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const preAttempt = await ensureAttemptFinalized({ attemptId, studentId });
+    if (preAttempt.status !== "in_progress") {
+      const statusCode = preAttempt.status === "graded" || preAttempt.status === "submitted" ? 409 : 403;
+      return res.status(statusCode).json({ error: "Attempt already submitted or graded" });
+    }
+
+    const client = await getClient();
+    try {
+      await client.query('BEGIN');
+
+      // 1. Fetch attempt + exam window
+      const attemptRes = await client.query(
+        `SELECT ea.*, e.end_datetime, e.start_datetime, e.total_duration_minutes
+         FROM exam_attempts ea
+         JOIN exams e ON ea.exam_id = e.id
+         WHERE ea.id = $1 AND ea.student_id = $2
+         FOR UPDATE`,
+        [attemptId, studentId]
+      );
+
+      if (attemptRes.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Attempt not found or access denied' });
+      }
+
+      const attempt = attemptRes.rows[0];
+      const now = new Date();
+      const startDt = new Date(attempt.start_datetime);
+      const endDt = new Date(attempt.end_datetime);
+
+      // Validate exam window
+      if (now < startDt) {
+        await client.query('ROLLBACK');
+        return res.status(403).json({ error: 'Exam has not started yet' });
+      }
+
+      // Validate attempt not already submitted
+      if (attempt.status !== 'in_progress') {
+        if (attempt.status === "submitted") {
+          await gradeAttempt(client, attemptId);
+          await client.query("COMMIT");
+          const finalAttempt = await dbQuery(
+            `SELECT id, exam_id, student_id, attempt_number, status, submitted_at, total_score,
+                    total_correct, total_wrong, total_unattempted
+             FROM exam_attempts WHERE id = $1`,
+            [attemptId]
+          );
+          return res.status(200).json({
+            message: "Attempt already submitted; grading completed",
+            attempt: finalAttempt.rows[0],
+          });
+        }
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'Attempt already submitted or graded' });
+      }
+
+      const remainingSeconds = computeRemainingSeconds({
+        startedAtRaw: attempt.started_at,
+        totalDurationMinutes: attempt.total_duration_minutes,
+      });
+      const expiredByDuration = remainingSeconds !== null && remainingSeconds <= 0;
+      const isLate = now > endDt;
+      const autoSubmitted = expiredByDuration || isLate;
+
+      // 2. Atomic status transition (WHERE status='in_progress')
+      const updateRes = await client.query(
+        `UPDATE exam_attempts
+         SET status = 'submitted', submitted_at = $1, auto_submitted = $2
+         WHERE id = $3 AND status = 'in_progress'
+         RETURNING id`,
+        [now, autoSubmitted, attemptId]
+      );
+
+      if (updateRes.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'Attempt already submitted (race condition)' });
+      }
+
+      // 3. Trigger grading
+      await gradeAttempt(client, attemptId);
+
+      await client.query('COMMIT');
+
+      // Return attempt summary
+      const finalAttempt = await dbQuery(
+        `SELECT id, exam_id, student_id, attempt_number, status, submitted_at, total_score, 
+                total_correct, total_wrong, total_unattempted
+         FROM exam_attempts WHERE id = $1`,
+        [attemptId]
+      );
+
+      return res.status(200).json({
+        message: autoSubmitted
+          ? 'Exam auto-submitted and graded successfully'
+          : 'Exam submitted and graded successfully',
+        attempt: finalAttempt.rows[0]
+      });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('Submit exam error:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    if (err instanceof AppError) {
+      return res.status(err.status).json({ error: err.message });
+    }
+    console.error("Submit exam error:", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+// ============================================
+// TASK 2 & 3: Grading Functions by Question Type
+// ============================================
+
+// Grade single MCQ - exact match
+const gradeMCQSingle = (studentAnswer, correctAnswer) => {
+  if (studentAnswer === null || studentAnswer === '' || studentAnswer === undefined) {
+    return { isCorrect: false, isUnattempted: true };
+  }
+  // Normalize to string for comparison
+  const normalizedStudent = String(studentAnswer).trim();
+  const normalizedCorrect = String(correctAnswer).trim();
+  return {
+    isCorrect: normalizedStudent === normalizedCorrect,
+    isUnattempted: false
+  };
+};
+
+// Grade multiple MCQ - exact full set match
+const gradeMCQMultiple = (studentAnswer, correctAnswer) => {
+  if (!studentAnswer || (Array.isArray(studentAnswer) && studentAnswer.length === 0)) {
+    return { isCorrect: false, isUnattempted: true };
+  }
+
+  const studentArray = Array.isArray(studentAnswer) ? studentAnswer : [studentAnswer];
+  const correctArray = Array.isArray(correctAnswer) ? correctAnswer : [correctAnswer];
+
+  // Normalize and sort for comparison
+  const studentNorm = studentArray.map(s => String(s).trim()).sort();
+  const correctNorm = correctArray.map(c => String(c).trim()).sort();
+
+  const isExactMatch = studentNorm.length === correctNorm.length &&
+    studentNorm.every((val, idx) => val === correctNorm[idx]);
+
+  return {
+    isCorrect: isExactMatch,
+    isUnattempted: false
+  };
+};
+
+// Grade numerical - tolerance check (default 0.01)
+const gradeNumerical = (studentAnswer, correctAnswer, tolerance = 0.01) => {
+  if (studentAnswer === null || studentAnswer === '' || studentAnswer === undefined) {
+    return { isCorrect: false, isUnattempted: true };
+  }
+
+  try {
+    const studentNum = parseFloat(studentAnswer);
+    const correctNum = parseFloat(correctAnswer);
+
+    if (Number.isNaN(studentNum) || Number.isNaN(correctNum)) {
+      return { isCorrect: false, isUnattempted: false };
+    }
+
+    const diff = Math.abs(studentNum - correctNum);
+    return {
+      isCorrect: diff <= tolerance,
+      isUnattempted: false
+    };
+  } catch (e) {
+    return { isCorrect: false, isUnattempted: false };
+  }
+};
+
+// Grade true/false - exact match
+const gradeTrueFalse = (studentAnswer, correctAnswer) => {
+  if (studentAnswer === null || studentAnswer === '' || studentAnswer === undefined) {
+    return { isCorrect: false, isUnattempted: true };
+  }
+
+  // Normalize to lowercase string
+  const normalizedStudent = String(studentAnswer).toLowerCase().trim();
+  const normalizedCorrect = String(correctAnswer).toLowerCase().trim();
+
+  return {
+    isCorrect: normalizedStudent === normalizedCorrect,
+    isUnattempted: false
+  };
+};
+
+// Grade integer - exact match after parsing
+const gradeInteger = (studentAnswer, correctAnswer) => {
+  if (studentAnswer === null || studentAnswer === '' || studentAnswer === undefined) {
+    return { isCorrect: false, isUnattempted: true };
+  }
+
+  try {
+    const studentInt = parseInt(studentAnswer, 10);
+    const correctInt = parseInt(correctAnswer, 10);
+
+    if (Number.isNaN(studentInt) || Number.isNaN(correctInt)) {
+      return { isCorrect: false, isUnattempted: false };
+    }
+
+    return {
+      isCorrect: studentInt === correctInt,
+      isUnattempted: false
+    };
+  } catch (e) {
+    return { isCorrect: false, isUnattempted: false };
+  }
+};
+
+// ============================================
+// Task 4: Grading Orchestrator + Totals
+// ============================================
+
+const gradeAttempt = async (client, attemptId) => {
+  // Fetch all responses with question/section scoring metadata
+  const responsesRes = await client.query(
+    `SELECT 
+       er.id,
+       er.question_id,
+       er.section_id,
+       er.student_answer,
+       q.question_type,
+       q.correct_answer,
+       q.marks_positive,
+       q.marks_negative,
+       eq.marks_override,
+       eq.negative_override,
+       es.marks_per_question,
+       es.negative_marks
+     FROM exam_responses er
+     JOIN questions q ON er.question_id = q.id
+     JOIN exam_questions eq ON er.question_id = eq.question_id AND er.section_id = eq.section_id
+     JOIN exam_sections es ON er.section_id = es.id
+     WHERE er.attempt_id = $1`,
+    [attemptId]
+  );
+
+  const responses = responsesRes.rows;
+  let totalScore = 0;
+  let totalCorrect = 0;
+  let totalWrong = 0;
+  let totalUnattempted = 0;
+
+  // Grade each response
+  for (const response of responses) {
+    const {
+      id: responseId,
+      question_type: questionType,
+      student_answer: studentAnswer,
+      correct_answer: correctAnswer,
+      marks_positive: markPositive,
+      marks_negative: markNegative,
+      marks_override: marksOverride,
+      negative_override: negativeOverride,
+      marks_per_question: markPerQuestion,
+      negative_marks: negativeMarks
+    } = response;
+
+    // Mark source resolution: override → section default → question default
+    const posMarks = marksOverride !== null ? Number(marksOverride) :
+      (markPerQuestion !== null ? Number(markPerQuestion) :
+        (markPositive !== null ? Number(markPositive) : 0));
+
+    const negMarks = negativeOverride !== null ? Number(negativeOverride) :
+      (negativeMarks !== null ? Number(negativeMarks) :
+        (markNegative !== null ? Number(markNegative) : 0));
+
+    let isCorrect = false;
+    let isUnattempted = false;
+    let marksAwarded = 0;
+
+    // Grade based on question type
+    switch (questionType) {
+      case 'mcq_single': {
+        const result = gradeMCQSingle(studentAnswer, correctAnswer);
+        isCorrect = result.isCorrect;
+        isUnattempted = result.isUnattempted;
+        break;
+      }
+      case 'mcq_multiple': {
+        const result = gradeMCQMultiple(studentAnswer, correctAnswer);
+        isCorrect = result.isCorrect;
+        isUnattempted = result.isUnattempted;
+        break;
+      }
+      case 'numerical': {
+        const result = gradeNumerical(studentAnswer, correctAnswer);
+        isCorrect = result.isCorrect;
+        isUnattempted = result.isUnattempted;
+        break;
+      }
+      case 'true_false': {
+        const result = gradeTrueFalse(studentAnswer, correctAnswer);
+        isCorrect = result.isCorrect;
+        isUnattempted = result.isUnattempted;
+        break;
+      }
+      case 'integer': {
+        const result = gradeInteger(studentAnswer, correctAnswer);
+        isCorrect = result.isCorrect;
+        isUnattempted = result.isUnattempted;
+        break;
+      }
+      default:
+        // Skip unsupported types for MVP
+        continue;
+    }
+
+    // Calculate marks awarded
+    if (isUnattempted) {
+      marksAwarded = 0;
+      totalUnattempted++;
+    } else if (isCorrect) {
+      marksAwarded = posMarks;
+      totalCorrect++;
+    } else {
+      // Negative marking only on wrong (not unattempted)
+      marksAwarded = -negMarks;
+      totalWrong++;
+    }
+
+    totalScore += marksAwarded;
+
+    // Update response with grading results
+    await client.query(
+      `UPDATE exam_responses
+       SET is_correct = $1, marks_awarded = $2
+       WHERE id = $3`,
+      [isCorrect, marksAwarded, responseId]
+    );
+  }
+
+  // Round final score to 2 decimal places
+  const finalScore = Math.round(totalScore * 100) / 100;
+
+  // Calculate pass/fail: 50% threshold for MVP
+  const totalPossibleMarks = responses.length * 4; // Default marks if all had default 4 marks
+  const isPassed = finalScore >= (totalPossibleMarks * 0.5);
+
+  // Update attempt with final totals
+  await client.query(
+    `UPDATE exam_attempts
+     SET status = 'graded',
+         total_score = $1,
+         total_correct = $2,
+         total_wrong = $3,
+         total_unattempted = $4
+     WHERE id = $5`,
+    [finalScore, totalCorrect, totalWrong, totalUnattempted, attemptId]
+  );
+};
+
+export const sweepExpiredInProgressAttempts = async ({ batchSize = 100 } = {}) => {
+  const normalizedBatchSize = Number.isInteger(batchSize) && batchSize > 0 ? batchSize : 100;
+  const result = await dbQuery(
+    `
+      SELECT ea.id
+      FROM exam_attempts ea
+      JOIN exams e ON e.id = ea.exam_id
+      WHERE ea.status = 'in_progress'
+        AND (
+          (
+            e.total_duration_minutes IS NOT NULL
+            AND e.total_duration_minutes > 0
+            AND ea.started_at + (e.total_duration_minutes || ' minutes')::interval <= NOW()
+          )
+          OR (e.end_datetime IS NOT NULL AND e.end_datetime <= NOW())
+        )
+      ORDER BY ea.started_at ASC
+      LIMIT $1
+    `,
+    [normalizedBatchSize]
+  );
+
+  let finalizedCount = 0;
+  for (const row of result.rows) {
+    try {
+      await ensureAttemptFinalized({ attemptId: Number(row.id) });
+      finalizedCount += 1;
+    } catch (error) {
+      console.error("Attempt sweep finalize error:", error);
+    }
+  }
+
+  return {
+    scanned: result.rows.length,
+    finalized: finalizedCount,
+  };
+};
+
+export const startAttemptExpiryCron = (intervalMs = Number(process.env.EXAM_ATTEMPT_SWEEP_INTERVAL_MS || 30000)) => {
+  if (attemptSweepTimer) {
+    return () => {};
+  }
+
+  const normalizedInterval = Number.isFinite(intervalMs) && intervalMs >= 5000 ? Math.floor(intervalMs) : 30000;
+
+  const runSweep = async () => {
+    if (attemptSweepInProgress) return;
+    attemptSweepInProgress = true;
+    try {
+      await sweepExpiredInProgressAttempts();
+    } catch (error) {
+      console.error("Attempt expiry cron error:", error);
+    } finally {
+      attemptSweepInProgress = false;
+    }
+  };
+
+  void runSweep();
+  attemptSweepTimer = setInterval(() => {
+    void runSweep();
+  }, normalizedInterval);
+
+  if (typeof attemptSweepTimer.unref === "function") {
+    attemptSweepTimer.unref();
+  }
+
+  return () => {
+    if (attemptSweepTimer) {
+      clearInterval(attemptSweepTimer);
+      attemptSweepTimer = null;
+    }
+  };
 };
 
 

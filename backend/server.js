@@ -22,6 +22,7 @@ import questionsRoutes from './routes/questions.routes.js';
 import examsRoutes from './routes/exams.routes.js';
 import { authenticateToken } from './middleware/auth.js';
 import supabase from './config/supabaseClient.js';
+import { startAttemptExpiryCron } from './services/student.service.js';
 
 
 dotenv.config();
@@ -130,6 +131,14 @@ process.on('uncaughtException', (err) => {
 process.on('unhandledRejection', (reason) => {
   console.error('Unhandled Rejection:', reason);
 });
+
+const stopAttemptExpiryCron = startAttemptExpiryCron();
+const shutdown = () => {
+  stopAttemptExpiryCron();
+  process.exit(0);
+};
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);
 
 app.listen(PORT, "0.0.0.0", () => {
 

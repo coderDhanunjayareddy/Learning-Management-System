@@ -13,6 +13,11 @@
     "courses.update",
     "enrollments.enroll",
     "enrollments.remove",
+    "exams.create",
+    "exams.delete",
+    "exams.publish",
+    "exams.read",
+    "exams.update",
     "questions.approve",
     "questions.create",
     "questions.delete",
@@ -54,6 +59,31 @@
       "role": "content_authorizer",
       "permission": "questions.delete",
       "granted": true
+    },
+    {
+      "role": "content_authorizer",
+      "permission": "exams.read",
+      "granted": true
+    },
+    {
+      "role": "content_authorizer",
+      "permission": "exams.create",
+      "granted": true
+    },
+    {
+      "role": "content_authorizer",
+      "permission": "exams.update",
+      "granted": true
+    },
+    {
+      "role": "content_authorizer",
+      "permission": "exams.delete",
+      "granted": true
+    },
+    {
+      "role": "content_authorizer",
+      "permission": "exams.publish",
+      "granted": true
     }
   ],
   "tenant_permissions": [
@@ -83,6 +113,31 @@
       "granted": true
     },
     {
+      "role": "client_admin",
+      "permission": "exams.read",
+      "granted": true
+    },
+    {
+      "role": "client_admin",
+      "permission": "exams.create",
+      "granted": true
+    },
+    {
+      "role": "client_admin",
+      "permission": "exams.update",
+      "granted": true
+    },
+    {
+      "role": "client_admin",
+      "permission": "exams.delete",
+      "granted": true
+    },
+    {
+      "role": "client_admin",
+      "permission": "exams.publish",
+      "granted": true
+    },
+    {
       "role": "school_owner",
       "permission": "questions.read",
       "granted": true
@@ -108,6 +163,31 @@
       "granted": true
     },
     {
+      "role": "school_owner",
+      "permission": "exams.read",
+      "granted": true
+    },
+    {
+      "role": "school_owner",
+      "permission": "exams.create",
+      "granted": true
+    },
+    {
+      "role": "school_owner",
+      "permission": "exams.update",
+      "granted": true
+    },
+    {
+      "role": "school_owner",
+      "permission": "exams.delete",
+      "granted": true
+    },
+    {
+      "role": "school_owner",
+      "permission": "exams.publish",
+      "granted": true
+    },
+    {
       "role": "teacher",
       "permission": "questions.read",
       "granted": true
@@ -115,6 +195,26 @@
     {
       "role": "teacher",
       "permission": "questions.create",
+      "granted": true
+    },
+    {
+      "role": "teacher",
+      "permission": "exams.read",
+      "granted": true
+    },
+    {
+      "role": "teacher",
+      "permission": "exams.create",
+      "granted": true
+    },
+    {
+      "role": "teacher",
+      "permission": "exams.update",
+      "granted": true
+    },
+    {
+      "role": "teacher",
+      "permission": "exams.publish",
       "granted": true
     }
   ]

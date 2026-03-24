@@ -11,9 +11,10 @@ const permissionGroupLabels: Record<string, string> = {
   subjects: 'Subjects',
   chapters: 'Chapters',
   topics: 'Topics',
+  exams: 'Exams',
 };
 
-const permissionGroupOrder = ['Question Bank', 'Courses', 'Subjects', 'Chapters', 'Topics', 'Other'];
+const permissionGroupOrder = ['Question Bank', 'Exams', 'Courses', 'Subjects', 'Chapters', 'Topics', 'Other'];
 
 const getPermissionGroup = (permission: string) => {
   const prefix = permission.split('.')[0];
@@ -220,33 +221,45 @@ export default function PermissionsPage() {
       return;
     }
 
-    const existing = permissionMap.get(permission);
+    // Special handling for exams.create: also grant/revoke exams.update and exams.publish
+    const permissionsToToggle = [permission];
+    if (permission === 'exams.create') {
+      permissionsToToggle.push('exams.update', 'exams.publish');
+    }
 
     try {
       setSaving(permission);
 
       if (nextValue) {
-        if (existing?.granted) {
-          return;
-        }
-        if (existing && !existing.granted && existing.id) {
-          await api.delete(`/org/role-permissions/${existing.id}`);
-        }
+        // Grant all related permissions
         const payload: Record<string, unknown> = {
           role: selectedRole,
-          permission,
           granted: true,
         };
         if (selectedClientId) {
           payload.client_id = Number(selectedClientId);
         }
-        await api.post('/org/role-permissions', payload);
+
+        for (const perm of permissionsToToggle) {
+          const existingPerm = permissionMap.get(perm);
+          if (existingPerm?.granted) {
+            continue; // Already granted
+          }
+          if (existingPerm && !existingPerm.granted && existingPerm.id) {
+            await api.delete(`/org/role-permissions/${existingPerm.id}`);
+          }
+          await api.post('/org/role-permissions', { ...payload, permission: perm });
+        }
         toast.success('Permission granted');
       } else {
-        if (!existing || !existing.id) {
-          return;
+        // Revoke all related permissions
+        for (const perm of permissionsToToggle) {
+          const existingPerm = permissionMap.get(perm);
+          if (!existingPerm || !existingPerm.id) {
+            continue; // Not granted
+          }
+          await api.delete(`/org/role-permissions/${existingPerm.id}`);
         }
-        await api.delete(`/org/role-permissions/${existing.id}`);
         toast.success('Permission removed');
       }
 
@@ -265,7 +278,20 @@ export default function PermissionsPage() {
       return;
     }
 
-    const pending = groupPermissions.filter((permission) => {
+    // Special handling for Exams group: ensure exams.create, update, and publish are toggled together
+    let permissionsToToggle = groupPermissions;
+    if (groupName === 'Exams') {
+      const examPerms = ['exams.create', 'exams.update', 'exams.publish'];
+      if (nextValue) {
+        // When enabling, enable all exam permissions
+        permissionsToToggle = examPerms;
+      } else {
+        // When disabling, disable all exam permissions
+        permissionsToToggle = examPerms;
+      }
+    }
+
+    const pending = permissionsToToggle.filter((permission) => {
       const existing = permissionMap.get(permission);
       const enabled = Boolean(existing?.granted);
       return nextValue ? !enabled : Boolean(existing?.id);
@@ -507,7 +533,15 @@ export default function PermissionsPage() {
                 </div>
 
                 <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                  {group.permissions.map((permission) => {
+                  {group.permissions
+                    .filter((permission) => {
+                      // Skip exams.update and exams.publish - they're toggled with exams.create
+                      if (['exams.update', 'exams.publish'].includes(permission)) {
+                        return false;
+                      }
+                      return true;
+                    })
+                    .map((permission) => {
                     const existing = permissionMap.get(permission);
                     const enabled = Boolean(existing?.granted);
                     const isSaving = saving === permission || Boolean(saving?.startsWith('group:'));
@@ -583,7 +617,15 @@ export default function PermissionsPage() {
               <div key={`user-${group.name}`} className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4">
                 <div className="text-sm font-semibold text-slate-900">{group.name}</div>
                 <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                  {group.permissions.map((permission) => {
+                  {group.permissions
+                    .filter((permission) => {
+                      // Skip exams.update and exams.publish - they're toggled with exams.create
+                      if (['exams.update', 'exams.publish'].includes(permission)) {
+                        return false;
+                      }
+                      return true;
+                    })
+                    .map((permission) => {
                     const override = userOverrideMap.get(permission);
                     const state = override
                       ? override.granted
