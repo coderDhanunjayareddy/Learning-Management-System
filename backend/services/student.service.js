@@ -162,6 +162,23 @@ const computeRemainingSeconds = ({ startedAtRaw, totalDurationMinutes }) => {
   return Math.max(0, durationSeconds - elapsed);
 };
 
+const toDbJsonParam = (value) => {
+  if (value === undefined || value === null) return null;
+  return JSON.stringify(value);
+};
+
+const sanitizeQuestionOptions = (options) => {
+  if (!Array.isArray(options)) return options ?? null;
+  return options.map((option) => {
+    if (!option || typeof option !== "object" || Array.isArray(option)) {
+      return option;
+    }
+
+    const { is_correct: _isCorrect, ...safeOption } = option;
+    return safeOption;
+  });
+};
+
 const gradeSubmittedAttempt = async ({ attemptId }) => {
   const tx = await getClient();
   try {
@@ -348,7 +365,7 @@ const getAttemptQuestionsAndSections = async (examId) => {
       sequence: index + 1,
       question_type: row.question_type,
       question_text: row.question_text,
-      options: row.options,
+      options: sanitizeQuestionOptions(row.options),
       marks_positive: row.marks_positive,
       marks_negative: row.marks_negative,
     });
@@ -467,7 +484,7 @@ const buildAttemptResultPayload = async ({ attempt, allowUnreleased = false }) =
       question_order: item.question_order,
       question_type: item.question_type,
       question_text: item.question_text,
-      options: item.options,
+      options: sanitizeQuestionOptions(item.options),
       student_answer: item.student_answer,
       is_attempted: item.is_attempted,
       is_marked_for_review: item.is_marked_for_review,
@@ -924,7 +941,7 @@ export const saveExamResponse = async (req, res) => {
                          is_attempted = EXCLUDED.is_attempted,
                          answered_at = EXCLUDED.answered_at,
                          is_marked_for_review = EXCLUDED.is_marked_for_review`,
-          [attemptId, questionId, sectionId, studentAnswer, isAttempted, isMarkedForReview]
+          [attemptId, questionId, sectionId, toDbJsonParam(studentAnswer), isAttempted, isMarkedForReview]
         );
       }
       await client.query('COMMIT');

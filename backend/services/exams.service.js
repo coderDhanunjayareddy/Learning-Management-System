@@ -627,7 +627,6 @@ export const getExamResults = async (req, res) => {
         ea.submitted_at,
         ea.auto_submitted,
         u.full_name,
-        u.name,
         u.email
       FROM exam_attempts ea
       LEFT JOIN users u ON u.id = ea.student_id
@@ -649,7 +648,7 @@ export const getExamResults = async (req, res) => {
             ...payload,
             student: {
               id: Number(attemptRow.student_id),
-              name: attemptRow.full_name || attemptRow.name || null,
+              name: attemptRow.full_name || null,
               email: attemptRow.email || null,
             },
           };
@@ -668,7 +667,7 @@ export const getExamResults = async (req, res) => {
               },
               student: {
                 id: Number(attemptRow.student_id),
-                name: attemptRow.full_name || attemptRow.name || null,
+                name: attemptRow.full_name || null,
                 email: attemptRow.email || null,
               },
               summary: null,
