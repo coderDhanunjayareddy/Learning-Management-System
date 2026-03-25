@@ -3,7 +3,6 @@ import { useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/features/auth/hooks/useAuth';
 import spectropyLogo from "/logo.png";
-import gvjbLogo from "/gvjb.png";
 import AdminCourseManager from '@/features/courses/components/list/AdminCourseManager';
 import { getDashboardTheme } from '@/components/layout/dashboardTheme';
 
@@ -19,14 +18,14 @@ export default function StudentDashboard() {
     return 'courses';
   }, [location.pathname]);
 
-  const isClientTenant = Boolean(user?.client_id);
-  const brandLogo = isClientTenant ? gvjbLogo : spectropyLogo;
-  const brandName = isClientTenant ? 'GVB' : 'Spectropy';
+  const isClientTenant = false;
+  const brandLogo = spectropyLogo;
+  const brandName = 'Spectropy';
 
   const userFullName = user?.full_name || 'Student';
   const userEmail = user?.email || 'student@lms.com';
   const dashboardTitle = 'Student Dashboard';
-  const theme = getDashboardTheme(isClientTenant);
+  const theme = getDashboardTheme(false);
 
   const handleBackToLogin = async () => {
     await logout();
@@ -191,10 +190,10 @@ export default function StudentDashboard() {
                   mode="student"
                   role={user?.role}
                   theme={theme}
-                  isGvjbClient={isClientTenant}
+                  isGvjbClient={false}
                   brandLogo={brandLogo}
                   brandName={brandName}
-                  courseBannerClass={isClientTenant ? "bg-amber-50" : "bg-blue-50"}
+                  courseBannerClass="bg-blue-50"
                   listTitle="My Courses"
                   emptyMessage="You are not enrolled in any courses yet."
                   onViewCourse={(courseId) => navigate(`/student/course/${courseId}`)}

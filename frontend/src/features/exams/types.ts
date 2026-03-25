@@ -4,6 +4,7 @@ export interface ExamSummary {
   id: number | string;
   title: string;
   description?: string | null;
+  instructions?: string | null;
   start_datetime?: string | null;
   end_datetime?: string | null;
   duration_minutes?: number | null;
@@ -65,3 +66,4 @@ export interface ExamSection {
   negative_marks?: number | null;
   question_count?: number | null;
 }
+

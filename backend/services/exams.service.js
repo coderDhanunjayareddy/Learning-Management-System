@@ -5,6 +5,7 @@ import { getAttemptResultPayloadByAttemptId } from './student.service.js';
 
 const VALID_EXAM_STATUSES = ['draft', 'published', 'active', 'completed'];
 let examResultColumnsEnsured = false;
+let examInstructionsColumnKnown = null;
 
 const isSuperAdmin = (role) => role === 'super_admin';
 const isPlatformAdmin = (role) => role === 'super_admin' || role === 'content_authorizer';
@@ -49,9 +50,29 @@ const ensureExamResultConfigColumns = async () => {
     ALTER TABLE exams
     ADD COLUMN IF NOT EXISTS show_score BOOLEAN DEFAULT TRUE,
     ADD COLUMN IF NOT EXISTS show_pass_or_fail BOOLEAN DEFAULT TRUE,
-    ADD COLUMN IF NOT EXISTS show_solutions_to_user BOOLEAN DEFAULT FALSE
+    ADD COLUMN IF NOT EXISTS show_solutions_to_user BOOLEAN DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS instructions TEXT
   `);
+  examInstructionsColumnKnown = true;
   examResultColumnsEnsured = true;
+};
+
+const hasExamInstructionsColumn = async () => {
+  if (examInstructionsColumnKnown !== null) return examInstructionsColumnKnown;
+
+  const result = await dbQuery(
+    `
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'exams'
+        AND column_name = 'instructions'
+      LIMIT 1
+    `
+  );
+
+  examInstructionsColumnKnown = result.rows.length > 0;
+  return examInstructionsColumnKnown;
 };
 
 const ensureClientScope = (clientId, role) => {
@@ -700,6 +721,8 @@ export const createExam = async (req, res) => {
 
     const title = requireString(req.body?.title, 'title');
     const description = req.body?.description ? String(req.body.description).trim() : null;
+    const instructions = req.body?.instructions ? String(req.body.instructions).trim() : null;
+    const supportsExamInstructions = await hasExamInstructionsColumn();
     const totalDuration = parseRequiredInt(req.body?.total_duration_minutes, 'total_duration_minutes');
     if (totalDuration <= 0) throw new AppError('total_duration_minutes must be greater than 0', 400);
 
@@ -741,36 +764,68 @@ export const createExam = async (req, res) => {
     ensureValidStatus(statusInput);
     const status = isTeacher(req.user.role) ? 'draft' : statusInput;
 
-    const result = await dbQuery(
-      `
-      INSERT INTO exams
-        (client_id, school_id, title, description, total_duration_minutes, start_datetime, end_datetime,
-         shuffle_questions, shuffle_options, show_result_immediately, show_score, show_pass_or_fail, show_solutions_to_user,
-         max_attempts, status, created_by)
-      VALUES
-        ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, FALSE), COALESCE($9, FALSE), COALESCE($10, TRUE),
-         COALESCE($11, TRUE), COALESCE($12, TRUE), COALESCE($13, FALSE), $14, $15, $16)
-      RETURNING *
-      `,
-      [
-        clientId,
-        schoolId,
-        title,
-        description,
-        totalDuration,
-        startDateTime,
-        endDateTime,
-        shuffleQuestions,
-        shuffleOptions,
-        showResultImmediately,
-        showScore,
-        showPassOrFail,
-        showSolutionsToUser,
-        maxAttempts,
-        status,
-        req.user.id,
-      ]
-    );
+    const result = supportsExamInstructions
+      ? await dbQuery(
+        `
+        INSERT INTO exams
+          (client_id, school_id, title, description, instructions, total_duration_minutes, start_datetime, end_datetime,
+           shuffle_questions, shuffle_options, show_result_immediately, show_score, show_pass_or_fail, show_solutions_to_user,
+           max_attempts, status, created_by)
+        VALUES
+          ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9, FALSE), COALESCE($10, FALSE), COALESCE($11, TRUE),
+           COALESCE($12, TRUE), COALESCE($13, TRUE), COALESCE($14, FALSE), $15, $16, $17)
+        RETURNING *
+        `,
+        [
+          clientId,
+          schoolId,
+          title,
+          description,
+          instructions,
+          totalDuration,
+          startDateTime,
+          endDateTime,
+          shuffleQuestions,
+          shuffleOptions,
+          showResultImmediately,
+          showScore,
+          showPassOrFail,
+          showSolutionsToUser,
+          maxAttempts,
+          status,
+          req.user.id,
+        ]
+      )
+      : await dbQuery(
+        `
+        INSERT INTO exams
+          (client_id, school_id, title, description, total_duration_minutes, start_datetime, end_datetime,
+           shuffle_questions, shuffle_options, show_result_immediately, show_score, show_pass_or_fail, show_solutions_to_user,
+           max_attempts, status, created_by)
+        VALUES
+          ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, FALSE), COALESCE($9, FALSE), COALESCE($10, TRUE),
+           COALESCE($11, TRUE), COALESCE($12, TRUE), COALESCE($13, FALSE), $14, $15, $16)
+        RETURNING *
+        `,
+        [
+          clientId,
+          schoolId,
+          title,
+          description,
+          totalDuration,
+          startDateTime,
+          endDateTime,
+          shuffleQuestions,
+          shuffleOptions,
+          showResultImmediately,
+          showScore,
+          showPassOrFail,
+          showSolutionsToUser,
+          maxAttempts,
+          status,
+          req.user.id,
+        ]
+      );
 
     res.status(201).json(result.rows[0]);
   } catch (err) {
@@ -790,6 +845,7 @@ export const updateExam = async (req, res) => {
       user: req.user,
       requireOwner: isTeacher(req.user.role),
     });
+    const supportsExamInstructions = await hasExamInstructionsColumn();
 
     ensureExamEditable(exam);
 
@@ -813,6 +869,9 @@ export const updateExam = async (req, res) => {
     if (req.body?.title !== undefined) addUpdate('title', requireString(req.body.title, 'title'));
     if (req.body?.description !== undefined) {
       addUpdate('description', req.body.description ? String(req.body.description).trim() : null);
+    }
+    if (supportsExamInstructions && req.body?.instructions !== undefined) {
+      addUpdate('instructions', req.body.instructions ? String(req.body.instructions).trim() : null);
     }
     if (req.body?.total_duration_minutes !== undefined) {
       const total = parseRequiredInt(req.body.total_duration_minutes, 'total_duration_minutes');
