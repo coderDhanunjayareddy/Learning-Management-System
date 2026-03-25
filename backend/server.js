@@ -37,15 +37,19 @@ const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5100,http:/
   .split(',')
   .map((origin) => origin.trim())
   .filter(Boolean);
+const isProduction = process.env.NODE_ENV === 'production';
+const isAllowedOrigin = (origin) => Boolean(origin && allowedOrigins.includes(origin));
 
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin) return callback(null, true); // allow non-browser tools
-      if (allowedOrigins.includes(origin)) return callback(null, true);
+      if (!origin) return callback(null, !isProduction);
+      if (isAllowedOrigin(origin)) return callback(null, true);
       return callback(new Error(`CORS blocked for origin: ${origin}`));
     },
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Authorization', 'Content-Type', 'X-Refresh-Token'],
   })
 );
 app.use(express.json());
@@ -88,8 +92,9 @@ app.get(
   authenticateToken,
   helmet({ frameguard: false }),             // <- disables X-Frame-Options here
   (req, res, next) => {                      // <- extra hardening: kill any pre-set header
-    res.setHeader("X-Frame-Options", "ALLOWALL");
-    res.setHeader("Content-Security-Policy", "frame-ancestors *;");
+    const allowedFrameAncestors = allowedOrigins.length > 0 ? allowedOrigins.join(' ') : "'self'";
+    res.removeHeader("X-Frame-Options");
+    res.setHeader("Content-Security-Policy", `frame-ancestors 'self' ${allowedFrameAncestors};`);
     next();
   },
 

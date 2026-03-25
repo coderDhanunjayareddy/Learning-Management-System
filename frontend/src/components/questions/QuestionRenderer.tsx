@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { ensureMathJax } from "@/components/ui/mathjax";
+import { sanitizeHtml } from "@/utils/htmlSanitizer";
 
 type RichTextLike = { html?: string | null } | string | null | undefined;
 
@@ -89,7 +90,7 @@ const wrapTablesInHtml = (html: string) => {
 };
 
 const renderHtml = (value: RichTextLike) => ({
-  __html: wrapTablesInHtml(getHtml(value)),
+  __html: sanitizeHtml(wrapTablesInHtml(getHtml(value))),
 });
 
 const stripHtml = (value: string) => value.replace(/<[^>]*>/g, "").trim();

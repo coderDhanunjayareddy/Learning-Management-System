@@ -4,6 +4,7 @@ import pool from '../config/db.js';
 import {
   clearAuthCookies,
   getRefreshTokenFromRequest,
+  getJwtVerifyOptions,
   parseCookies,
   rotateRefreshSession,
   shouldRefreshAccessToken,
@@ -14,6 +15,10 @@ const USER_CACHE_TTL_MS = Number(process.env.AUTH_USER_CACHE_TTL_MS || 30_000);
 const PERMISSIONS_CACHE_TTL_MS = Number(process.env.PERMISSION_CACHE_TTL_MS || 60_000);
 const userCache = new Map();
 const permissionsCache = new Map();
+
+if (!JWT_SECRET) {
+  throw new Error('JWT_SECRET is required');
+}
 
 const getAccessTokensFromRequest = (req) => {
   const authHeader = req.headers['authorization'];
@@ -41,6 +46,20 @@ const normalizeRole = (role) => {
   if (!role) return role;
   if (role === 'admin') return 'client_admin';
   return role;
+};
+
+const isValidDecodedToken = (decoded) => {
+  if (!decoded || typeof decoded !== 'object') return false;
+  const userId = Number(decoded.userId);
+  if (!Number.isInteger(userId) || userId <= 0) return false;
+
+  if (decoded.clientId !== undefined && decoded.clientId !== null) {
+    const clientId = Number(decoded.clientId);
+    if (!Number.isInteger(clientId) || clientId <= 0) return false;
+  }
+
+  const role = normalizeRole(decoded.role);
+  return typeof role === 'string' && role.length > 0;
 };
 
 const getCachedUser = (userId) => {
@@ -118,10 +137,24 @@ export const authenticateToken = async (req, res, next) => {
 
   for (const candidateToken of candidateTokens) {
     try {
-      const decoded = jwt.verify(candidateToken, JWT_SECRET);
+      const decoded = jwt.verify(candidateToken, JWT_SECRET, getJwtVerifyOptions());
+      if (!isValidDecodedToken(decoded)) {
+        authError = { error: 'Invalid token', code: 'TOKEN_INVALID' };
+        continue;
+      }
       const user = await resolveAuthenticatedUser(decoded);
 
       if (!user) {
+        authError = { error: 'Invalid token', code: 'TOKEN_INVALID' };
+        continue;
+      }
+
+      if (normalizeRole(user.role) !== normalizeRole(decoded.role)) {
+        authError = { error: 'Invalid token', code: 'TOKEN_INVALID' };
+        continue;
+      }
+
+      if ((user.client_id ?? null) !== (decoded.clientId ?? null)) {
         authError = { error: 'Invalid token', code: 'TOKEN_INVALID' };
         continue;
       }

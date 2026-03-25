@@ -3,7 +3,9 @@
   "type": "module",
   "scripts": {
     "dev": "nodemon server.js",
+    "test": "node --test --test-concurrency=1 --experimental-test-isolation=none",
     "lint": "eslint .",
+    "verify:rls": "node scripts/verify-rls-policies.mjs",
     "seed:permissions": "node scripts/seed-role-permissions.mjs",
     "seed:curriculum": "node scripts/seed-curriculum.mjs"
   },

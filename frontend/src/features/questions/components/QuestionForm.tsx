@@ -324,7 +324,7 @@ export default function QuestionForm({
       <div>
         <label className="block text-xs font-semibold text-gray-500">Question Text</label>
         <textarea
-          className="mt-1 min-h-[120px] w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+          className="mt-1 min-h-30 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
           placeholder="Enter the question text"
           value={questionText}
           onChange={(e) => setQuestionText(e.target.value)}
@@ -406,7 +406,7 @@ export default function QuestionForm({
       <div>
         <label className="block text-xs font-semibold text-gray-500">Solution (Optional)</label>
         <textarea
-          className="mt-1 min-h-[90px] w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+          className="mt-1 min-h-22.5 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
           placeholder="Add solution explanation"
           value={solutionText}
           onChange={(e) => setSolutionText(e.target.value)}

@@ -427,9 +427,14 @@ export const publishExam = async (req, res) => {
       `UPDATE exams
        SET status = 'published', updated_at = NOW()
        WHERE id = $1
+         AND status = 'draft'
+         AND NOT EXISTS (SELECT 1 FROM exam_attempts WHERE exam_id = $1)
        RETURNING *`,
       [exam.id]
     );
+    if (updateResult.rows.length === 0) {
+      throw new AppError('Exam status changed. Please refresh and try again.', 409);
+    }
 
     res.json(updateResult.rows[0]);
   } catch (err) {

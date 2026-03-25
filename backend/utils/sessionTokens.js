@@ -4,6 +4,8 @@ import { query as dbQuery, getClient } from '../repositories/db.repository.js';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 const ACCESS_TOKEN_TTL = process.env.ACCESS_TOKEN_TTL || '12h';
+const JWT_ISSUER = process.env.JWT_ISSUER || 'spectropy-lms';
+const JWT_AUDIENCE = process.env.JWT_AUDIENCE || 'spectropy-lms-api';
 const REFRESH_TOKEN_TTL_DAYS = parseInt(process.env.REFRESH_TOKEN_TTL_DAYS || '30', 10);
 const ACCESS_TOKEN_REFRESH_WINDOW_SECONDS = parseInt(
   process.env.ACCESS_TOKEN_REFRESH_WINDOW_SECONDS || '1800',
@@ -53,11 +55,23 @@ export const getAccessTokenCookieOptions = () => {
   };
 };
 
+export const getJwtVerifyOptions = () => ({
+  algorithms: ['HS256'],
+  issuer: JWT_ISSUER,
+  audience: JWT_AUDIENCE,
+});
+
 export const issueAccessToken = (user) =>
   jwt.sign(
     { userId: user.id, role: user.role, clientId: user.client_id },
     JWT_SECRET,
-    { expiresIn: ACCESS_TOKEN_TTL }
+    {
+      expiresIn: ACCESS_TOKEN_TTL,
+      issuer: JWT_ISSUER,
+      audience: JWT_AUDIENCE,
+      algorithm: 'HS256',
+      subject: String(user.id),
+    }
   );
 
 export const storeRefreshToken = async (client, userId, tokenHashValue, req) => {
@@ -163,7 +177,7 @@ export const rotateRefreshSession = async ({ refreshToken, req, res }) => {
 
     return {
       accessToken,
-      decoded: jwt.verify(accessToken, JWT_SECRET),
+      decoded: jwt.verify(accessToken, JWT_SECRET, getJwtVerifyOptions()),
       user,
     };
   } catch (error) {
@@ -179,4 +193,6 @@ export {
   REFRESH_TOKEN_TTL_DAYS,
   ACCESS_TOKEN_REFRESH_WINDOW_SECONDS,
   JWT_SECRET,
+  JWT_ISSUER,
+  JWT_AUDIENCE,
 };

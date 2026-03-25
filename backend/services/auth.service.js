@@ -93,15 +93,17 @@ export const register = async (req, res) => {
 
 // ✅ Login (supports all roles)
 export const login = async (req, res) => {
-  console.log("LOGIN START");
   const { email, password } = req.body;
+  const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
 
-  const dbStart = Date.now();
+  if (!normalizedEmail || typeof password !== 'string' || password.length === 0) {
+    return res.status(400).json({ error: 'Email and password are required' });
+  }
 
   try {
     const userQueryResult = await dbQuery(
       'SELECT id, email, full_name, role, client_id, user_id, password_hash FROM users WHERE email = $1',
-      [email]
+      [normalizedEmail]
     );
 
     if (userQueryResult.rows.length === 0) {
@@ -109,11 +111,6 @@ export const login = async (req, res) => {
     }
 
     const user = userQueryResult.rows[0];
-    console.log("***************backend user data***************\ndata: ", {
-      id: user.id,
-      email: user.email,
-      role: user.role,
-    });
     const isValid = await comparePassword(password, user.password_hash);
 
     if (!isValid) {
@@ -128,12 +125,6 @@ export const login = async (req, res) => {
 
     await storeRefreshToken(null, user.id, tokenHash, req);
     applyAuthCookies(res, accessToken, refreshToken);
-    const dbEnd = Date.now();
-
-
-
-    console.log("DB QUERY TIME:", dbEnd - dbStart, "ms");
-
     const safeUser = {
       id: user.id,
       email: user.email,

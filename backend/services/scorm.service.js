@@ -75,7 +75,7 @@ const ensureContentAccessByPath = async (filePath, req) => {
   if (!clientId) return false;
 
   const normalizedPath = String(filePath || "").replace(/^\/+/, "");
-  if (!normalizedPath) return false;
+  if (!normalizedPath || normalizedPath.includes('..') || normalizedPath.startsWith('http')) return false;
 
   const result = await dbQuery(
     `
@@ -403,6 +403,22 @@ export const saveScormProgress = async (req, res) => {
   const { userId, contentId, data, attemptNo = 1 } = req.body;
   const requesterId = req.user?.id;
   const requesterRole = req.user?.role;
+  const parsedUserId = Number(userId);
+  const parsedContentId = Number(contentId);
+  const parsedAttemptNo = Number(attemptNo);
+
+  if (!Number.isInteger(parsedUserId) || parsedUserId <= 0) {
+    return res.status(400).json({ success: false, message: "Invalid userId" });
+  }
+  if (!Number.isInteger(parsedContentId) || parsedContentId <= 0) {
+    return res.status(400).json({ success: false, message: "Invalid contentId" });
+  }
+  if (!Number.isInteger(parsedAttemptNo) || parsedAttemptNo <= 0) {
+    return res.status(400).json({ success: false, message: "Invalid attemptNo" });
+  }
+  if (!data || typeof data !== 'object') {
+    return res.status(400).json({ success: false, message: "Invalid SCORM payload" });
+  }
 
   const score = parseFloat(data["cmi.core.score.raw"] || 0);
   const status = data["cmi.core.lesson_status"] || "incomplete";
@@ -413,10 +429,10 @@ export const saveScormProgress = async (req, res) => {
     if (!requesterId) {
       return res.status(401).json({ success: false, message: "Unauthorized" });
     }
-    if (requesterRole !== "super_admin" && requesterId !== userId) {
+    if (requesterRole !== "super_admin" && requesterId !== parsedUserId) {
       return res.status(403).json({ success: false, message: "Access denied" });
     }
-    const hasAccess = await ensureContentAccessById(contentId, req);
+    const hasAccess = await ensureContentAccessById(parsedContentId, req);
     if (!hasAccess) {
       return res.status(403).json({ success: false, message: "Access denied" });
     }
@@ -435,7 +451,7 @@ export const saveScormProgress = async (req, res) => {
             total_time = EXCLUDED.total_time,
             finished_at = NOW();
       `,
-      [userId, contentId, attemptNo, score, status, suspendData, totalTime]
+      [parsedUserId, parsedContentId, parsedAttemptNo, score, status, suspendData, totalTime]
     );
 
     res.status(200).json({ success: true, message: "SCORM progress saved." });
@@ -450,15 +466,20 @@ export const getScormProgress = async (req, res) => {
   const { userId, contentId } = req.params;
   const requesterId = req.user?.id;
   const requesterRole = req.user?.role;
+  const parsedUserId = Number(userId);
+  const parsedContentId = Number(contentId);
 
   try {
     if (!requesterId) {
       return res.status(401).json({ message: "Unauthorized" });
     }
-    if (requesterRole !== "super_admin" && requesterId !== parseInt(userId, 10)) {
+    if (!Number.isInteger(parsedUserId) || parsedUserId <= 0 || !Number.isInteger(parsedContentId) || parsedContentId <= 0) {
+      return res.status(400).json({ message: "Invalid request" });
+    }
+    if (requesterRole !== "super_admin" && requesterId !== parsedUserId) {
       return res.status(403).json({ message: "Access denied" });
     }
-    const hasAccess = await ensureContentAccessById(contentId, req);
+    const hasAccess = await ensureContentAccessById(parsedContentId, req);
     if (!hasAccess) {
       return res.status(403).json({ message: "Access denied" });
     }
@@ -467,7 +488,7 @@ export const getScormProgress = async (req, res) => {
       `SELECT suspend_data FROM scorm_attempts
        WHERE user_id = $1 AND content_item_id = $2
        ORDER BY attempt_no DESC LIMIT 1`,
-      [userId, contentId]
+      [parsedUserId, parsedContentId]
     );
 
     if (result.rows.length === 0)
@@ -485,8 +506,6 @@ export const getSignedContentUrl = async (req, res) => {
     const { path } = req.query; // e.g. "8/1762597630232/res/index.html"
     const filePath = String(path || "").replace(/^\/+/, "");
     const bucket = process.env.SUPABASE_BUCKET || "courses";
-    console.log("Requesting signed URL for path:", filePath);
-    console.log("Using bucket:", bucket);
     if (!filePath) {
       return res.status(400).json({ error: "Missing file path" });
     }

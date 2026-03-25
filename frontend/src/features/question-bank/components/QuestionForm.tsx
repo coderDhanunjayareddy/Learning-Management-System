@@ -57,6 +57,51 @@ const makeDefaultOptions = () =>
 const makeDefaultMatchSide = () =>
   Array.from({ length: 4 }).map(() => ({ id: makeId(), text: emptyRichText() }));
 
+type MatchOptionWithSide = QuestionOption & { side?: "left" | "right" };
+
+const getArrayOptions = (
+  options: Question["options"] | ComprehensiveQuestion["options"] | undefined
+): QuestionOption[] => (Array.isArray(options) ? options : []);
+
+const normalizeMatchOptions = (options: unknown): MatchFollowingOptions | null => {
+  if (options && typeof options === "object" && !Array.isArray(options)) {
+    const typed = options as { left?: QuestionOption[]; right?: QuestionOption[] };
+    if (Array.isArray(typed.left) && Array.isArray(typed.right)) {
+      return {
+        left: typed.left.map((opt, index) => ({
+          id: String(opt.id ?? `left-${index + 1}`),
+          text: normalizeRichText(opt.text),
+        })),
+        right: typed.right.map((opt, index) => ({
+          id: String(opt.id ?? `right-${index + 1}`),
+          text: normalizeRichText(opt.text),
+        })),
+      };
+    }
+  }
+
+  if (Array.isArray(options)) {
+    const left = options
+      .filter((opt): opt is MatchOptionWithSide => Boolean(opt && typeof opt === "object" && opt.side === "left"))
+      .map((opt, index) => ({
+        id: String(opt.id ?? `left-${index + 1}`),
+        text: normalizeRichText(opt.text ?? opt),
+      }));
+    const right = options
+      .filter((opt): opt is MatchOptionWithSide => Boolean(opt && typeof opt === "object" && opt.side === "right"))
+      .map((opt, index) => ({
+        id: String(opt.id ?? `right-${index + 1}`),
+        text: normalizeRichText(opt.text ?? opt),
+      }));
+
+    if (left.length || right.length) {
+      return { left, right };
+    }
+  }
+
+  return null;
+};
+
 const normalizeCurriculum = (items: any[]): CurriculumItem[] =>
   items
     .map((item) => ({
@@ -320,7 +365,7 @@ export default function QuestionForm({
         } else if (typeof correct === "object" && correct && "answer_ids" in correct) {
           setCorrectAnswer((correct as { answer_ids?: string[] }).answer_ids?.[0] ?? null);
         } else {
-          const selected = (initialQuestion.options ?? []).find((opt) => opt.is_correct);
+          const selected = getArrayOptions(initialQuestion.options).find((opt) => opt.is_correct);
           setCorrectAnswer(selected?.id ?? null);
         }
       }
@@ -330,7 +375,7 @@ export default function QuestionForm({
         } else if (typeof correct === "object" && correct && "answer_ids" in correct) {
           setCorrectAnswer((correct as { answer_ids?: string[] }).answer_ids ?? []);
         } else {
-          const selected = (initialQuestion.options ?? [])
+          const selected = getArrayOptions(initialQuestion.options)
             .filter((opt) => opt.is_correct)
             .map((opt) => opt.id);
           setCorrectAnswer(selected);
@@ -357,10 +402,10 @@ export default function QuestionForm({
         }
       }
       if (initialQuestion.question_type === "match_following") {
-        const matchOptions = initialQuestion.options as MatchFollowingOptions | undefined;
+        const matchOptions = normalizeMatchOptions(initialQuestion.options);
         if (matchOptions?.left && matchOptions?.right) {
-          setMatchLeft(matchOptions.left.map((opt) => ({ ...opt, text: normalizeRichText(opt.text) })));
-          setMatchRight(matchOptions.right.map((opt) => ({ ...opt, text: normalizeRichText(opt.text) })));
+          setMatchLeft(matchOptions.left);
+          setMatchRight(matchOptions.right);
         } else {
           setMatchLeft(makeDefaultMatchSide());
           setMatchRight(makeDefaultMatchSide());
@@ -606,7 +651,7 @@ export default function QuestionForm({
       }));
       const answerIds =
         questionType === "mcq_single"
-          ? correctAnswer
+          ? typeof correctAnswer === "string"
             ? [correctAnswer]
             : []
           : Array.isArray(correctAnswer)
@@ -635,7 +680,10 @@ export default function QuestionForm({
     }
 
     if (questionType === "match_following") {
-      finalOptions = { left: matchLeft, right: matchRight };
+      finalOptions = [
+        ...matchLeft.map((option) => ({ ...option, side: "left" as const })),
+        ...matchRight.map((option) => ({ ...option, side: "right" as const })),
+      ];
       finalCorrectAnswer = { pairs: matchPairs };
     }
 
