@@ -3,10 +3,10 @@ import jwt from 'jsonwebtoken';
 import { query as dbQuery, getClient } from '../repositories/db.repository.js';
 
 const JWT_SECRET = process.env.JWT_SECRET;
-const ACCESS_TOKEN_TTL = process.env.ACCESS_TOKEN_TTL || '20m';
-const REFRESH_TOKEN_TTL_DAYS = parseInt(process.env.REFRESH_TOKEN_TTL_DAYS || '14', 10);
+const ACCESS_TOKEN_TTL = process.env.ACCESS_TOKEN_TTL || '12h';
+const REFRESH_TOKEN_TTL_DAYS = parseInt(process.env.REFRESH_TOKEN_TTL_DAYS || '30', 10);
 const ACCESS_TOKEN_REFRESH_WINDOW_SECONDS = parseInt(
-  process.env.ACCESS_TOKEN_REFRESH_WINDOW_SECONDS || '120',
+  process.env.ACCESS_TOKEN_REFRESH_WINDOW_SECONDS || '1800',
   10
 );
 

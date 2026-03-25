@@ -68,7 +68,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const syncAuthCookie = useCallback((nextToken: string | null) => {
-    const maxAge = nextToken ? 60 * 60 * 24 * 7 : 0; // 7 days
+    const maxAge = nextToken ? 60 * 60 * 24 * 30 : 0; // 30 days
     const secure = window.location.protocol === 'https:' ? '; Secure' : '';
     const sameSite = import.meta.env.VITE_AUTH_COOKIE_SAMESITE || 'Lax';
     const cookieDomain = import.meta.env.VITE_AUTH_COOKIE_DOMAIN
@@ -92,7 +92,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = useCallback(async () => {
     try {
-      await api.post('/auth/logout', null, { _skipAuthRefresh: true } as any);
+      await api.post('/auth/logout', null, { _skipAuthRefresh: true } as { _skipAuthRefresh: boolean });
     } catch (error) {
       console.log('Failed to logout:', error);
       // ignore logout errors, clear local state anyway
@@ -122,7 +122,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser({ ...res.data.user, permissions });
       } catch (error) {
         console.error('Failed to load user:', error);
-        await logout();
+        setUser((prev) => prev);
       } finally {
         setLoading(false);
       }
