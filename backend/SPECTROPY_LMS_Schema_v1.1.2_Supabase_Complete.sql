@@ -57,7 +57,7 @@ CREATE TABLE content_items (
   id SERIAL PRIMARY KEY,
   course_id INTEGER NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
   parent_id INTEGER REFERENCES content_items(id) ON DELETE CASCADE,
-  item_type VARCHAR(20) NOT NULL CHECK (item_type IN ('folder', 'video', 'text', 'pdf', 'scorm', 'audio', 'html', 'link')),
+  item_type VARCHAR(20) NOT NULL CHECK (item_type IN ('folder', 'video', 'text', 'pdf', 'scorm', 'audio', 'html', 'link', 'exam')),
   title TEXT NOT NULL,
   content_url TEXT, -- For video/pdf/text/SCORM file location
   order_index INTEGER DEFAULT 0,
@@ -167,7 +167,7 @@ ALTER TABLE content_items DROP CONSTRAINT content_items_item_type_check;
 ALTER TABLE content_items
 ADD CONSTRAINT content_items_item_type_check
 CHECK (
-  item_type = ANY (ARRAY['folder', 'video', 'text', 'pdf', 'scorm', 'audio', 'html', 'link']::text[])
+  item_type = ANY (ARRAY['folder', 'video', 'text', 'pdf', 'scorm', 'audio', 'html', 'link', 'exam']::text[])
 );
 
 -- Find enrollments with invalid user_id

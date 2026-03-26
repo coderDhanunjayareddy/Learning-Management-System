@@ -10,6 +10,7 @@ export interface ExamSummary {
   duration_minutes?: number | null;
   status?: ExamStatus | string | null;
   course_count?: number | null;
+  course_names?: string[] | null;
   attempts_count?: number | null;
   created_by_name?: string | null;
   tags?: string[] | null;
@@ -66,4 +67,5 @@ export interface ExamSection {
   negative_marks?: number | null;
   question_count?: number | null;
 }
+
 

@@ -13,9 +13,16 @@ interface ContentItem {
   item_type: string;
   title: string;
   content_url?: string | null;
+  metadata?: Record<string, unknown> | null;
   order_index: number;
   created_at: string;
   completion_status?: string | null;
+}
+
+interface ExamOption {
+  id: number;
+  title: string;
+  status?: string | null;
 }
 
 interface Chapter {
@@ -33,10 +40,12 @@ const ITEM_TYPES = [
   { value: "html", label: "HTML Lesson" },
   { value: "text", label: "Text File" },
   { value: "link", label: "External Link" },
+  { value: "exam", label: "Exam" },
 ];
 
 const FILE_UPLOAD_TYPES = ["video", "audio", "pdf", "scorm", "html", "text"];
 const URL_ONLY_TYPES = ["link"];
+const EXAM_ITEM_TYPES = ["exam"];
 
 type CourseContentManagerProps = {
   courseId?: string | number;
@@ -66,6 +75,10 @@ export default function CourseContentManager({
   const [itemTitle, setItemTitle] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [publicUrl, setPublicUrl] = useState("");
+  const [selectedExamId, setSelectedExamId] = useState<number | null>(null);
+  const [examSearch, setExamSearch] = useState("");
+  const [availableExams, setAvailableExams] = useState<ExamOption[]>([]);
+  const [loadingExams, setLoadingExams] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ContentItem | null>(null);
   const [allItems, setAllItems] = useState<ContentItem[]>([]);
 
@@ -84,6 +97,11 @@ export default function CourseContentManager({
   const canEdit = !readOnly && !disableFetch;
 
   const items = useMemo(() => allItems, [allItems]);
+  const filteredExamOptions = useMemo(() => {
+    const q = examSearch.trim().toLowerCase();
+    if (!q) return availableExams;
+    return availableExams.filter((exam) => exam.title.toLowerCase().includes(q));
+  }, [availableExams, examSearch]);
   const currentIndex = items.findIndex((i) => i.id === selectedItem?.id);
   const isFirstItem = currentIndex <= 0;
 
@@ -128,6 +146,35 @@ export default function CourseContentManager({
     }
   };
 
+  const fetchExamOptions = async () => {
+    if (!canEdit || loadingExams || availableExams.length > 0) return;
+    setLoadingExams(true);
+    try {
+      const res = await api.get("/exams", {
+        params: {
+          page: 1,
+          page_size: 200,
+        },
+      });
+
+      const list = Array.isArray(res.data?.data) ? res.data.data : [];
+      const normalized: ExamOption[] = list
+        .map((item: Record<string, unknown>) => ({
+          id: Number(item.id),
+          title: String(item.title ?? "Untitled Exam"),
+          status: item.status ? String(item.status) : null,
+        }))
+        .filter((item: ExamOption) => Number.isInteger(item.id) && item.id > 0);
+
+      setAvailableExams(normalized);
+    } catch (err) {
+      console.error("Failed to load exam list", err);
+      toast.error("Unable to load exams for selection.");
+    } finally {
+      setLoadingExams(false);
+    }
+  };
+
   useEffect(() => {
     if (!resolvedCourseId) return;
 
@@ -143,6 +190,12 @@ export default function CourseContentManager({
 
     fetchContent();
   }, [resolvedCourseId, disableFetch, initialItems]);
+
+  useEffect(() => {
+    if (!showAddItemModal) return;
+    if (!EXAM_ITEM_TYPES.includes(itemType)) return;
+    void fetchExamOptions();
+  }, [showAddItemModal, itemType]);
 
   const handleReplaceFile = async () => {
     if (!itemToUpdate || !canEdit || !resolvedCourseId) return;
@@ -248,7 +301,9 @@ export default function CourseContentManager({
       return;
     }
 
-    if (!itemTitle.trim()) {
+    const normalizedTitle = itemTitle.trim();
+
+    if (!EXAM_ITEM_TYPES.includes(itemType) && !normalizedTitle) {
       toast.error("Enter a title");
       return;
     }
@@ -265,7 +320,7 @@ export default function CourseContentManager({
 
         const formData = new FormData();
         formData.append("item_type", itemType);
-        formData.append("title", itemTitle);
+        formData.append("title", normalizedTitle);
         formData.append("parent_id", chapterId.toString());
         formData.append("file", selectedFile);
 
@@ -286,17 +341,36 @@ export default function CourseContentManager({
 
         await api.post(`${normalizedPrefix}/courses/${resolvedCourseId}/content`, {
           item_type: itemType,
-          title: itemTitle,
+          title: normalizedTitle,
           parent_id: chapterId,
           content_url: publicUrl.trim(),
         });
 
         toast.success("Link added successfully!", { id: uploadToast });
+      } else if (EXAM_ITEM_TYPES.includes(itemType)) {
+        if (!selectedExamId) {
+          toast.error("Select an exam");
+          return;
+        }
+
+        const selectedExam = availableExams.find((exam) => exam.id === selectedExamId);
+        const uploadToast = toast.loading("Adding exam...");
+
+        await api.post(`${normalizedPrefix}/courses/${resolvedCourseId}/content`, {
+          item_type: "exam",
+          title: normalizedTitle || selectedExam?.title || "Exam",
+          parent_id: chapterId,
+          exam_id: selectedExamId,
+        });
+
+        toast.success("Exam item added successfully!", { id: uploadToast });
       }
 
       setItemTitle("");
       setSelectedFile(null);
       setPublicUrl("");
+      setSelectedExamId(null);
+      setExamSearch("");
       fetchContent();
     } catch (err) {
       console.error("Failed to add item:", err);
@@ -366,6 +440,12 @@ export default function CourseContentManager({
           onAddChapter={() => setAddingChapter(true)}
           onAddItem={(id) => {
             setSelectedChapter(id);
+            setItemType("video");
+            setItemTitle("");
+            setSelectedFile(null);
+            setPublicUrl("");
+            setSelectedExamId(null);
+            setExamSearch("");
             setShowAddItemModal(true);
           }}
           onReorderChapters={handleReorderChapters}
@@ -484,10 +564,53 @@ export default function CourseContentManager({
               type="text"
               value={itemTitle}
               onChange={(e) => setItemTitle(e.target.value)}
-              placeholder="Topic Name"
+              placeholder={EXAM_ITEM_TYPES.includes(itemType) ? "Display title (optional)" : "Topic Name"}
               className={`w-full p-2 border rounded mb-3 border-gray-300
                 }`}
             />
+
+            {EXAM_ITEM_TYPES.includes(itemType) && (
+              <div className="mb-3">
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Select Exam
+                </label>
+                <input
+                  type="text"
+                  value={examSearch}
+                  onChange={(event) => setExamSearch(event.target.value)}
+                  placeholder="Type exam name to filter"
+                  className="mb-2 w-full rounded border border-gray-300 p-2 text-sm"
+                />
+                <select
+                  value={selectedExamId ?? ""}
+                  onChange={(event) => {
+                    const value = Number(event.target.value);
+                    const normalizedExamId = Number.isInteger(value) && value > 0 ? value : null;
+                    setSelectedExamId(normalizedExamId);
+                    if (!itemTitle.trim() && normalizedExamId) {
+                      const selectedExam = availableExams.find((entry) => entry.id === normalizedExamId);
+                      if (selectedExam) {
+                        setItemTitle(selectedExam.title);
+                      }
+                    }
+                  }}
+                  className="w-full rounded border border-gray-300 p-2 text-sm"
+                  disabled={loadingExams}
+                >
+                  <option value="">Choose exam</option>
+                  {filteredExamOptions.map((exam) => (
+                    <option key={exam.id} value={exam.id}>
+                      {exam.title}
+                      {exam.status ? ` (${exam.status})` : ""}
+                    </option>
+                  ))}
+                </select>
+                {loadingExams && <p className="mt-1 text-xs text-slate-500">Loading exams...</p>}
+                {!loadingExams && filteredExamOptions.length === 0 && (
+                  <p className="mt-1 text-xs text-slate-500">No exams match this name.</p>
+                )}
+              </div>
+            )}
 
             {URL_ONLY_TYPES.includes(itemType) && (
               <input

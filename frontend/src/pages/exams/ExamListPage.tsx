@@ -80,6 +80,22 @@ const normalizeExam = (item: unknown): ExamSummary => {
   const tags =
     rawTags?.map((tag) => String(tag)).filter((tag) => tag.trim().length > 0) ?? null;
 
+  const rawCourseNames = Array.isArray(source.course_names)
+    ? source.course_names
+    : Array.isArray(source.assigned_course_names)
+      ? source.assigned_course_names
+      : Array.isArray(source.course_titles)
+        ? source.course_titles
+        : null;
+  const courseNames =
+    rawCourseNames
+      ?.map((name) => String(name).trim())
+      .filter((name) => name.length > 0) ?? null;
+
+  const courseCount = normalizeNumber(
+    source.course_count ?? source.courses_count ?? source.courseCount
+  );
+
   return {
     id: normalizeId(source.id, source.exam_id),
     title: String(source.title ?? source.name ?? "Untitled exam"),
@@ -101,7 +117,10 @@ const normalizeExam = (item: unknown): ExamSummary => {
             ? source.end_time
             : null,
     duration_minutes: normalizeNumber(
-      source.duration_minutes ?? source.duration ?? source.durationMinutes
+      source.duration_minutes ??
+      source.total_duration_minutes ??
+      source.duration ??
+      source.durationMinutes
     ),
     status:
       typeof source.status === "string"
@@ -109,24 +128,20 @@ const normalizeExam = (item: unknown): ExamSummary => {
         : typeof source.state === "string"
           ? source.state
           : null,
-    course_count: normalizeNumber(
-      source.course_count ?? source.courses_count ?? source.courseCount
-    ),
+    course_count: courseCount ?? (courseNames ? courseNames.length : null),
+    course_names: courseNames,
     attempts_count: normalizeNumber(
-      source.attempts_count ?? source.attempts ?? source.attemptCount
+      source.attempts_count ?? source.attempt_count ?? source.total_attempts ?? source.attempts ?? source.attemptCount
     ),
     created_by_name:
       typeof source.created_by_name === "string"
         ? source.created_by_name
         : typeof source.createdByName === "string"
           ? source.createdByName
-          : typeof source.created_by === "string"
-            ? source.created_by
-            : null,
+          : null,
     tags,
   };
 };
-
 const normalizeCourse = (item: unknown): CourseOption | null => {
   const source = asRecord(item);
   const id = Number(source.id);
@@ -806,3 +821,4 @@ export default function ExamListPage() {
     </>
   );
 }
+

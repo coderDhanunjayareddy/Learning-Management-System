@@ -537,15 +537,36 @@ export const listExams = async (req, res) => {
       `
       SELECT
         e.*,
-        COALESCE(COUNT(DISTINCT ce.course_id), 0)::int AS course_count,
-        COALESCE(COUNT(DISTINCT es.id), 0)::int AS section_count,
-        COALESCE(COUNT(eq.id), 0)::int AS question_count
+        COALESCE(course_stats.course_count, 0)::int AS course_count,
+        COALESCE(course_stats.course_names, ARRAY[]::text[]) AS course_names,
+        COALESCE(section_stats.section_count, 0)::int AS section_count,
+        COALESCE(section_stats.question_count, 0)::int AS question_count,
+        COALESCE(attempt_stats.attempts_count, 0)::int AS attempts_count,
+        COALESCE(NULLIF(TRIM(u.full_name), ''), u.email, NULL) AS created_by_name
       FROM exams e
-      LEFT JOIN course_exams ce ON ce.exam_id = e.id
-      LEFT JOIN exam_sections es ON es.exam_id = e.id
-      LEFT JOIN exam_questions eq ON eq.section_id = es.id
+      LEFT JOIN users u ON u.id = e.created_by
+      LEFT JOIN LATERAL (
+        SELECT
+          COUNT(DISTINCT ce.course_id) AS course_count,
+          ARRAY_REMOVE(ARRAY_AGG(DISTINCT c.title ORDER BY c.title), NULL) AS course_names
+        FROM course_exams ce
+        LEFT JOIN courses c ON c.id = ce.course_id
+        WHERE ce.exam_id = e.id
+      ) course_stats ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT
+          COUNT(DISTINCT es.id) AS section_count,
+          COUNT(eq.id) AS question_count
+        FROM exam_sections es
+        LEFT JOIN exam_questions eq ON eq.section_id = es.id
+        WHERE es.exam_id = e.id
+      ) section_stats ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT COUNT(*) AS attempts_count
+        FROM exam_attempts ea
+        WHERE ea.exam_id = e.id
+      ) attempt_stats ON TRUE
       ${whereClause}
-      GROUP BY e.id
       ORDER BY e.created_at DESC, e.id DESC
       LIMIT $${listParams.length - 1} OFFSET $${listParams.length}
       `,
@@ -577,15 +598,36 @@ export const getExamById = async (req, res) => {
       `
       SELECT
         e.*,
-        COALESCE(COUNT(DISTINCT ce.course_id), 0)::int AS course_count,
-        COALESCE(COUNT(DISTINCT es.id), 0)::int AS section_count,
-        COALESCE(COUNT(eq.id), 0)::int AS question_count
+        COALESCE(course_stats.course_count, 0)::int AS course_count,
+        COALESCE(course_stats.course_names, ARRAY[]::text[]) AS course_names,
+        COALESCE(section_stats.section_count, 0)::int AS section_count,
+        COALESCE(section_stats.question_count, 0)::int AS question_count,
+        COALESCE(attempt_stats.attempts_count, 0)::int AS attempts_count,
+        COALESCE(NULLIF(TRIM(u.full_name), ''), u.email, NULL) AS created_by_name
       FROM exams e
-      LEFT JOIN course_exams ce ON ce.exam_id = e.id
-      LEFT JOIN exam_sections es ON es.exam_id = e.id
-      LEFT JOIN exam_questions eq ON eq.section_id = es.id
+      LEFT JOIN users u ON u.id = e.created_by
+      LEFT JOIN LATERAL (
+        SELECT
+          COUNT(DISTINCT ce.course_id) AS course_count,
+          ARRAY_REMOVE(ARRAY_AGG(DISTINCT c.title ORDER BY c.title), NULL) AS course_names
+        FROM course_exams ce
+        LEFT JOIN courses c ON c.id = ce.course_id
+        WHERE ce.exam_id = e.id
+      ) course_stats ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT
+          COUNT(DISTINCT es.id) AS section_count,
+          COUNT(eq.id) AS question_count
+        FROM exam_sections es
+        LEFT JOIN exam_questions eq ON eq.section_id = es.id
+        WHERE es.exam_id = e.id
+      ) section_stats ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT COUNT(*) AS attempts_count
+        FROM exam_attempts ea
+        WHERE ea.exam_id = e.id
+      ) attempt_stats ON TRUE
       WHERE e.id = $1
-      GROUP BY e.id
       `,
       [exam.id]
     );
@@ -648,7 +690,6 @@ export const getExamResults = async (req, res) => {
         ea.submitted_at,
         ea.auto_submitted,
         u.full_name,
-        u.name,
         u.email
       FROM exam_attempts ea
       LEFT JOIN users u ON u.id = ea.student_id
@@ -670,7 +711,7 @@ export const getExamResults = async (req, res) => {
             ...payload,
             student: {
               id: Number(attemptRow.student_id),
-              name: attemptRow.full_name || attemptRow.name || null,
+              name: attemptRow.full_name || attemptRow.email || null,
               email: attemptRow.email || null,
             },
           };
@@ -689,7 +730,7 @@ export const getExamResults = async (req, res) => {
               },
               student: {
                 id: Number(attemptRow.student_id),
-                name: attemptRow.full_name || attemptRow.name || null,
+                name: attemptRow.full_name || attemptRow.email || null,
                 email: attemptRow.email || null,
               },
               summary: null,
@@ -1089,3 +1130,4 @@ export const deleteExamSection = async (req, res) => {
     handleServiceError(res, err, 'Failed to delete exam section');
   }
 };
+

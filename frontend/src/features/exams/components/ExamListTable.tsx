@@ -102,10 +102,15 @@ export default function ExamListTable({ exams, onAction, permissions }: ExamList
                 exam.duration_minutes !== null && exam.duration_minutes !== undefined
                   ? `${exam.duration_minutes} min`
                   : "--";
+              const courseNames = Array.isArray(exam.course_names)
+                ? exam.course_names.filter((name) => typeof name === "string" && name.trim().length > 0)
+                : [];
               const courses =
-                exam.course_count !== null && exam.course_count !== undefined
-                  ? exam.course_count
-                  : "--";
+                courseNames.length > 0
+                  ? courseNames.join(", ")
+                  : exam.course_count !== null && exam.course_count !== undefined
+                    ? `${exam.course_count} course${exam.course_count === 1 ? "" : "s"}`
+                    : "--";
               const attempts =
                 exam.attempts_count !== null && exam.attempts_count !== undefined
                   ? exam.attempts_count
@@ -126,7 +131,11 @@ export default function ExamListTable({ exams, onAction, permissions }: ExamList
                     {formatWindow(exam.start_datetime, exam.end_datetime)}
                   </td>
                   <td className="px-4 py-3 text-xs text-slate-600">{duration}</td>
-                  <td className="px-4 py-3 text-xs text-slate-600">{courses}</td>
+                  <td className="px-4 py-3 text-xs text-slate-600">
+                    <span className="line-clamp-2" title={courses}>
+                      {courses}
+                    </span>
+                  </td>
                   <td className="px-4 py-3 text-xs text-slate-600">{attempts}</td>
                   <td className="px-4 py-3 text-xs text-slate-600">{createdBy}</td>
                   <td className="px-4 py-3">
@@ -188,4 +197,5 @@ export default function ExamListTable({ exams, onAction, permissions }: ExamList
     </div>
   );
 }
+
 

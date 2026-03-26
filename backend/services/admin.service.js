@@ -1,6 +1,73 @@
 import { query as dbQuery, getClient } from '../repositories/db.repository.js';
 // In your backend (e.g., routes/admin/courses.js or .ts)
 
+let contentItemExamSchemaEnsured = false;
+let courseExamsSchemaEnsured = false;
+
+const ensureContentItemExamSchema = async () => {
+  if (contentItemExamSchemaEnsured) return;
+
+  await dbQuery(`
+    ALTER TABLE content_items
+    ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::JSONB
+  `);
+
+  await dbQuery(`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1
+        FROM pg_constraint c
+        JOIN pg_class t ON t.oid = c.conrelid
+        WHERE t.relname = 'content_items'
+          AND c.contype = 'c'
+          AND c.conname = 'content_items_item_type_check'
+          AND pg_get_constraintdef(c.oid) NOT ILIKE '%exam%'
+      ) THEN
+        ALTER TABLE content_items DROP CONSTRAINT content_items_item_type_check;
+      END IF;
+
+      IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint c
+        JOIN pg_class t ON t.oid = c.conrelid
+        WHERE t.relname = 'content_items'
+          AND c.contype = 'c'
+          AND c.conname = 'content_items_item_type_check'
+      ) THEN
+        ALTER TABLE content_items
+        ADD CONSTRAINT content_items_item_type_check
+        CHECK (
+          item_type = ANY (
+            ARRAY['folder', 'video', 'text', 'pdf', 'scorm', 'audio', 'html', 'link', 'exam']::text[]
+          )
+        );
+      END IF;
+    END $$;
+  `);
+
+  contentItemExamSchemaEnsured = true;
+};
+
+const ensureCourseExamsTable = async () => {
+  if (courseExamsSchemaEnsured) return;
+
+  await dbQuery(`
+    CREATE TABLE IF NOT EXISTS course_exams (
+      id SERIAL PRIMARY KEY,
+      course_id INTEGER NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+      exam_id INTEGER NOT NULL REFERENCES exams(id) ON DELETE CASCADE,
+      assigned_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      assigned_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(course_id, exam_id)
+    )
+  `);
+  await dbQuery(`CREATE INDEX IF NOT EXISTS idx_course_exams_exam_id ON course_exams(exam_id)`);
+  await dbQuery(`CREATE INDEX IF NOT EXISTS idx_course_exams_course_id ON course_exams(course_id)`);
+
+  courseExamsSchemaEnsured = true;
+};
+
 export const getAllCourses = async (req, res) => {
   const role = req.user?.role;
   const clientId = req.user?.client_id;
@@ -74,6 +141,8 @@ export const getCourseContent = async (req, res) => {
   const shouldScope = Boolean(clientId) && role !== 'super_admin';
 
   try {
+    await ensureContentItemExamSchema();
+
     if (shouldScope) {
       const courseCheck = await dbQuery(
         `SELECT 1 FROM courses WHERE id = $1 AND client_id = $2`,
@@ -96,6 +165,7 @@ export const getCourseContent = async (req, res) => {
                ci.item_type,
                ci.title,
                ci.content_url,
+               ci.metadata,
                ci.order_index,
                ci.created_at,
                sa.completion_status
@@ -110,7 +180,7 @@ export const getCourseContent = async (req, res) => {
     } else {
       // Non-student request: fetch only content items
       query = `
-        SELECT id, course_id, parent_id, item_type, title, content_url, order_index, created_at
+        SELECT id, course_id, parent_id, item_type, title, content_url, metadata, order_index, created_at
         FROM content_items
         WHERE course_id = $1
         ORDER BY parent_id NULLS FIRST, order_index ASC, created_at ASC
@@ -136,8 +206,7 @@ export const createContentItem = async (req, res) => {
   const clientId = req.user?.client_id;
   const shouldScope = Boolean(clientId) && role !== 'super_admin';
 
-  // ✅ Only NON-FILE types are allowed here
-  const validTypes = ['folder', 'link'];
+  const validTypes = ['folder', 'link', 'exam'];
 
   if (!validTypes.includes(item_type)) {
     return res.status(400).json({
@@ -145,11 +214,6 @@ export const createContentItem = async (req, res) => {
     });
   }
 
-  if (!title?.trim()) {
-    return res.status(400).json({ error: 'Title is required' });
-  }
-
-  // ✅ Link MUST have a URL
   if (item_type === 'link') {
     if (!content_url || typeof content_url !== 'string') {
       return res.status(400).json({
@@ -158,7 +222,6 @@ export const createContentItem = async (req, res) => {
     }
   }
 
-  // ✅ Folder MUST NOT have a URL
   if (item_type === 'folder' && content_url !== null) {
     return res.status(400).json({
       error: 'Folders cannot have content_url'
@@ -166,6 +229,8 @@ export const createContentItem = async (req, res) => {
   }
 
   try {
+    await ensureContentItemExamSchema();
+
     if (shouldScope) {
       const courseCheck = await dbQuery(
         `SELECT 1 FROM courses WHERE id = $1 AND client_id = $2`,
@@ -176,11 +241,70 @@ export const createContentItem = async (req, res) => {
       }
     }
 
+    const courseScopeResult = await dbQuery(
+      `SELECT id, client_id FROM courses WHERE id = $1`,
+      [courseId]
+    );
+    if (courseScopeResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Course not found' });
+    }
+
+    const normalizedTitle = typeof title === 'string' ? title.trim() : '';
+    let finalTitle = normalizedTitle;
+    let finalContentUrl = content_url;
+    let metadata = {};
+
+    if (item_type === 'exam') {
+      const examIdRaw = req.body?.exam_id ?? req.body?.examId ?? req.body?.metadata?.exam_id;
+      const examId = Number(examIdRaw);
+      if (!Number.isInteger(examId) || examId <= 0) {
+        return res.status(400).json({ error: 'exam_id is required for exam content type' });
+      }
+
+      const examResult = await dbQuery(
+        `SELECT id, title, client_id FROM exams WHERE id = $1`,
+        [examId]
+      );
+      if (examResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Exam not found' });
+      }
+
+      const exam = examResult.rows[0];
+      const course = courseScopeResult.rows[0];
+      if (exam.client_id && course.client_id && Number(exam.client_id) !== Number(course.client_id)) {
+        return res.status(403).json({ error: 'Exam does not belong to this course client scope' });
+      }
+
+      finalTitle = normalizedTitle || String(exam.title || 'Exam');
+      finalContentUrl = null;
+      metadata = { exam_id: examId };
+
+      await ensureCourseExamsTable();
+      await dbQuery(
+        `
+          INSERT INTO course_exams (course_id, exam_id, assigned_by)
+          VALUES ($1, $2, $3)
+          ON CONFLICT (course_id, exam_id)
+          DO UPDATE SET assigned_by = EXCLUDED.assigned_by, assigned_at = NOW()
+        `,
+        [courseId, examId, req.user?.id ?? null]
+      );
+    } else {
+      if (!normalizedTitle) {
+        return res.status(400).json({ error: 'Title is required' });
+      }
+      if (item_type === 'folder') {
+        finalContentUrl = null;
+      } else if (item_type === 'link') {
+        finalContentUrl = typeof content_url === 'string' ? content_url.trim() : null;
+      }
+    }
+
     const result = await dbQuery(
-      `INSERT INTO content_items (course_id, parent_id, item_type, title, content_url)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO content_items (course_id, parent_id, item_type, title, content_url, metadata)
+       VALUES ($1, $2, $3, $4, $5, $6::jsonb)
        RETURNING *`,
-      [courseId, parent_id, item_type, title.trim(), content_url]
+      [courseId, parent_id, item_type, finalTitle, finalContentUrl, JSON.stringify(metadata)]
     );
 
     res.status(201).json(result.rows[0]);
@@ -189,8 +313,6 @@ export const createContentItem = async (req, res) => {
     res.status(500).json({ error: 'Failed to create content item' });
   }
 };
-
-
 // PATCH /api/courses/:id/publish
 export const publishCourse = async (req, res) => {
   const { id } = req.params;
@@ -299,5 +421,6 @@ export const updateCourse = async (req, res) => {
     res.status(500).json({ error: 'Failed to update course' });
   }
 };
+
 
 

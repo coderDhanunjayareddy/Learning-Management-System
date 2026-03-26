@@ -1,5 +1,7 @@
 import { query as dbQuery, getClient } from "../repositories/db.repository.js"; // or your db connection
 
+let contentMetadataColumnEnsured = false;
+
 const hasCourseAccess = async (courseId, req) => {
   const role = req.user?.role;
   const clientId = req.user?.client_id;
@@ -13,6 +15,15 @@ const hasCourseAccess = async (courseId, req) => {
   );
 
   return result.rows.length > 0;
+};
+
+const ensureContentMetadataColumn = async () => {
+  if (contentMetadataColumnEnsured) return;
+  await dbQuery(`
+    ALTER TABLE content_items
+    ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::JSONB
+  `);
+  contentMetadataColumnEnsured = true;
 };
 
 // POST /admin/courses/:courseId/enrollments
@@ -167,6 +178,8 @@ export const getStudentCourse = async (req, res) => {
   const userRole = req.user?.role;
 
   try {
+    await ensureContentMetadataColumn();
+
     // 1. Verify enrollment (student must be published, teacher can view unpublished)
     let enrollment;
     if (userRole === 'teacher') {
@@ -222,6 +235,7 @@ export const getStudentCourse = async (req, res) => {
             ci.title,
             ci.item_type AS type,
             ci.content_url,
+            ci.metadata,
             ci.order_index,
             COALESCE(latest_sa.completion_status, 'not attempted') AS completion_status
           FROM content_items ci
@@ -230,7 +244,7 @@ export const getStudentCourse = async (req, res) => {
             FROM student_attempts sa
             WHERE sa.user_id = $2
               AND sa.content_item_id = ci.id
-            ORDER BY sa.id DESC  -- or sa.started_at DESC
+            ORDER BY sa.id DESC
             LIMIT 1
           ) latest_sa ON true
           WHERE ci.parent_id = $1
@@ -246,9 +260,10 @@ export const getStudentCourse = async (req, res) => {
         content_items: children.rows.map(child => ({
           id: child.id,
           title: child.title,
-          item_type: child.type, // match frontend 'item_type'
+          item_type: child.type,
           content_url: child.content_url,
-          completion_status: child.completion_status, // ✅ now included!
+          metadata: child.metadata ?? {},
+          completion_status: child.completion_status,
         })),
       });
     }
@@ -261,6 +276,7 @@ export const getStudentCourse = async (req, res) => {
           ci.title,
           ci.item_type AS type,
           ci.content_url,
+          ci.metadata,
           ci.order_index,
           COALESCE(latest_sa.completion_status, 'not attempted') AS completion_status
         FROM content_items ci
@@ -290,6 +306,7 @@ export const getStudentCourse = async (req, res) => {
           title: item.title,
           item_type: item.type,
           content_url: item.content_url,
+          metadata: item.metadata ?? {},
           completion_status: item.completion_status,
         })),
       });
@@ -309,7 +326,6 @@ export const getStudentCourse = async (req, res) => {
     res.status(500).json({ error: 'Failed to load course content' });
   }
 };
-
 // ✅ ADD THIS FUNCTION — you don't have it yet!
 export const getStudentEnrolledCourses = async (req, res) => {
   try {
@@ -484,5 +500,6 @@ export const updateEnrollmentRole = async (req, res) => {
     res.status(500).json({ error: 'Failed to update role' });
   }
 };
+
 
 

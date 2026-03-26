@@ -21,7 +21,8 @@ import {
     FaFileAlt,
     FaMusic,
     FaFolder,
-    FaBoxOpen
+    FaBoxOpen,
+    FaClipboardList
 } from "react-icons/fa";
 
 
@@ -222,6 +223,8 @@ const LeftPanel: React.FC<Props> = ({
                 return <FaFileAlt className="text-sm" />;
             case "scorm":
                 return <FaBoxOpen className="text-sm" />;
+            case "exam":
+                return <FaClipboardList className="text-sm" />;
             default:
                 return <FaFolder className="text-sm" />;
         }
@@ -447,20 +450,18 @@ const LeftPanel: React.FC<Props> = ({
                                                                                         âœ Rename
                                                                                     </button>
 
-                                                                                    {/* Update / Replace file */}
-                                                                                    <button
-                                                                                        className={`w-full text-left px-3 py-2 text-sm ${isGvjbClient ? "hover:bg-amber-50" : "hover:bg-gray-100"}`}
-                                                                                        onClick={(e) => {
-                                                                                            e.stopPropagation();
-                                                                                            setOpenItemMenu(null);
-                                                                                            onUpdateFile(item);
-
-
-                                                                                            // TODO: build replace modal
-                                                                                        }}
-                                                                                    >
-                                                                                        ðŸ”„ Update
-                                                                                    </button>
+                                                                                    {["video", "audio", "pdf", "scorm", "html", "text"].includes(item.item_type) && (
+                                                                                        <button
+                                                                                            className={`w-full text-left px-3 py-2 text-sm ${isGvjbClient ? "hover:bg-amber-50" : "hover:bg-gray-100"}`}
+                                                                                            onClick={(e) => {
+                                                                                                e.stopPropagation();
+                                                                                                setOpenItemMenu(null);
+                                                                                                onUpdateFile(item);
+                                                                                            }}
+                                                                                        >
+                                                                                            ðŸ”„ Update
+                                                                                        </button>
+                                                                                    )}
 
                                                                                     {/* Delete */}
                                                                                     <button
