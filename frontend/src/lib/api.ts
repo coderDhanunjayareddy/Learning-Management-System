@@ -32,6 +32,18 @@ const clearToken = () => {
   applyToken(null);
 };
 
+const syncTokenFromResponse = (response: { headers?: Record<string, unknown> }) => {
+  const headerValue = response?.headers?.['x-access-token'];
+  const nextToken = typeof headerValue === 'string' ? headerValue : null;
+  if (!nextToken) return;
+
+  const currentToken = localStorage.getItem('token');
+  if (currentToken === nextToken) return;
+
+  localStorage.setItem('token', nextToken);
+  applyToken(nextToken);
+};
+
 const redirectToLogin = () => {
   if (typeof window === 'undefined') return;
   if (window.location.pathname !== '/login') {
@@ -50,13 +62,14 @@ api.interceptors.request.use((config) => {
 
 let refreshPromise: Promise<string | null> | null = null;
 
-const isAuthError = (status?: number, data?: any) => {
-  const code = String(data?.code ?? '').toUpperCase();
+const isAuthError = (status?: number, data?: unknown) => {
+  const payload = typeof data === 'object' && data !== null ? data as Record<string, unknown> : {};
+  const code = String(payload.code ?? '').toUpperCase();
   if (code === 'TOKEN_EXPIRED' || code === 'TOKEN_INVALID') return true;
   if (status === 401) return true;
   if (status !== 403) return false;
 
-  const rawMessage = data?.error ?? data?.message ?? '';
+  const rawMessage = payload.error ?? payload.message ?? '';
   const message = String(rawMessage).toLowerCase();
 
   return (
@@ -79,6 +92,7 @@ const shouldSkipRefreshForUrl = (url: string) => {
 const refreshAccessToken = async () => {
   try {
     const res = await authClient.post('/auth/refresh');
+    syncTokenFromResponse(res);
     const newToken = res.data?.token || null;
     if (newToken) {
       localStorage.setItem('token', newToken);
@@ -87,14 +101,17 @@ const refreshAccessToken = async () => {
       clearToken();
     }
     return newToken;
-  } catch (err) {
+  } catch {
     clearToken();
     return null;
   }
 };
 
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    syncTokenFromResponse(response);
+    return response;
+  },
   async (error) => {
     const originalRequest = error.config;
     const status = error.response?.status;

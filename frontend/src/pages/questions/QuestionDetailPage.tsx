@@ -190,7 +190,7 @@ export default function QuestionDetailPage() {
           <div className="mt-4">
             <label className="block text-xs font-semibold text-gray-500">Rejection Reason</label>
             <textarea
-              className="mt-1 min-h-[80px] w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              className="mt-1 min-h-20 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
               value={rejectReason}
               onChange={(e) => setRejectReason(e.target.value)}
               disabled={actionLoading}

@@ -1755,6 +1755,27 @@ const getQuestionSchemaSupport = async () => {
   return questionSchemaSupportCache;
 };
 
+const getQuestionByIdScoped = async ({ id, user, role, clientId }) => {
+  const existing = await dbQuery(`SELECT * FROM questions WHERE id = $1`, [id]);
+  if (existing.rows.length === 0 || existing.rows[0].status === 'archived') {
+    return { error: { status: 404, body: { error: 'Question not found' } } };
+  }
+
+  const question = existing.rows[0];
+  if (clientId && question.client_id !== clientId) {
+    return { error: { status: 403, body: { error: 'Access denied' } } };
+  }
+
+  if (isSchoolOwner(role) || isTeacher(role)) {
+    const schoolIds = await fetchUserSchoolIds(user.id);
+    if (question.school_id && !schoolIds.includes(question.school_id)) {
+      return { error: { status: 403, body: { error: 'Access denied' } } };
+    }
+  }
+
+  return { question };
+};
+
 const insertQuestion = async (payload) => {
   const schemaSupport = await getQuestionSchemaSupport();
   const columns = [
@@ -2109,26 +2130,26 @@ export const softDeleteQuestion = async (req, res) => {
     const id = parseRequiredInt(req.params.id, 'id');
     const clientId = ensureClientScope(req.user.client_id ?? null, role);
 
-    const existing = await dbQuery(`SELECT * FROM questions WHERE id = $1`, [id]);
-    if (existing.rows.length === 0 || existing.rows[0].status === 'archived') {
-      return res.status(404).json({ error: 'Question not found' });
-    }
-    const question = existing.rows[0];
-    if (clientId && question.client_id !== clientId) {
-      return res.status(403).json({ error: 'Access denied' });
-    }
-
-    if (isSchoolOwner(role)) {
-      const schoolIds = await fetchUserSchoolIds(req.user.id);
-      if (question.school_id && !schoolIds.includes(question.school_id)) {
-        return res.status(403).json({ error: 'Access denied' });
-      }
+    const { question, error } = await getQuestionByIdScoped({
+      id,
+      user: req.user,
+      role,
+      clientId,
+    });
+    if (error) {
+      return res.status(error.status).json(error.body);
     }
 
     const result = await dbQuery(
-      `UPDATE questions SET status = 'archived', updated_at = NOW() WHERE id = $1 RETURNING id, status`,
+      `UPDATE questions
+       SET status = 'archived', updated_at = NOW()
+       WHERE id = $1 AND status <> 'archived'
+       RETURNING id, status`,
       [id]
     );
+    if (result.rows.length === 0) {
+      return res.status(409).json({ error: 'Question status changed. Please refresh and try again.' });
+    }
 
     res.json({ success: true, question: result.rows[0] });
   } catch (err) {
@@ -2150,21 +2171,14 @@ export const approveQuestion = async (req, res) => {
     const id = parseRequiredInt(req.params.id, 'id');
     const clientId = ensureClientScope(req.user.client_id ?? null, role);
 
-    const existing = await dbQuery(`SELECT * FROM questions WHERE id = $1`, [id]);
-    if (existing.rows.length === 0 || existing.rows[0].status === 'archived') {
-      return res.status(404).json({ error: 'Question not found' });
-    }
-    const question = existing.rows[0];
-
-    if (clientId && question.client_id !== clientId) {
-      return res.status(403).json({ error: 'Access denied' });
-    }
-
-    if (isSchoolOwner(role)) {
-      const schoolIds = await fetchUserSchoolIds(req.user.id);
-      if (question.school_id && !schoolIds.includes(question.school_id)) {
-        return res.status(403).json({ error: 'Access denied' });
-      }
+    const { question, error } = await getQuestionByIdScoped({
+      id,
+      user: req.user,
+      role,
+      clientId,
+    });
+    if (error) {
+      return res.status(error.status).json(error.body);
     }
 
     if (question.status !== 'draft') {
@@ -2180,10 +2194,14 @@ export const approveQuestion = async (req, res) => {
           rejection_reason = NULL,
           updated_at = NOW()
       WHERE id = $1
+        AND status = 'draft'
       RETURNING *
       `,
       [id, req.user.id]
     );
+    if (result.rows.length === 0) {
+      return res.status(409).json({ error: 'Question status changed. Please refresh and try again.' });
+    }
 
     res.json(result.rows[0]);
   } catch (err) {
@@ -2206,21 +2224,14 @@ export const rejectQuestion = async (req, res) => {
     const clientId = ensureClientScope(req.user.client_id ?? null, role);
     const reason = requireString(req.body?.reason, 'reason');
 
-    const existing = await dbQuery(`SELECT * FROM questions WHERE id = $1`, [id]);
-    if (existing.rows.length === 0 || existing.rows[0].status === 'archived') {
-      return res.status(404).json({ error: 'Question not found' });
-    }
-    const question = existing.rows[0];
-
-    if (clientId && question.client_id !== clientId) {
-      return res.status(403).json({ error: 'Access denied' });
-    }
-
-    if (isSchoolOwner(role)) {
-      const schoolIds = await fetchUserSchoolIds(req.user.id);
-      if (question.school_id && !schoolIds.includes(question.school_id)) {
-        return res.status(403).json({ error: 'Access denied' });
-      }
+    const { question, error } = await getQuestionByIdScoped({
+      id,
+      user: req.user,
+      role,
+      clientId,
+    });
+    if (error) {
+      return res.status(error.status).json(error.body);
     }
 
     if (question.status !== 'draft') {
@@ -2232,14 +2243,18 @@ export const rejectQuestion = async (req, res) => {
       UPDATE questions
       SET status = 'rejected',
           approved_by = $2,
-          approved_at = NOW(),
+          approved_at = NULL,
           rejection_reason = $3,
           updated_at = NOW()
       WHERE id = $1
+        AND status = 'draft'
       RETURNING *
       `,
       [id, req.user.id, reason]
     );
+    if (result.rows.length === 0) {
+      return res.status(409).json({ error: 'Question status changed. Please refresh and try again.' });
+    }
 
     res.json(result.rows[0]);
   } catch (err) {

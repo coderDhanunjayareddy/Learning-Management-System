@@ -1,65 +1,15 @@
-// backend/controllers/auth.controller.js
-import jwt from 'jsonwebtoken';
-import crypto from 'crypto';
-import { query as dbQuery, getClient } from '../repositories/db.repository.js';
+import { query as dbQuery } from '../repositories/db.repository.js';
 import { hashPassword, comparePassword } from '../utils/hash.js';
-
-const JWT_SECRET = process.env.JWT_SECRET;
-const ACCESS_TOKEN_TTL = process.env.ACCESS_TOKEN_TTL || '15m';
-const REFRESH_TOKEN_TTL_DAYS = parseInt(process.env.REFRESH_TOKEN_TTL_DAYS || '7', 10);
-
-const hashToken = (token) =>
-  crypto.createHash('sha256').update(token).digest('hex');
-
-const parseCookies = (cookieHeader) => {
-  if (!cookieHeader) return {};
-  return cookieHeader.split(';').reduce((acc, part) => {
-    const [rawKey, ...rest] = part.trim().split('=');
-    if (!rawKey) return acc;
-    const value = rest.join('=');
-    acc[rawKey] = decodeURIComponent(value || '');
-    return acc;
-  }, {});
-};
-
-const getRefreshTokenFromRequest = (req) => {
-  if (req.body?.refresh_token) return req.body.refresh_token;
-  if (req.headers['x-refresh-token']) return req.headers['x-refresh-token'];
-  const cookies = req.cookies ?? parseCookies(req.headers?.cookie);
-  return cookies?.refresh_token || null;
-};
-
-const getCookieOptions = () => {
-  const isProd = process.env.NODE_ENV === 'production';
-  return {
-    httpOnly: true,
-    secure: isProd,
-    sameSite: 'lax',
-    path: '/api/auth',
-  };
-};
-
-const issueAccessToken = (user) =>
-  jwt.sign(
-    { userId: user.id, role: user.role, clientId: user.client_id },
-    JWT_SECRET,
-    { expiresIn: ACCESS_TOKEN_TTL }
-  );
-
-const createRefreshToken = () => crypto.randomBytes(64).toString('hex');
-
-const storeRefreshToken = async (client, userId, tokenHash, req) => {
-  const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000);
-  const runner = client?.query ? client.query.bind(client) : dbQuery;
-  await runner(
-    `
-    INSERT INTO refresh_tokens (user_id, token_hash, expires_at, ip_address, user_agent)
-    VALUES ($1, $2, $3, $4, $5)
-    `,
-    [userId, tokenHash, expiresAt, req.ip || null, req.headers['user-agent'] || null]
-  );
-  return expiresAt;
-};
+import {
+  applyAuthCookies,
+  clearAuthCookies,
+  createRefreshToken,
+  getRefreshTokenFromRequest,
+  hashToken,
+  issueAccessToken,
+  rotateRefreshSession,
+  storeRefreshToken,
+} from '../utils/sessionTokens.js';
 
 const VALID_ROLES = [
   'super_admin',
@@ -129,10 +79,7 @@ export const register = async (req, res) => {
     const tokenHash = hashToken(refreshToken);
 
     await storeRefreshToken(null, result.rows[0].id, tokenHash, req);
-    res.cookie('refresh_token', refreshToken, {
-      ...getCookieOptions(),
-      maxAge: REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000,
-    });
+    applyAuthCookies(res, accessToken, refreshToken);
 
     res.status(201).json({ token: accessToken, user: result.rows[0] });
   } catch (err) {
@@ -146,18 +93,17 @@ export const register = async (req, res) => {
 
 // ✅ Login (supports all roles)
 export const login = async (req, res) => {
-
-  const start = Date.now(); // API start time
-
-  console.log("LOGIN START");
   const { email, password } = req.body;
+  const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
 
-  const dbStart = Date.now();
+  if (!normalizedEmail || typeof password !== 'string' || password.length === 0) {
+    return res.status(400).json({ error: 'Email and password are required' });
+  }
 
   try {
     const userQueryResult = await dbQuery(
       'SELECT id, email, full_name, role, client_id, user_id, password_hash FROM users WHERE email = $1',
-      [email]
+      [normalizedEmail]
     );
 
     if (userQueryResult.rows.length === 0) {
@@ -165,11 +111,6 @@ export const login = async (req, res) => {
     }
 
     const user = userQueryResult.rows[0];
-    console.log("***************backend user data***************\ndata: ", {
-      id: user.id,
-      email: user.email,
-      role: user.role,
-    });
     const isValid = await comparePassword(password, user.password_hash);
 
     if (!isValid) {
@@ -183,16 +124,7 @@ export const login = async (req, res) => {
     const tokenHash = hashToken(refreshToken);
 
     await storeRefreshToken(null, user.id, tokenHash, req);
-    res.cookie('refresh_token', refreshToken, {
-      ...getCookieOptions(),
-      maxAge: REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000,
-    });
-    const dbEnd = Date.now();
-
-
-
-    console.log("DB QUERY TIME:", dbEnd - dbStart, "ms");
-
+    applyAuthCookies(res, accessToken, refreshToken);
     const safeUser = {
       id: user.id,
       email: user.email,
@@ -263,84 +195,23 @@ export const refreshToken = async (req, res) => {
   if (!token) {
     return res.status(401).json({ error: 'Refresh token required' });
   }
-
-  const tokenHash = hashToken(token);
-
-  const client = await getClient();
   try {
-    await client.query('BEGIN');
-
-    const tokenResult = await client.query(
-      `
-      SELECT id, user_id, expires_at, revoked_at
-      FROM refresh_tokens
-      WHERE token_hash = $1
-      LIMIT 1
-      `,
-      [tokenHash]
-    );
-
-    if (tokenResult.rows.length === 0) {
-      await client.query('ROLLBACK');
-      res.clearCookie('refresh_token', getCookieOptions());
+    const refreshedSession = await rotateRefreshSession({ refreshToken: token, req, res });
+    if (!refreshedSession) {
       return res.status(401).json({ error: 'Invalid refresh token' });
     }
 
-    const tokenRow = tokenResult.rows[0];
-    if (tokenRow.revoked_at || new Date(tokenRow.expires_at) <= new Date()) {
-      await client.query('ROLLBACK');
-      res.clearCookie('refresh_token', getCookieOptions());
-      return res.status(401).json({ error: 'Refresh token expired' });
-    }
-
-    const userResult = await client.query(
-      `SELECT id, email, full_name, role, client_id, user_id, is_active
-       FROM users
-       WHERE id = $1 AND is_active = true`,
-      [tokenRow.user_id]
-    );
-
-    if (userResult.rows.length === 0) {
-      await client.query('ROLLBACK');
-      res.clearCookie('refresh_token', getCookieOptions());
-      return res.status(401).json({ error: 'User not active' });
-    }
-
-    const user = userResult.rows[0];
-
-    const newRefreshToken = createRefreshToken();
-    const newHash = hashToken(newRefreshToken);
-
-    await client.query(
-      `UPDATE refresh_tokens
-       SET revoked_at = NOW(), replaced_by = $1
-       WHERE id = $2`,
-      [newHash, tokenRow.id]
-    );
-
-    await storeRefreshToken(client, user.id, newHash, req);
-
-    await client.query('COMMIT');
-
-    const accessToken = issueAccessToken(user);
-    res.cookie('refresh_token', newRefreshToken, {
-      ...getCookieOptions(),
-      maxAge: REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000,
-    });
-    res.json({ token: accessToken, user });
+    res.json({ token: refreshedSession.accessToken, user: refreshedSession.user });
   } catch (err) {
-    await client.query('ROLLBACK');
     console.error('Refresh token error:', err);
     res.status(500).json({ error: 'Failed to refresh token' });
-  } finally {
-    client.release();
   }
 };
 
 export const logout = async (req, res) => {
   const token = getRefreshTokenFromRequest(req);
   if (!token) {
-    res.clearCookie('refresh_token', getCookieOptions());
+    clearAuthCookies(res);
     return res.status(204).send();
   }
 
@@ -355,7 +226,7 @@ export const logout = async (req, res) => {
     console.error('Logout error:', err);
   }
 
-  res.clearCookie('refresh_token', getCookieOptions());
+  clearAuthCookies(res);
   return res.status(204).send();
 };
 

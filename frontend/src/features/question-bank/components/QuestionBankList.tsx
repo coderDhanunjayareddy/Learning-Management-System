@@ -53,6 +53,29 @@ const normalizeOptions = (options: any) => {
     }
     return [];
   }
+
+  const matchLeft = options
+    .filter((option) => option && typeof option === "object" && option.side === "left")
+    .map((option, index) => ({
+      id: String(option.id ?? `left-${index}`),
+      text: typeof option.text === "object" ? option.text : { html: option.text ?? option.label ?? option.value ?? "", json: null },
+      is_correct: option.is_correct ?? option.isCorrect ?? option.correct ?? undefined,
+    }));
+  const matchRight = options
+    .filter((option) => option && typeof option === "object" && option.side === "right")
+    .map((option, index) => ({
+      id: String(option.id ?? `right-${index}`),
+      text: typeof option.text === "object" ? option.text : { html: option.text ?? option.label ?? option.value ?? "", json: null },
+      is_correct: option.is_correct ?? option.isCorrect ?? option.correct ?? undefined,
+    }));
+
+  if (matchLeft.length || matchRight.length) {
+    return {
+      left: matchLeft,
+      right: matchRight,
+    };
+  }
+
   return options.map((option, index) => {
     if (typeof option === "string") {
       return { id: `${index}`, text: { html: option, json: null } };
