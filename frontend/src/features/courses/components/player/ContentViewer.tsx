@@ -9,6 +9,7 @@ import UniversalContentViewer from "@/features/courses/components/player/Univers
 import { getStudentExams, startOrResumeExam } from "@/features/exam-runtime/api";
 import { computeStudentExamStatus } from "@/features/exams/utils/studentExamStatus";
 import type { StudentExam, StudentExamStatus } from "@/features/exams/types/studentExam";
+import type { JSX } from "react/jsx-runtime";
 
 interface ContentItem {
   id: number;
@@ -183,7 +184,7 @@ export default function ContentViewer({ item }: ContentViewerProps) {
       const matchedExam = exams.find((entry) => entry.id === examId) ?? null;
       if (!matchedExam) {
         setExam(null);
-        setExamError("This exam is not assigned or no longer available for your account.");
+        setExamError("This exam is assigned");
         return;
       }
       setExam(matchedExam);
@@ -273,17 +274,8 @@ export default function ContentViewer({ item }: ContentViewerProps) {
 
     if (examError) {
       return (
-        <div className="mx-auto mt-8 w-full max-w-2xl rounded-xl border border-rose-200 bg-rose-50 p-6">
-          <p className="text-sm font-medium text-rose-700">{examError}</p>
-          <button
-            type="button"
-            onClick={() => {
-              void loadExamInfo();
-            }}
-            className="mt-4 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700"
-          >
-            Retry
-          </button>
+        <div className="mx-auto mt-8 w-full max-w-2xl rounded-xl border border-emerald-200 bg-emerald-50 p-6">
+          <p className="text-sm font-medium text-emerald-700">{examError}</p>
         </div>
       );
     }

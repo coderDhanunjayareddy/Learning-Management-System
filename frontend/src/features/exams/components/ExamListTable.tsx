@@ -34,16 +34,13 @@ const formatWindow = (start?: string | null, end?: string | null) => {
 
 const getActionState = (status: ExamStatus | null, permissions: ExamPermissions) => {
   const isDraft = status === "draft";
-  const isActive = status === "active";
   const isCompleted = status === "completed";
 
   return {
     canEdit: permissions.canUpdate && isDraft,
     canBuilder: permissions.canUpdate && isDraft,
-    canAssign: permissions.canAssign,
-    canLive: permissions.canPublish && isActive,
     canResults: isCompleted,
-    canDelete: permissions.canDelete && isDraft,
+    canDelete: permissions.canDelete,
   };
 };
 
@@ -165,16 +162,6 @@ export default function ExamListTable({ exams, onAction, permissions }: ExamList
                         label="Builder"
                         disabled={!actionState.canBuilder}
                         onClick={() => onAction("builder", exam)}
-                      />
-                      <ActionButton
-                        label="Assign"
-                        disabled={!actionState.canAssign}
-                        onClick={() => onAction("assign", exam)}
-                      />
-                      <ActionButton
-                        label="Live"
-                        disabled={!actionState.canLive}
-                        onClick={() => onAction("live", exam)}
                       />
                       <ActionButton
                         label="Results"

@@ -3,6 +3,28 @@ import { query as dbQuery, getClient } from '../repositories/db.repository.js';
 
 let contentItemExamSchemaEnsured = false;
 let courseExamsSchemaEnsured = false;
+let contentMetadataColumnExists;
+
+const hasContentMetadataColumn = async () => {
+  if (contentMetadataColumnExists !== undefined) {
+    return contentMetadataColumnExists;
+  }
+
+  const result = await dbQuery(
+    `
+      SELECT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'content_items'
+          AND column_name = 'metadata'
+      ) AS exists
+    `
+  );
+
+  contentMetadataColumnExists = Boolean(result.rows[0]?.exists);
+  return contentMetadataColumnExists;
+};
 
 const ensureContentItemExamSchema = async () => {
   if (contentItemExamSchemaEnsured) return;
@@ -139,10 +161,9 @@ export const getCourseContent = async (req, res) => {
   const role = req.user?.role; // e.g., 'student', 'admin', 'instructor'
   const clientId = req.user?.client_id;
   const shouldScope = Boolean(clientId) && role !== 'super_admin';
+  const shouldIncludeAttemptStatus = role === 'student' && Boolean(userId);
 
   try {
-    await ensureContentItemExamSchema();
-
     if (shouldScope) {
       const courseCheck = await dbQuery(
         `SELECT 1 FROM courses WHERE id = $1 AND client_id = $2`,
@@ -155,9 +176,15 @@ export const getCourseContent = async (req, res) => {
 
     let query;
     let params;
+    const metadataSelect = (await hasContentMetadataColumn())
+      ? 'ci.metadata'
+      : `'{}'::jsonb AS metadata`;
+    const metadataSelectWithoutAlias = (await hasContentMetadataColumn())
+      ? 'metadata'
+      : `'{}'::jsonb AS metadata`;
 
-    if (/*role === 'student' &&*/ userId) {
-      // Student request: fetch content + student's attempt status
+    if (shouldIncludeAttemptStatus) {
+      // Only learner-facing requests need attempt status.
       query = `
         SELECT ci.id,
                ci.course_id,
@@ -165,7 +192,7 @@ export const getCourseContent = async (req, res) => {
                ci.item_type,
                ci.title,
                ci.content_url,
-               ci.metadata,
+               ${metadataSelect},
                ci.order_index,
                ci.created_at,
                sa.completion_status
@@ -178,9 +205,9 @@ export const getCourseContent = async (req, res) => {
       `;
       params = [courseId, userId];
     } else {
-      // Non-student request: fetch only content items
+      // Admin/content-authoring requests should not depend on student_attempts.
       query = `
-        SELECT id, course_id, parent_id, item_type, title, content_url, metadata, order_index, created_at
+        SELECT id, course_id, parent_id, item_type, title, content_url, ${metadataSelectWithoutAlias}, order_index, created_at
         FROM content_items
         WHERE course_id = $1
         ORDER BY parent_id NULLS FIRST, order_index ASC, created_at ASC
@@ -205,6 +232,10 @@ export const createContentItem = async (req, res) => {
   const role = req.user?.role;
   const clientId = req.user?.client_id;
   const shouldScope = Boolean(clientId) && role !== 'super_admin';
+  const parsedParentId =
+    parent_id === null || parent_id === undefined || parent_id === ''
+      ? null
+      : Number(parent_id);
 
   const validTypes = ['folder', 'link', 'exam'];
 
@@ -228,9 +259,11 @@ export const createContentItem = async (req, res) => {
     });
   }
 
-  try {
-    await ensureContentItemExamSchema();
+  if (parsedParentId !== null && (!Number.isInteger(parsedParentId) || parsedParentId <= 0)) {
+    return res.status(400).json({ error: 'parent_id must be a valid content item id or null' });
+  }
 
+  try {
     if (shouldScope) {
       const courseCheck = await dbQuery(
         `SELECT 1 FROM courses WHERE id = $1 AND client_id = $2`,
@@ -247,6 +280,25 @@ export const createContentItem = async (req, res) => {
     );
     if (courseScopeResult.rows.length === 0) {
       return res.status(404).json({ error: 'Course not found' });
+    }
+
+    if (parsedParentId !== null) {
+      const parentResult = await dbQuery(
+        `
+          SELECT id, item_type
+          FROM content_items
+          WHERE id = $1 AND course_id = $2
+        `,
+        [parsedParentId, courseId]
+      );
+
+      if (parentResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Parent content item not found' });
+      }
+
+      if (parentResult.rows[0].item_type !== 'folder') {
+        return res.status(400).json({ error: 'Items can only be added inside folders' });
+      }
     }
 
     const normalizedTitle = typeof title === 'string' ? title.trim() : '';
@@ -300,16 +352,41 @@ export const createContentItem = async (req, res) => {
       }
     }
 
-    const result = await dbQuery(
-      `INSERT INTO content_items (course_id, parent_id, item_type, title, content_url, metadata)
-       VALUES ($1, $2, $3, $4, $5, $6::jsonb)
-       RETURNING *`,
-      [courseId, parent_id, item_type, finalTitle, finalContentUrl, JSON.stringify(metadata)]
-    );
+    const metadataColumnExists = await hasContentMetadataColumn();
+    const supportsExamMetadata = item_type !== 'exam' || metadataColumnExists;
+
+    if (!supportsExamMetadata) {
+      return res.status(500).json({
+        error: 'Exam content requires the content_items.metadata column to be available'
+      });
+    }
+
+    const insertQuery = metadataColumnExists
+      ? `INSERT INTO content_items (course_id, parent_id, item_type, title, content_url, metadata)
+         VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+         RETURNING *`
+      : `INSERT INTO content_items (course_id, parent_id, item_type, title, content_url)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING *, '{}'::jsonb AS metadata`;
+    const insertParams = metadataColumnExists
+      ? [courseId, parsedParentId, item_type, finalTitle, finalContentUrl, JSON.stringify(metadata)]
+      : [courseId, parsedParentId, item_type, finalTitle, finalContentUrl];
+
+    const result = await dbQuery(insertQuery, insertParams);
 
     res.status(201).json(result.rows[0]);
   } catch (err) {
-    console.error('Content creation error:', err);
+    console.error('Content creation error:', {
+      message: err.message,
+      code: err.code,
+      detail: err.detail,
+      hint: err.hint,
+      where: err.where,
+      table: err.table,
+      column: err.column,
+      constraint: err.constraint,
+      stack: err.stack
+    });
     res.status(500).json({ error: 'Failed to create content item' });
   }
 };

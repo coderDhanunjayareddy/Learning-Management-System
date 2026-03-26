@@ -536,7 +536,7 @@ export default function ExamListPage() {
     <>
       <ExamShell
         title="Exam List"
-        description="Manage exams, monitor status, and access live controls."
+        description="Manage exams, monitor status, and maintain exam records."
       >
         <div className="space-y-6">
           <div className="flex flex-wrap items-center justify-between gap-3">

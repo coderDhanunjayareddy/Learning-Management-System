@@ -248,6 +248,16 @@ const ensureExamEditable = (exam) => {
   }
 };
 
+const ensureExamDeletable = (exam) => {
+  if (!exam) {
+    throw new AppError('Exam not found', 404);
+  }
+
+  if (!VALID_EXAM_STATUSES.includes(String(exam.status))) {
+    throw new AppError('Exam status is invalid and cannot be deleted', 409);
+  }
+};
+
 const ensureCourseExamsTable = async () => {
   await dbQuery(`
     CREATE TABLE IF NOT EXISTS course_exams (
@@ -1001,9 +1011,29 @@ export const deleteExam = async (req, res) => {
       requireOwner: isTeacher(req.user.role),
     });
 
-    ensureExamEditable(exam);
+    ensureExamDeletable(exam);
 
-    const result = await dbQuery(`DELETE FROM exams WHERE id = $1 RETURNING id`, [exam.id]);
+    const tx = await getClient();
+    let result;
+
+    try {
+      await tx.query('BEGIN');
+
+      await tx.query(`DELETE FROM exam_attempts WHERE exam_id = $1`, [exam.id]);
+      result = await tx.query(`DELETE FROM exams WHERE id = $1 RETURNING id`, [exam.id]);
+
+      if (result.rows.length === 0) {
+        throw new AppError('Exam not found', 404);
+      }
+
+      await tx.query('COMMIT');
+    } catch (error) {
+      await tx.query('ROLLBACK');
+      throw error;
+    } finally {
+      tx.release();
+    }
+
     res.json({ success: true, id: Number(result.rows[0].id) });
   } catch (err) {
     handleServiceError(res, err, 'Failed to delete exam');
