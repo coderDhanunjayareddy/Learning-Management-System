@@ -1,0 +1,968 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SPECTROPY Learning Management System - User Manual</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: white;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+
+        h1 {
+            color: #2c3e50;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 10px;
+            text-align: center;
+        }
+
+        h2 {
+            color: #34495e;
+            font-size: 1.8em;
+            margin-top: 40px;
+            margin-bottom: 20px;
+            border-left: 4px solid #3498db;
+            padding-left: 15px;
+        }
+
+        h3 {
+            color: #34495e;
+            font-size: 1.3em;
+            margin-top: 25px;
+            margin-bottom: 15px;
+        }
+
+        p {
+            margin-bottom: 15px;
+        }
+
+        ul, ol {
+            margin-left: 30px;
+            margin-bottom: 15px;
+        }
+
+        li {
+            margin-bottom: 8px;
+        }
+
+        .toc {
+            background: #ecf0f1;
+            padding: 20px;
+            border-radius: 5px;
+            margin: 30px 0;
+        }
+
+        .highlight {
+            background: #fff3cd;
+            padding: 15px;
+            border-left: 4px solid #ffc107;
+            margin: 15px 0;
+            border-radius: 3px;
+        }
+
+        .info-box {
+            background: #d1ecf1;
+            padding: 15px;
+            border-left: 4px solid #17a2b8;
+            margin: 15px 0;
+            border-radius: 3px;
+        }
+
+        .warning-box {
+            background: #f8d7da;
+            padding: 15px;
+            border-left: 4px solid #dc3545;
+            margin: 15px 0;
+            border-radius: 3px;
+        }
+
+        .step-box {
+            background: #f0f8ff;
+            padding: 15px;
+            border-left: 4px solid #4169e1;
+            margin: 15px 0;
+            border-radius: 3px;
+        }
+
+        .example {
+            background: #f5f5f5;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 3px;
+            border: 1px solid #ddd;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+
+        table th {
+            background: #3498db;
+            color: white;
+            padding: 12px;
+            text-align: left;
+        }
+
+        table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #ddd;
+        }
+
+        table tr:nth-child(even) {
+            background: #f9f9f9;
+        }
+
+        .page-break {
+            page-break-after: always;
+        }
+
+        .footer {
+            margin-top: 50px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+            text-align: center;
+            color: #7f8c8d;
+            font-size: 0.9em;
+        }
+
+        @media print {
+            body {
+                padding: 20px;
+            }
+            h2 {
+                page-break-before: auto;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div style="text-align: center; margin-bottom: 40px;">
+        <h1>SPECTROPY</h1>
+        <h2 style="border: none; padding-left: 0; margin-top: 0;">Learning Management System</h2>
+        <p style="font-size: 1.2em; color: #7f8c8d; margin-top: 20px;">User Manual v1.0</p>
+    </div>
+
+    <div class="page-break"></div>
+
+    <h2>TABLE OF CONTENTS</h2>
+    <ol>
+        <li>Introduction</li>
+        <li>Getting Started</li>
+        <li>For Students</li>
+        <li>For Teachers</li>
+        <li>For Administrators</li>
+        <li>Question Bank & Exam Engine</li>
+        <li>Features Overview</li>
+        <li>FAQ</li>
+        <li>Troubleshooting</li>
+    </ol>
+
+    <div class="page-break"></div>
+
+    <h2>1. INTRODUCTION</h2>
+    <h3>Welcome to SPECTROPY</h3>
+    <p>Welcome to <strong>SPECTROPY</strong>, your comprehensive Learning Management System (LMS)! This manual will guide you through all the features and functionalities of our platform, whether you're a student taking exams, a teacher creating educational content, or an administrator managing the system.</p>
+
+    <h3>What is SPECTROPY?</h3>
+    <p>SPECTROPY is a modern, intuitive learning platform designed to:</p>
+    <ul>
+        <li>✓ Create and manage a comprehensive question bank</li>
+        <li>✓ Build and administer online exams</li>
+        <li>✓ Track student progress and results</li>
+        <li>✓ Manage courses and learning content</li>
+        <li>✓ Support multiple schools and learning batches</li>
+        <li>✓ Provide role-based access control</li>
+    </ul>
+
+    <div class="page-break"></div>
+
+    <h2>2. GETTING STARTED</h2>
+    <h3>System Access</h3>
+    <p>To access SPECTROPY, open your web browser and navigate to your institution's LMS portal. The system is optimized for:</p>
+    <ul>
+        <li>Desktop browsers (Chrome, Firefox, Safari, Edge)</li>
+        <li>Tablet devices (iPad, Android tablets)</li>
+        <li>Mobile devices with responsive design</li>
+    </ul>
+
+    <h3>Logging In</h3>
+    <div class="step-box">
+        <strong>Step 1: Enter Your Credentials</strong>
+        <ol>
+            <li>Navigate to the login page</li>
+            <li>Enter your email address</li>
+            <li>Enter your password</li>
+            <li>Click "Login"</li>
+        </ol>
+    </div>
+
+    <div class="info-box">
+        <strong>Important Notes:</strong>
+        <ul>
+            <li>Email and password are case-sensitive</li>
+            <li>If you forget your password, contact your system administrator</li>
+            <li>Always log out when finished, especially on shared devices</li>
+        </ul>
+    </div>
+
+    <h3>Understanding Your Dashboard</h3>
+    <p>After logging in, you'll see your personalized dashboard with:</p>
+    <ul>
+        <li><strong>Header Section</strong>: Your name and role in top-right corner</li>
+        <li><strong>Sidebar Navigation</strong>: Quick access to all main features</li>
+        <li><strong>Main Content Area</strong>: Your tasks and information</li>
+        <li><strong>Quick Stats</strong>: Overview of your activity</li>
+    </ul>
+
+    <div class="page-break"></div>
+
+    <h2>3. FOR STUDENTS</h2>
+    <h3>Student Dashboard Overview</h3>
+    <p>Your dashboard shows:</p>
+    <ul>
+        <li><strong>Enrolled Courses</strong>: All courses you're registered for</li>
+        <li><strong>Available Exams</strong>: Exams you can take now</li>
+        <li><strong>Exam Results</strong>: Your exam scores and feedback</li>
+        <li><strong>Progress Tracking</strong>: Your learning progress</li>
+    </ul>
+
+    <h3>Taking an Exam</h3>
+
+    <h4>Finding Available Exams</h4>
+    <div class="step-box">
+        <strong>Step 1: Navigate to Exams</strong>
+        <ol>
+            <li>Click "Exams" in the sidebar</li>
+            <li>Review available exams and their details</li>
+            <li>Check: title, duration, description, attempts allowed</li>
+        </ol>
+    </div>
+
+    <h4>Starting an Exam</h4>
+    <div class="step-box">
+        <strong>Step 2: Click "Start Exam"</strong>
+        <ol>
+            <li>Find the exam you want to take</li>
+            <li>Click "Start Exam" button</li>
+            <li>Confirmation dialog appears</li>
+            <li>Click "Begin" to start</li>
+        </ol>
+    </div>
+
+    <h4>Exam Interface</h4>
+    <p>When the exam loads, you'll see three main panels:</p>
+    <ul>
+        <li><strong>Left Panel - Question Navigator</strong>: List of all questions with status indicators (green = answered, blue = marked for review, white = not answered)</li>
+        <li><strong>Center Panel - Question Display</strong>: Current question with answer options</li>
+        <li><strong>Right Panel - Timer & Status</strong>: Countdown timer, progress, and auto-save indicator</li>
+    </ul>
+
+    <h4>How to Answer Questions</h4>
+
+    <div class="example">
+        <strong>Multiple Choice (Single Answer)</strong>
+        <ol>
+            <li>Read the question carefully</li>
+            <li>Click on one option button</li>
+            <li>Selected option highlights</li>
+            <li>Click "Next" to proceed</li>
+        </ol>
+    </div>
+
+    <div class="example">
+        <strong>Multiple Choice (Multiple Answers)</strong>
+        <ol>
+            <li>Read the question carefully</li>
+            <li>Click each correct option</li>
+            <li>Selected options show checkmarks</li>
+            <li>Click "Next" to proceed</li>
+        </ol>
+    </div>
+
+    <div class="example">
+        <strong>True/False</strong>
+        <ol>
+            <li>Click "True" or "False" button</li>
+            <li>Your selection highlights</li>
+            <li>Click "Next" to proceed</li>
+        </ol>
+    </div>
+
+    <div class="example">
+        <strong>Numerical Answer</strong>
+        <ol>
+            <li>Click in the answer field</li>
+            <li>Type your numerical answer</li>
+            <li>System accepts integers and decimals</li>
+            <li>Click "Next" to proceed</li>
+        </ol>
+    </div>
+
+    <h4>During the Exam</h4>
+    <ul>
+        <li><strong>Mark for Review</strong>: Flag a question to review later (doesn't prevent submission)</li>
+        <li><strong>Auto-save</strong>: System saves every 30 seconds automatically</li>
+        <li><strong>Navigation</strong>: Use buttons or click question numbers to jump around</li>
+        <li><strong>Timer Warnings</strong>: Yellow (10 min left), Red (1 min left)</li>
+    </ul>
+
+    <h4>Submitting Your Exam</h4>
+    <div class="step-box">
+        <strong>When Ready to Submit:</strong>
+        <ol>
+            <li>Review your answers in the question navigator</li>
+            <li>Click "Submit Exam" button</li>
+            <li>Confirmation dialog appears with counts</li>
+            <li>Click "Confirm Submission" to finalize</li>
+            <li>Exam is graded automatically</li>
+        </ol>
+    </div>
+
+    <h3>Viewing Exam Results</h3>
+    <div class="step-box">
+        <strong>To Access Your Results:</strong>
+        <ol>
+            <li>Go to "Exams" menu</li>
+            <li>Click "My Results" tab</li>
+            <li>Click on any completed exam</li>
+        </ol>
+    </div>
+
+    <p><strong>Your result report includes:</strong></p>
+    <ul>
+        <li>Total score (e.g., 75/100)</li>
+        <li>Percentage score</li>
+        <li>Section breakdown if exam had multiple sections</li>
+        <li>Time taken on exam</li>
+        <li>Pass/Fail status</li>
+        <li>Question-by-question review with correct answers and explanations</li>
+    </ul>
+
+    <div class="page-break"></div>
+
+    <h2>4. FOR TEACHERS</h2>
+    <h3>Teacher Dashboard Overview</h3>
+    <p>Your dashboard provides:</p>
+    <ul>
+        <li><strong>Quick Stats</strong>: Questions created, exams created, students taught</li>
+        <li><strong>Recent Activity</strong>: Recently created/updated content</li>
+        <li><strong>Pending Approvals</strong>: Questions awaiting admin approval</li>
+        <li><strong>Shortcuts</strong>: Quick access to create new content</li>
+    </ul>
+
+    <h3>Creating and Managing Questions</h3>
+
+    <h4>Accessing the Question Bank</h4>
+    <div class="step-box">
+        <strong>Step 1: Navigate to Questions</strong>
+        <ol>
+            <li>Click "Questions" in sidebar</li>
+            <li>You'll see: Search & filter panel, Question list, Create button</li>
+        </ol>
+    </div>
+
+    <h4>Creating a New Question</h4>
+    <div class="step-box">
+        <strong>Step 1: Click "Create Question"</strong>
+        <ol>
+            <li>Navigate to Questions section</li>
+            <li>Click "+ Create Question" button</li>
+            <li>Question creation form opens</li>
+        </ol>
+    </div>
+
+    <div class="step-box">
+        <strong>Step 2: Enter Question Details</strong>
+        <ul>
+            <li><strong>Question Type</strong>: MCQ (single), MCQ (multiple), True/False, Numerical</li>
+            <li><strong>Subject/Chapter/Topic</strong>: Categorize your question</li>
+            <li><strong>Difficulty Level</strong>: Easy / Medium / Hard</li>
+            <li><strong>Question Text</strong>: Write with rich formatting and LaTeX support</li>
+            <li><strong>Marks</strong>: Points for correct answer</li>
+            <li><strong>Negative Marks</strong>: Penalty for wrong answer (optional)</li>
+        </ul>
+    </div>
+
+    <h4>Adding Answer Options</h4>
+    <p><strong>For Multiple Choice (Single Answer):</strong> Enter options A, B, C, D and select the correct one</p>
+    <p><strong>For Multiple Choice (Multiple):</strong> Mark multiple correct options</p>
+    <p><strong>For True/False:</strong> Select the correct answer</p>
+    <p><strong>For Numerical:</strong> Enter expected value and tolerance range</p>
+
+    <h4>Submitting Questions</h4>
+    <ul>
+        <li><strong>Save as Draft</strong>: Question saved but not ready for exams</li>
+        <li><strong>Submit for Approval</strong>: Admin reviews for correctness and clarity</li>
+        <li><strong>Status Flow</strong>: Draft → Pending Approval → Approved (ready for exams)</li>
+    </ul>
+
+    <h3>Creating and Managing Exams</h3>
+
+    <h4>Creating a New Exam</h4>
+    <div class="step-box">
+        <strong>Step 1: Click "Create Exam"</strong>
+        <ol>
+            <li>Click "+ Create Exam" button</li>
+            <li>Exam creation form opens</li>
+        </ol>
+    </div>
+
+    <div class="step-box">
+        <strong>Step 2: Enter Exam Details</strong>
+        <ul>
+            <li><strong>Exam Title</strong>: Name of the exam</li>
+            <li><strong>Description</strong>: What exam covers, special instructions</li>
+            <li><strong>Duration</strong>: Time allowed in minutes</li>
+            <li><strong>Total Marks</strong>: Maximum marks</li>
+            <li><strong>Passing Score</strong>: Minimum to pass</li>
+            <li><strong>Max Attempts</strong>: How many times students can attempt</li>
+            <li><strong>Shuffle Questions</strong>: Randomize question order</li>
+            <li><strong>Show Answers</strong>: Allow students to see answers after submission</li>
+        </ul>
+    </div>
+
+    <h4>Adding Questions to Exam</h4>
+    <ol>
+        <li>Click "Add Questions" button</li>
+        <li>Search or filter approved questions</li>
+        <li>Click "Select" on each question to add</li>
+        <li>Assign marks per question if needed</li>
+        <li>Review total marks match exam total</li>
+    </ol>
+
+    <h4>Publishing Exam</h4>
+    <ul>
+        <li><strong>Save as Draft</strong>: Continue editing</li>
+        <li><strong>Publish</strong>: Visible to enrolled students, can start taking</li>
+    </ul>
+
+    <h3>Viewing Exam Results</h3>
+    <div class="step-box">
+        <strong>To View Exam Analytics:</strong>
+        <ol>
+            <li>Click on exam → "View Results"</li>
+            <li>See class statistics: average, pass rate, score distribution</li>
+            <li>Click student names to see individual attempts</li>
+            <li>Review their answers vs correct answers</li>
+        </ol>
+    </div>
+
+    <div class="page-break"></div>
+
+    <h2>5. FOR ADMINISTRATORS</h2>
+    <h3>Admin Dashboard Overview</h3>
+    <p>The admin dashboard provides:</p>
+    <ul>
+        <li><strong>System Overview</strong>: Total users, courses, questions, exams</li>
+        <li><strong>Key Metrics</strong>: Active students, pending approvals, exams in progress</li>
+        <li><strong>Quick Actions</strong>: Common administrative tasks</li>
+        <li><strong>System Alerts</strong>: Issues requiring attention</li>
+    </ul>
+
+    <h3>User Management</h3>
+
+    <h4>Viewing Users</h4>
+    <div class="step-box">
+        <strong>Step 1: Access User Management</strong>
+        <ol>
+            <li>Click "Users" in sidebar</li>
+            <li>See all system users with their roles and status</li>
+        </ol>
+    </div>
+
+    <h4>Creating New Users</h4>
+    <div class="step-box">
+        <strong>Method 1: Individual Creation</strong>
+        <ol>
+            <li>Click "+ Add User" button</li>
+            <li>Enter: First/Last name, email, role, school assignment</li>
+            <li>System generates temporary password sent via email</li>
+            <li>User must change password on first login</li>
+        </ol>
+    </div>
+
+    <h4>Bulk User Import</h4>
+    <div class="highlight">
+        <strong>Using CSV Import:</strong>
+        <ol>
+            <li>Click "Import Users"</li>
+            <li>Download CSV template</li>
+            <li>Fill with user data</li>
+            <li>Upload and system creates all users</li>
+        </ol>
+    </div>
+
+    <h3>Question Approval Workflow</h3>
+    <p>Ensure quality control by approving questions:</p>
+
+    <div class="step-box">
+        <strong>Step 1: View Pending Questions</strong>
+        <ol>
+            <li>Click "Questions" → "Pending Approval"</li>
+            <li>See all questions submitted by teachers</li>
+        </ol>
+    </div>
+
+    <div class="step-box">
+        <strong>Step 2: Review Each Question</strong>
+        <p>Check:</p>
+        <ul>
+            <li>Content clarity and correctness</li>
+            <li>Marked correct answer is actually correct</li>
+            <li>All options are plausible</li>
+            <li>Formatting and technical quality</li>
+            <li>Solution explanation is helpful</li>
+        </ul>
+    </div>
+
+    <div class="step-box">
+        <strong>Step 3: Approve or Reject</strong>
+        <ul>
+            <li><strong>Approve</strong>: Question becomes available for exams</li>
+            <li><strong>Reject with Feedback</strong>: Teacher revises and resubmits</li>
+        </ul>
+    </div>
+
+    <h3>Organization Management</h3>
+
+    <h4>Managing Schools</h4>
+    <p>Organize your institution:</p>
+    <ol>
+        <li>Click "Organizations" → "Schools"</li>
+        <li>Create new schools with contact information</li>
+        <li>Assign users to schools</li>
+        <li>Manage school-specific settings</li>
+    </ol>
+
+    <h4>Managing Batches</h4>
+    <p>Group students together:</p>
+    <ol>
+        <li>Click "Organizations" → "Batches"</li>
+        <li>Create batches (e.g., "Class 10-A", "Batch 2024-Spring")</li>
+        <li>Add students to batches</li>
+        <li>Assign specific exams to batches</li>
+    </ol>
+
+    <h3>Analytics and Reporting</h3>
+    <div class="highlight">
+        <strong>Available Analytics:</strong>
+        <ul>
+            <li><strong>Exam Statistics</strong>: Number of exams, attempts, pass rates</li>
+            <li><strong>User Analytics</strong>: Active users, login frequency, engagement</li>
+            <li><strong>Question Analytics</strong>: Questions by subject, difficulty distribution, usage</li>
+        </ul>
+    </div>
+
+    <div class="page-break"></div>
+
+    <h2>6. QUESTION BANK & EXAM ENGINE</h2>
+    <h3>Understanding Question Types</h3>
+
+    <h4>1. Multiple Choice - Single Answer</h4>
+    <div class="example">
+        <strong>Description:</strong> Select THE ONE correct option
+        <br><br>
+        <strong>Example:</strong>
+        <br>What is the capital of France?
+        <br>A) London
+        <br>B) Berlin
+        <br>C) Paris [CORRECT]
+        <br>D) Madrid
+        <br><br>
+        <strong>Grading:</strong> All-or-nothing (full marks or zero)
+    </div>
+
+    <h4>2. Multiple Choice - Multiple Answers</h4>
+    <div class="example">
+        <strong>Description:</strong> Select ALL correct options (multiple correct answers)
+        <br><br>
+        <strong>Example:</strong>
+        <br>Which are prime numbers?
+        <br>A) 7 [CORRECT]
+        <br>B) 12
+        <br>C) 11 [CORRECT]
+        <br>D) 15
+        <br>E) 19 [CORRECT]
+        <br><br>
+        <strong>Grading:</strong> All-or-nothing (must select ALL correct options)
+    </div>
+
+    <h4>3. True/False</h4>
+    <div class="example">
+        <strong>Description:</strong> Determine if statement is true or false
+        <br><br>
+        <strong>Example:</strong>
+        <br>The Earth orbits the Sun. [TRUE]
+        <br><br>
+        <strong>Grading:</strong> All-or-nothing
+    </div>
+
+    <h4>4. Numerical Answer</h4>
+    <div class="example">
+        <strong>Description:</strong> Enter numerical value with optional tolerance
+        <br><br>
+        <strong>Example:</strong>
+        <br>If radius = 5cm, what is the area? (use π ≈ 3.14)
+        <br>Answer: 78.5
+        <br><br>
+        <strong>Tolerance:</strong> System can accept 78.4 to 78.6 if tolerance = ±0.1
+        <br><strong>Grading:</strong> All-or-nothing (within tolerance range or not)
+    </div>
+
+    <h3>Building Effective Exams</h3>
+
+    <h4>Best Practices</h4>
+    <div class="info-box">
+        <strong>1. Balanced Difficulty</strong>
+        <p>Recommended: 20% Easy, 50% Medium, 30% Hard questions</p>
+
+        <strong>2. Proper Timing</strong>
+        <p>Allocate 1-2 minutes per question. Example: 30 questions = 60 minute exam</p>
+
+        <strong>3. Consistent Marking</strong>
+        <p>Same marks per question OR more marks for harder questions</p>
+
+        <strong>4. Question Organization</strong>
+        <p>Group related questions by topic or difficulty</p>
+
+        <strong>5. Negative Marking Strategy</strong>
+        <p>Optional: Use -1/4 of positive marks to discourage guessing</p>
+
+        <strong>6. Quality Solutions</strong>
+        <p>Always provide detailed explanations for learning</p>
+    </div>
+
+    <div class="page-break"></div>
+
+    <h2>7. FEATURES OVERVIEW</h2>
+
+    <h3>Advanced Search and Filters</h3>
+    <p>SPECTROPY provides powerful search across the platform:</p>
+    <ul>
+        <li><strong>Subject/Chapter/Topic</strong>: Multi-level categorization</li>
+        <li><strong>Difficulty Level</strong>: Easy, Medium, Hard</li>
+        <li><strong>Question Type</strong>: MCQ, True/False, Numerical</li>
+        <li><strong>Status</strong>: Draft, Approved, Rejected, Archived</li>
+        <li><strong>Full-Text Search</strong>: Search question content</li>
+        <li><strong>Date Ranges</strong>: Filter by creation date</li>
+        <li><strong>Tags</strong>: Filter by custom tags</li>
+    </ul>
+
+    <h3>Responsive Design</h3>
+    <ul>
+        <li><strong>Desktop</strong>: Full sidebar, multi-column layouts, optimal for content creation</li>
+        <li><strong>Tablet</strong>: Collapsible sidebar, touch-friendly buttons, good for exam review</li>
+        <li><strong>Mobile</strong>: Single-column, responsive, full exam-taking support</li>
+    </ul>
+
+    <h3>Security and Privacy</h3>
+    <ul>
+        <li>Password Encryption: Salted hashing (bcrypt)</li>
+        <li>Session Management: JWT tokens with expiration</li>
+        <li>Role-Based Access: Users see only appropriate content</li>
+        <li>Data Privacy: GDPR compliant</li>
+        <li>Secure Transmission: HTTPS encryption</li>
+        <li>Audit Logging: Changes logged for compliance</li>
+    </ul>
+
+    <h3>Accessibility</h3>
+    <ul>
+        <li>Keyboard navigation support</li>
+        <li>High contrast mode option</li>
+        <li>Screen reader compatible</li>
+        <li>Focus indicators on interactive elements</li>
+        <li>Clear labeling and descriptions</li>
+    </ul>
+
+    <div class="page-break"></div>
+
+    <h2>8. FREQUENTLY ASKED QUESTIONS</h2>
+
+    <h3>General Questions</h3>
+
+    <div class="highlight">
+        <strong>Q: What browsers does SPECTROPY support?</strong>
+        <br>A: Chrome, Firefox, Safari, and Edge (latest versions). Mobile browsers fully supported.
+    </div>
+
+    <div class="highlight">
+        <strong>Q: Can I access SPECTROPY on my phone?</strong>
+        <br>A: Yes! The system is fully responsive. All features work on smartphones.
+    </div>
+
+    <div class="highlight">
+        <strong>Q: How do I recover my password?</strong>
+        <br>A: Contact your administrator. They can reset your password.
+    </div>
+
+    <h3>Questions for Students</h3>
+
+    <div class="highlight">
+        <strong>Q: Can I take an exam multiple times?</strong>
+        <br>A: Yes, if the teacher allows multiple attempts. Check exam details.
+    </div>
+
+    <div class="highlight">
+        <strong>Q: What if my internet cuts during an exam?</strong>
+        <br>A: Don't worry! Answers save every 30 seconds. You'll continue from last save when reconnected.
+    </div>
+
+    <div class="highlight">
+        <strong>Q: Can I change my answer?</strong>
+        <br>A: Yes, you can navigate freely and change any answer before submitting.
+    </div>
+
+    <div class="highlight">
+        <strong>Q: What if I run out of time?</strong>
+        <br>A: Exam auto-submits when timer reaches zero.
+    </div>
+
+    <div class="highlight">
+        <strong>Q: Can I see answers after submitting?</strong>
+        <br>A: Yes, if your teacher enables answer visibility.
+    </div>
+
+    <h3>Questions for Teachers</h3>
+
+    <div class="highlight">
+        <strong>Q: Can I edit a question after submitting for approval?</strong>
+        <br>A: No, submitted questions are locked. If rejected, you can edit the rejected version.
+    </div>
+
+    <div class="highlight">
+        <strong>Q: How long does question approval take?</strong>
+        <br>A: Typically 24 hours. Check with your administrator.
+    </div>
+
+    <div class="highlight">
+        <strong>Q: Can I reorder questions in an exam?</strong>
+        <br>A: Yes, in draft exams you can drag-and-drop to reorder.
+    </div>
+
+    <div class="highlight">
+        <strong>Q: Can students use my questions?</strong>
+        <br>A: Only approved questions you've created can be used in exams.
+    </div>
+
+    <div class="highlight">
+        <strong>Q: How do I give negative marks?</strong>
+        <br>A: Enter the negative mark value when creating a question. Exam auto-calculates scores.
+    </div>
+
+    <h3>Questions for Administrators</h3>
+
+    <div class="highlight">
+        <strong>Q: How do I import multiple users?</strong>
+        <br>A: Use the CSV import feature. Download template, fill data, upload file.
+    </div>
+
+    <div class="highlight">
+        <strong>Q: Can I export exam results?</strong>
+        <br>A: Yes, click "Export" on results page. Choose Excel or PDF format.
+    </div>
+
+    <div class="highlight">
+        <strong>Q: How do I ensure data privacy?</strong>
+        <br>A: SPECTROPY is GDPR compliant. Use role-based access and enable audit logging.
+    </div>
+
+    <div class="page-break"></div>
+
+    <h2>9. TROUBLESHOOTING</h2>
+
+    <h3>Login Issues</h3>
+
+    <div class="warning-box">
+        <strong>Problem: "Invalid email or password"</strong>
+        <ul>
+            <li>Ensure caps lock is OFF</li>
+            <li>Check email spelling (typos common)</li>
+            <li>Verify you're using correct email</li>
+            <li>Contact admin if you've forgotten password</li>
+        </ul>
+    </div>
+
+    <div class="warning-box">
+        <strong>Problem: "Account locked" or "Too many login attempts"</strong>
+        <ul>
+            <li>Wait 15 minutes before trying again (security feature)</li>
+            <li>Contact admin if still locked out</li>
+        </ul>
+    </div>
+
+    <div class="warning-box">
+        <strong>Problem: "Server not responding"</strong>
+        <ul>
+            <li>Check your internet connection</li>
+            <li>Refresh the page (F5)</li>
+            <li>Try a different browser</li>
+            <li>Contact admin if issue persists</li>
+        </ul>
+    </div>
+
+    <h3>Exam Taking Issues</h3>
+
+    <div class="warning-box">
+        <strong>Problem: "Exam not available"</strong>
+        <ul>
+            <li>Check the exam start date/time</li>
+            <li>Ensure you haven't exceeded max attempts</li>
+            <li>Verify you're enrolled in the course</li>
+            <li>Contact teacher or admin</li>
+        </ul>
+    </div>
+
+    <div class="warning-box">
+        <strong>Problem: Answer not saving</strong>
+        <ul>
+            <li>Look for "Saving..." indicator (appears every 30 seconds)</li>
+            <li>Try clicking "Save" manually</li>
+            <li>Check internet connection</li>
+            <li>Try refreshing exam page (you'll resume from last save)</li>
+        </ul>
+    </div>
+
+    <div class="warning-box">
+        <strong>Problem: Timer seems incorrect</strong>
+        <ul>
+            <li>Refresh the page (timer syncs with server)</li>
+            <li>Ensure system clock is accurate</li>
+            <li>Timer is server-based, not browser-based</li>
+            <li>Contact admin if truly incorrect</li>
+        </ul>
+    </div>
+
+    <h3>Question Creation Issues</h3>
+
+    <div class="warning-box">
+        <strong>Problem: LaTeX formula not rendering</strong>
+        <ul>
+            <li>Use correct syntax: $...$ for inline, $$...$$ for block</li>
+            <li>Example: $\sqrt{16}$ renders as √16</li>
+            <li>Common mistake: Missing $ delimiters</li>
+            <li>Test formulas before submitting</li>
+        </ul>
+    </div>
+
+    <div class="warning-box">
+        <strong>Problem: "Cannot submit — solution required"</strong>
+        <ul>
+            <li>Add solution/explanation to the question</li>
+            <li>Click "Add Solution" button</li>
+            <li>Provide detailed explanation</li>
+        </ul>
+    </div>
+
+    <h3>Performance Issues</h3>
+
+    <div class="warning-box">
+        <strong>Problem: Page loads slowly</strong>
+        <ul>
+            <li>Clear browser cache (Ctrl+Shift+Del)</li>
+            <li>Try incognito/private mode</li>
+            <li>Disable browser extensions</li>
+            <li>Check internet speed</li>
+            <li>Use modern browser (Chrome preferred)</li>
+        </ul>
+    </div>
+
+    <div class="warning-box">
+        <strong>Problem: Exam becomes unresponsive/freezes</strong>
+        <ul>
+            <li>Try refreshing the page (you'll resume from last save)</li>
+            <li>Close and reopen the exam</li>
+            <li>Try different browser</li>
+            <li>Check system resources (RAM, CPU)</li>
+            <li>Contact admin if issue persists</li>
+        </ul>
+    </div>
+
+    <h3>Contact Support</h3>
+    <p>If you encounter issues not listed here:</p>
+    <ol>
+        <li><strong>Collect Information:</strong> What were you trying to do? What error appeared? Take screenshots.</li>
+        <li><strong>Contact Your Administrator:</strong> Provide all details and error messages.</li>
+        <li><strong>Provide Steps to Reproduce:</strong> Help them understand the issue.</li>
+    </ol>
+
+    <div class="page-break"></div>
+
+    <h2>APPENDIX: ROLE PERMISSIONS SUMMARY</h2>
+    <table>
+        <tr>
+            <th>Feature</th>
+            <th>Student</th>
+            <th>Teacher</th>
+            <th>Admin</th>
+            <th>Super Admin</th>
+        </tr>
+        <tr>
+            <td><strong>Questions</strong></td>
+            <td>View approved</td>
+            <td>Create/Edit</td>
+            <td>Approve/Reject</td>
+            <td>Full control</td>
+        </tr>
+        <tr>
+            <td><strong>Exams</strong></td>
+            <td>Take exams</td>
+            <td>Create/Manage</td>
+            <td>Monitor/Override</td>
+            <td>Full control</td>
+        </tr>
+        <tr>
+            <td><strong>Courses</strong></td>
+            <td>View enrolled</td>
+            <td>Upload content</td>
+            <td>Manage all</td>
+            <td>Full control</td>
+        </tr>
+        <tr>
+            <td><strong>Users</strong></td>
+            <td>View own profile</td>
+            <td>View students</td>
+            <td>Create/Manage</td>
+            <td>Full control</td>
+        </tr>
+        <tr>
+            <td><strong>Analytics</strong></td>
+            <td>Own results</td>
+            <td>Class analytics</td>
+            <td>Platform analytics</td>
+            <td>Full control</td>
+        </tr>
+    </table>
+
+    <div class="page-break"></div>
+
+    <div class="footer">
+        <h2>Document Information</h2>
+        <ul style="margin-left: 0;">
+            <li><strong>Document Version:</strong> 1.0</li>
+            <li><strong>Last Updated:</strong> March 2026</li>
+            <li><strong>Applicable to:</strong> SPECTROPY LMS v1.0+</li>
+            <li><strong>For Questions:</strong> Contact your system administrator</li>
+        </ul>
+
+        <p style="margin-top: 40px;"><strong>Thank you for using SPECTROPY!</strong></p>
+        <p>We're committed to making learning effective and engaging.</p>
+        <p>For feedback and feature requests, please contact your administrator.</p>
+    </div>
+</body>
+</html>
