@@ -10,6 +10,8 @@ export interface StudentExam {
   id: number;
   title: string;
   description: string | null;
+  course_id?: number | null;
+  content_id?: number | null;
   start_datetime: string | null;
   end_datetime: string | null;
   total_duration_minutes: number | null;
@@ -26,6 +28,3 @@ export interface StudentExam {
   show_pass_or_fail?: boolean;
   show_solutions_to_user?: boolean;
 }
-
-
-

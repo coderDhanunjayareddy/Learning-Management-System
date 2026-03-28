@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+﻿import { useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import ExamHeader from "@/features/exam-runtime/components/ExamHeader";
@@ -10,9 +10,22 @@ import ExamTimerBar from "@/features/exam-runtime/components/ExamTimerBar";
 import ActionBar from "@/features/exam-runtime/components/ActionBar";
 import ExamRuntimeErrorBoundary from "@/features/exam-runtime/components/ExamRuntimeErrorBoundary";
 import { useExamRuntime } from "@/features/exam-runtime/useExamRuntime";
+import {
+  buildExamContentRoutePath,
+  buildExamContentRouteSearch,
+  buildExamContentRouteState,
+  getExamContentRouteContextFromSearch,
+  getExamContentRouteContextFromState,
+  mergeExamContentRouteContexts,
+  type ExamContentRouteContext,
+} from "@/features/exam-runtime/navigation";
 
 
-function StudentExamRuntimePageContent() {
+interface StudentExamRuntimePageContentProps {
+  initialRouteContext: ExamContentRouteContext;
+}
+
+function StudentExamRuntimePageContent({ initialRouteContext }: StudentExamRuntimePageContentProps) {
   const navigate = useNavigate();
   const { user } = useAuth();
   const params = useParams<{ attemptId: string }>();
@@ -100,6 +113,28 @@ function StudentExamRuntimePageContent() {
     [sections]
   );
 
+  const runtimeRouteContext = useMemo(
+    () =>
+      mergeExamContentRouteContexts(initialRouteContext, {
+        courseId: runtimeData?.exam.course_id ?? null,
+        contentId: runtimeData?.exam.content_id ?? null,
+      }),
+    [initialRouteContext, runtimeData?.exam.content_id, runtimeData?.exam.course_id]
+  );
+  const fallbackPath = useMemo(
+    () => buildExamContentRoutePath(runtimeRouteContext) ?? "/student/dashboard",
+    [runtimeRouteContext]
+  );
+  const fallbackLabel = fallbackPath.includes("/content/") ? "Back to Content" : "Back to Exams";
+  const resultRouteSearch = useMemo(
+    () => buildExamContentRouteSearch(runtimeRouteContext),
+    [runtimeRouteContext]
+  );
+  const resultRouteState = useMemo(
+    () => buildExamContentRouteState(runtimeRouteContext),
+    [runtimeRouteContext]
+  );
+
   useEffect(() => {
     setInstructionAccepted(false);
   }, [runtimeData?.attempt?.id]);
@@ -107,10 +142,11 @@ function StudentExamRuntimePageContent() {
   useEffect(() => {
     if (!lastSubmitOutcome?.submitted) return;
     if (!lastSubmitOutcome.examId) return;
-    navigate(`/student/exams/${lastSubmitOutcome.examId}/result`, {
+    navigate(`/student/exams/${lastSubmitOutcome.examId}/result${resultRouteSearch}`, {
       replace: true,
+      state: resultRouteState,
     });
-  }, [lastSubmitOutcome, navigate]);
+  }, [lastSubmitOutcome, navigate, resultRouteSearch, resultRouteState]);
 
   const handleSubmit = async () => {
     const outcome = await submitCurrentAttempt();
@@ -127,10 +163,10 @@ function StudentExamRuntimePageContent() {
           <h1 className="text-xl font-semibold text-red-700">Invalid attempt id</h1>
           <button
             type="button"
-            onClick={() => navigate("/student/exams")}
+            onClick={() => navigate(fallbackPath)}
             className="mt-4 rounded bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
           >
-            Back to Exams
+            {fallbackLabel}
           </button>
         </div>
       </div>
@@ -163,10 +199,10 @@ function StudentExamRuntimePageContent() {
             </button>
             <button
               type="button"
-              onClick={() => navigate("/student/exams")}
+              onClick={() => navigate(fallbackPath)}
               className="rounded bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
             >
-              Back to Exams
+              {fallbackLabel}
             </button>
           </div>
         </div>
@@ -182,13 +218,6 @@ function StudentExamRuntimePageContent() {
           <p className="mt-2 text-sm text-amber-800">
             This attempt payload does not contain full question content required for the exam runtime screen.
           </p>
-          <button
-            type="button"
-            onClick={() => navigate("/student/exams")}
-            className="mt-4 rounded bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
-          >
-            Back to Exams
-          </button>
         </div>
       </div>
     );
@@ -290,14 +319,8 @@ function StudentExamRuntimePageContent() {
             </section>
           )}
 
-          <div className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-slate-300 pt-4">
-            <button
-              type="button"
-              onClick={() => navigate("/student/exams")}
-              className="rounded border border-slate-400 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
-            >
-              Back to Exams
-            </button>
+          <div className="mt-8 flex flex-wrap items-center justify-end gap-3 border-t border-slate-300 pt-4">
+
             <button
               type="button"
               onClick={() => setInstructionAccepted(true)}
@@ -429,13 +452,21 @@ function StudentExamRuntimePageContent() {
 }
 
 export default function StudentExamRuntimePage() {
+  const location = useLocation();
+  const initialRouteContext = useMemo(
+    () =>
+      mergeExamContentRouteContexts(
+        getExamContentRouteContextFromState(location.state),
+        getExamContentRouteContextFromSearch(location.search)
+      ),
+    [location.search, location.state]
+  );
+  const fallbackPath = buildExamContentRoutePath(initialRouteContext) ?? "/student/dashboard";
+
   return (
-    <ExamRuntimeErrorBoundary>
-      <StudentExamRuntimePageContent />
+    <ExamRuntimeErrorBoundary fallbackPath={fallbackPath}>
+      <StudentExamRuntimePageContent initialRouteContext={initialRouteContext} />
     </ExamRuntimeErrorBoundary>
   );
 }
-
-
-
 

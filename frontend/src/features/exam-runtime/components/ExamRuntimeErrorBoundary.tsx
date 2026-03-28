@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 
 interface ExamRuntimeErrorBoundaryProps {
   children: ReactNode;
+  fallbackPath?: string;
 }
 
 interface ExamRuntimeErrorBoundaryState {
@@ -35,6 +36,9 @@ export default class ExamRuntimeErrorBoundary extends Component<
       return this.props.children;
     }
 
+    const fallbackPath = this.props.fallbackPath || "/student/dashboard";
+    const isContentRoute = fallbackPath.includes("/content/");
+
     return (
       <div className="min-h-screen bg-slate-100 px-6 py-10">
         <div className="mx-auto max-w-2xl rounded-xl border border-rose-200 bg-rose-50 p-6">
@@ -51,10 +55,10 @@ export default class ExamRuntimeErrorBoundary extends Component<
               Reload
             </button>
             <Link
-              to="/student/exams"
+              to={fallbackPath}
               className="rounded bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
             >
-              Back to Exams
+              {isContentRoute ? "Back to Content" : "Back to Exams"}
             </Link>
           </div>
         </div>

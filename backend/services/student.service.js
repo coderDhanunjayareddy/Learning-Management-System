@@ -88,6 +88,69 @@ const getStudentCourseIds = async (studentId) => {
   return courseRes.rows.map((r) => Number(r.course_id)).filter((courseId) => Number.isInteger(courseId) && courseId > 0);
 };
 
+const resolveExamContentMapping = async ({ examId, preferredCourseId = null, courseIds = null, client = null }) => {
+  const parsedExamId = Number(examId);
+  if (!Number.isInteger(parsedExamId) || parsedExamId <= 0) {
+    return { course_id: null, content_id: null };
+  }
+
+  const runner = client || { query: dbQuery };
+  const params = [parsedExamId];
+  const filters = [
+    `ci.item_type = 'exam'`,
+    `(
+      (
+        ci.metadata IS NOT NULL
+        AND COALESCE(ci.metadata->>'exam_id', '') ~ '^[0-9]+$'
+        AND (ci.metadata->>'exam_id')::int = $1
+      )
+      OR (
+        COALESCE(ci.content_url, '') ~ '^exam:[0-9]+$'
+        AND SUBSTRING(ci.content_url FROM '^exam:([0-9]+)$')::int = $1
+      )
+      OR (
+        COALESCE(ci.content_url, '') ~ '^[0-9]+$'
+        AND ci.content_url::int = $1
+      )
+    )`,
+  ];
+  let orderBySql = 'ci.id ASC';
+
+  if (Number.isInteger(preferredCourseId) && preferredCourseId > 0) {
+    params.push(preferredCourseId);
+    filters.push(`ci.course_id = $${params.length}`);
+  } else if (Array.isArray(courseIds) && courseIds.length > 0) {
+    const normalizedCourseIds = courseIds
+      .map((courseId) => Number(courseId))
+      .filter((courseId) => Number.isInteger(courseId) && courseId > 0);
+
+    if (normalizedCourseIds.length > 0) {
+      params.push(normalizedCourseIds);
+      filters.push(`ci.course_id = ANY($${params.length}::int[])`);
+      orderBySql = 'ci.course_id ASC, ci.id ASC';
+    }
+  }
+
+  const mappingResult = await runner.query(
+    `
+      SELECT
+        ci.course_id::int AS course_id,
+        ci.id::int AS content_id
+      FROM content_items ci
+      WHERE ${filters.join('\n        AND ')}
+      ORDER BY ${orderBySql}
+      LIMIT 1
+    `,
+    params
+  );
+
+  const mapping = mappingResult.rows[0];
+  return {
+    course_id: mapping?.course_id ? Number(mapping.course_id) : null,
+    content_id: mapping?.content_id ? Number(mapping.content_id) : null,
+  };
+};
+
 const assertStudentCanAccessExam = async ({ examId, courseIds }) => {
   if (!Array.isArray(courseIds) || courseIds.length === 0) {
     return false;
@@ -189,16 +252,50 @@ const computeRemainingSeconds = ({ startedAtRaw, totalDurationMinutes }) => {
 };
 
 const sanitizeQuestionOptions = (options) => {
-  if (!Array.isArray(options)) return options ?? null;
-  return options.map((option) => {
-    if (!option || typeof option !== "object" || Array.isArray(option)) {
-      return option;
-    }
+  if (Array.isArray(options)) {
+    return options.map((option) => {
+      if (!option || typeof option !== "object" || Array.isArray(option)) {
+        return option;
+      }
 
-    const safeOption = { ...option };
-    delete safeOption.is_correct;
-    return safeOption;
-  });
+      const safeOption = { ...option };
+      delete safeOption.is_correct;
+      return safeOption;
+    });
+  }
+
+  if (options && typeof options === "object") {
+    const source = options;
+    if (Array.isArray(source.left) || Array.isArray(source.right)) {
+      return {
+        left: sanitizeQuestionOptions(source.left || []),
+        right: sanitizeQuestionOptions(source.right || []),
+      };
+    }
+  }
+
+  return options ?? null;
+};
+
+const extractBlankIdsFromQuestion = (correctAnswer, questionText) => {
+  if (correctAnswer && typeof correctAnswer === "object" && Array.isArray(correctAnswer.blanks)) {
+    const ids = correctAnswer.blanks
+      .map((item) => String(item?.id ?? "").trim())
+      .filter(Boolean);
+    if (ids.length > 0) {
+      return ids;
+    }
+  }
+
+  const html = typeof questionText === "string"
+    ? questionText
+    : questionText && typeof questionText === "object" && typeof questionText.html === "string"
+      ? questionText.html
+      : "";
+
+  return Array.from(html.matchAll(/\{\{([^}]+)\}\}/g))
+    .map((match) => String(match[1] ?? "").trim())
+    .filter(Boolean);
 };
 
 const gradeSubmittedAttempt = async ({ attemptId }) => {
@@ -353,6 +450,7 @@ const getAttemptQuestionsAndSections = async (examId) => {
         q.question_type,
         q.question_text,
         q.options,
+        q.correct_answer,
         q.marks_positive,
         q.marks_negative
       FROM exam_sections es
@@ -393,6 +491,7 @@ const getAttemptQuestionsAndSections = async (examId) => {
       question_type: row.question_type,
       question_text: row.question_text,
       options: sanitizeQuestionOptions(row.options),
+      blank_ids: extractBlankIdsFromQuestion(row.correct_answer, row.question_text),
       marks_positive: row.marks_positive,
       marks_negative: row.marks_negative,
     });
@@ -409,7 +508,7 @@ const getAttemptQuestionsAndSections = async (examId) => {
 const getAttemptStateInternal = async ({ attemptId, studentId }) => {
   const attempt = await ensureAttemptFinalized({ attemptId, studentId });
 
-  const [responsesResult, questionBundle] = await Promise.all([
+  const [responsesResult, questionBundle, courseIds] = await Promise.all([
     dbQuery(
       `SELECT id, question_id, section_id, student_answer, is_marked_for_review, is_attempted, answered_at
        FROM exam_responses
@@ -418,7 +517,9 @@ const getAttemptStateInternal = async ({ attemptId, studentId }) => {
       [attemptId]
     ),
     getAttemptQuestionsAndSections(attempt.exam_id),
+    studentId ? getStudentCourseIds(studentId) : Promise.resolve([]),
   ]);
+  const mapping = await resolveExamContentMapping({ examId: attempt.exam_id, courseIds });
 
   const remainingSeconds = computeRemainingSeconds({
     startedAtRaw: attempt.started_at,
@@ -434,6 +535,8 @@ const getAttemptStateInternal = async ({ attemptId, studentId }) => {
       total_duration_minutes: attempt.total_duration_minutes,
       start_datetime: attempt.start_datetime,
       end_datetime: attempt.end_datetime,
+      course_id: mapping.course_id,
+      content_id: mapping.content_id,
       show_result_immediately: attempt.show_result_immediately,
       show_score: attempt.show_score,
       show_pass_or_fail: attempt.show_pass_or_fail,
@@ -484,16 +587,18 @@ const fetchAttemptQuestionResults = async ({ attemptId }) => {
   return result.rows;
 };
 
-const buildAttemptResultPayload = async ({ attempt, allowUnreleased = false }) => {
+const buildAttemptResultPayload = async ({ attempt, allowUnreleased = false, studentId = null }) => {
   const visibility = resolveExamResultVisibility(attempt);
   if (!allowUnreleased && !visibility.is_released) {
     throw new AppError("Result not available yet", 403);
   }
 
-  const [questionResults, totalPossibleMarks] = await Promise.all([
+  const [questionResults, totalPossibleMarks, courseIds] = await Promise.all([
     fetchAttemptQuestionResults({ attemptId: attempt.id }),
     fetchAttemptTotalPossibleMarks({ attemptId: attempt.id }),
+    studentId ? getStudentCourseIds(studentId) : Promise.resolve([]),
   ]);
+  const mapping = await resolveExamContentMapping({ examId: attempt.exam_id, courseIds });
 
   const attemptedCount = questionResults.filter((item) => Boolean(item.is_attempted)).length;
   const correctCount = questionResults.filter((item) => item.is_correct === true).length;
@@ -506,20 +611,21 @@ const buildAttemptResultPayload = async ({ attempt, allowUnreleased = false }) =
     : totalScore >= (totalPossibleMarks * 0.5);
 
   const responses = questionResults.map((item) => {
-    const response = {
-      question_id: Number(item.question_id),
-      section_id: Number(item.section_id),
-      section_title: item.section_title,
-      section_order: item.section_order,
-      question_order: item.question_order,
-      question_type: item.question_type,
-      question_text: item.question_text,
-      options: sanitizeQuestionOptions(item.options),
-      student_answer: item.student_answer,
-      is_attempted: item.is_attempted,
-      is_marked_for_review: item.is_marked_for_review,
-      answered_at: item.answered_at,
-    };
+      const response = {
+        question_id: Number(item.question_id),
+        section_id: Number(item.section_id),
+        section_title: item.section_title,
+        section_order: item.section_order,
+        question_order: item.question_order,
+        question_type: item.question_type,
+        question_text: item.question_text,
+        options: sanitizeQuestionOptions(item.options),
+        blank_ids: extractBlankIdsFromQuestion(item.correct_answer, item.question_text),
+        student_answer: item.student_answer,
+        is_attempted: item.is_attempted,
+        is_marked_for_review: item.is_marked_for_review,
+        answered_at: item.answered_at,
+      };
 
     if (visibility.show_score && visibility.is_released) {
       response.is_correct = item.is_correct;
@@ -571,6 +677,8 @@ const buildAttemptResultPayload = async ({ attempt, allowUnreleased = false }) =
       start_datetime: attempt.start_datetime,
       end_datetime: attempt.end_datetime,
       total_duration_minutes: attempt.total_duration_minutes,
+      course_id: mapping.course_id,
+      content_id: mapping.content_id,
     },
     visibility,
     summary,
@@ -692,7 +800,7 @@ export const getStudentExams = async (req, res) => {
     );
 
     const now = new Date();
-    const exams = examsResult.rows.map((item) => {
+    const exams = await Promise.all(examsResult.rows.map(async (item) => {
       let computed_status = item.status || 'draft';
       const startDt = item.start_datetime ? new Date(item.start_datetime) : null;
       const endDt = item.end_datetime ? new Date(item.end_datetime) : null;
@@ -711,9 +819,17 @@ export const getStudentExams = async (req, res) => {
         computed_status = item.status;
       }
 
+      const preferredCourseId = item.course_id ? Number(item.course_id) : null;
+      const mapping = await resolveExamContentMapping({
+        examId: item.id,
+        preferredCourseId,
+        courseIds,
+      });
+
       return {
         ...item,
-        course_id: item.course_id || null,
+        course_id: mapping.course_id ?? preferredCourseId ?? null,
+        content_id: mapping.content_id,
         computed_status,
         in_progress_attempt_id: item.in_progress_attempt_id ? Number(item.in_progress_attempt_id) : null,
         has_in_progress_attempt: Boolean(item.in_progress_attempt_id),
@@ -721,7 +837,7 @@ export const getStudentExams = async (req, res) => {
           ? Number(item.latest_completed_attempt_id)
           : null,
       };
-    });
+    }));
 
     res.json(exams);
   } catch (err) {
@@ -783,7 +899,7 @@ export const getAttemptResultPayloadByAttemptId = async ({ attemptId, studentId 
   if (attempt.status === "in_progress") {
     throw new AppError("Attempt is still in progress", 409);
   }
-  return buildAttemptResultPayload({ attempt, allowUnreleased });
+  return buildAttemptResultPayload({ attempt, allowUnreleased, studentId });
 };
 
 export const startExamAttempt = async (req, res) => {
@@ -1358,6 +1474,138 @@ const gradeInteger = (studentAnswer, correctAnswer) => {
   };
 };
 
+const extractMatchPairs = (value) => {
+  const source = isObject(value) ? value : null;
+  const rawPairs = Array.isArray(source?.pairs)
+    ? source.pairs
+    : Array.isArray(value)
+      ? value
+      : [];
+
+  return rawPairs
+    .map((item) => {
+      if (!isObject(item)) return null;
+      const leftId = normalizeToken(item.left_id);
+      const rightId = normalizeToken(item.right_id);
+      if (!leftId || !rightId) return null;
+      return {
+        left_id: leftId,
+        right_id: rightId,
+      };
+    })
+    .filter(Boolean);
+};
+
+const extractFillBlankValues = (value) => {
+  if (isBlankValue(value)) return [];
+
+  if (isObject(value) && Array.isArray(value.blanks)) {
+    return value.blanks
+      .map((item) => {
+        if (!isObject(item)) return null;
+        const id = normalizeToken(item.id);
+        const entryValue = item.value ?? item.answer ?? item.raw ?? "";
+        if (!id) return null;
+        return {
+          id,
+          value: String(entryValue ?? "").trim(),
+        };
+      })
+      .filter(Boolean);
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => {
+        if (!isObject(item)) return null;
+        const id = normalizeToken(item.id);
+        if (!id) return null;
+        return {
+          id,
+          value: String(item.value ?? item.answer ?? item.raw ?? "").trim(),
+        };
+      })
+      .filter(Boolean);
+  }
+
+  if (isObject(value)) {
+    return Object.entries(value)
+      .filter(([key]) => key !== "blanks")
+      .map(([key, item]) => ({
+        id: String(key).trim(),
+        value: String(item ?? "").trim(),
+      }))
+      .filter((item) => item.id);
+  }
+
+  return [];
+};
+
+const normalizeAnswerString = (value) => String(value ?? "").trim().toLowerCase();
+
+const gradeMatchFollowing = (studentAnswer, correctAnswer) => {
+  const studentPairs = extractMatchPairs(studentAnswer);
+  if (studentPairs.length === 0) {
+    return { isCorrect: false, isUnattempted: true };
+  }
+
+  const correctPairs = extractMatchPairs(correctAnswer);
+  if (correctPairs.length === 0) {
+    return { isCorrect: false, isUnattempted: false };
+  }
+
+  const studentNormalized = [...new Set(studentPairs.map((pair) => `${pair.left_id}=>${pair.right_id}`))].sort();
+  const correctNormalized = [...new Set(correctPairs.map((pair) => `${pair.left_id}=>${pair.right_id}`))].sort();
+
+  const isExactMatch = studentNormalized.length === correctNormalized.length &&
+    studentNormalized.every((pair, index) => pair === correctNormalized[index]);
+
+  return {
+    isCorrect: isExactMatch,
+    isUnattempted: false,
+  };
+};
+
+const gradeFillInBlank = (studentAnswer, correctAnswer) => {
+  const studentBlanks = extractFillBlankValues(studentAnswer);
+  const answeredBlanks = studentBlanks.filter((item) => normalizeAnswerString(item.value).length > 0);
+
+  if (answeredBlanks.length === 0) {
+    return { isCorrect: false, isUnattempted: true };
+  }
+
+  const correctBlanks = isObject(correctAnswer) && Array.isArray(correctAnswer.blanks)
+    ? correctAnswer.blanks
+      .map((item) => {
+        if (!isObject(item)) return null;
+        return {
+          id: normalizeToken(item.id),
+          answers: Array.isArray(item.answers)
+            ? item.answers.map((answer) => normalizeAnswerString(answer)).filter(Boolean)
+            : [],
+        };
+      })
+      .filter((item) => item && item.id)
+    : [];
+
+  if (correctBlanks.length === 0) {
+    return { isCorrect: false, isUnattempted: false };
+  }
+
+  const studentMap = new Map(studentBlanks.map((item) => [item.id, normalizeAnswerString(item.value)]));
+
+  const allCorrect = correctBlanks.every((blank) => {
+    const studentValue = studentMap.get(blank.id) ?? "";
+    if (!studentValue) return false;
+    return blank.answers.includes(studentValue);
+  });
+
+  return {
+    isCorrect: allCorrect,
+    isUnattempted: false,
+  };
+};
+
 // ============================================
 // Task 4: Grading Orchestrator + Totals
 // ============================================
@@ -1453,6 +1701,18 @@ const gradeAttempt = async (client, attemptId) => {
       }
       case 'integer': {
         const result = gradeInteger(studentAnswer, correctAnswer);
+        isCorrect = result.isCorrect;
+        isUnattempted = result.isUnattempted;
+        break;
+      }
+      case 'match_following': {
+        const result = gradeMatchFollowing(studentAnswer, correctAnswer);
+        isCorrect = result.isCorrect;
+        isUnattempted = result.isUnattempted;
+        break;
+      }
+      case 'fill_in_blank': {
+        const result = gradeFillInBlank(studentAnswer, correctAnswer);
         isCorrect = result.isCorrect;
         isUnattempted = result.isUnattempted;
         break;

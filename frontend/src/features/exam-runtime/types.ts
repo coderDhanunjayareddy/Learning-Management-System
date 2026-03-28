@@ -6,6 +6,31 @@ export interface RuntimeOption {
   text: string | { html?: string | null } | null;
 }
 
+export interface RuntimeMatchOptionSet {
+  left: RuntimeOption[];
+  right: RuntimeOption[];
+}
+
+export interface RuntimeMatchPair {
+  left_id: string;
+  right_id: string;
+}
+
+export interface RuntimeFillBlankEntry {
+  id: string;
+  value: string;
+}
+
+export interface RuntimeMatchFollowingAnswer {
+  pairs: RuntimeMatchPair[];
+}
+
+export interface RuntimeFillBlankAnswer {
+  blanks: RuntimeFillBlankEntry[];
+}
+
+export type RuntimeQuestionOptions = RuntimeOption[] | RuntimeMatchOptionSet;
+
 export interface RuntimeSection {
   id: number;
   title: string;
@@ -24,7 +49,8 @@ export interface RuntimeQuestion {
   sequence: number;
   question_type: RuntimeQuestionType;
   question_text: string | { html?: string | null } | null;
-  options: RuntimeOption[];
+  options: RuntimeQuestionOptions;
+  blank_ids?: string[];
   marks_positive?: number | null;
   marks_negative?: number | null;
 }
@@ -54,6 +80,8 @@ export interface RuntimeAttempt {
 export interface RuntimeExam {
   id: number;
   title: string;
+  course_id?: number | null;
+  content_id?: number | null;
   instructions?: string | null;
   total_duration_minutes?: number | null;
   start_datetime?: string | null;
@@ -120,7 +148,8 @@ export interface AttemptResultQuestionResponse {
   question_order: number | null;
   question_type: RuntimeQuestionType;
   question_text: string | { html?: string | null } | null;
-  options: RuntimeOption[];
+  options: RuntimeQuestionOptions;
+  blank_ids?: string[];
   student_answer: unknown;
   is_attempted: boolean;
   is_marked_for_review: boolean;
@@ -149,6 +178,8 @@ export interface AttemptResultResponse {
   exam: {
     id: number;
     title: string;
+    course_id?: number | null;
+    content_id?: number | null;
     start_datetime: string | null;
     end_datetime: string | null;
     total_duration_minutes: number | null;

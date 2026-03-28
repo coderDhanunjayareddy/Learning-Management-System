@@ -1,3 +1,10 @@
+import {
+  getBlankIds,
+  getOptionHtml,
+  isMatchOptions,
+  normalizeFillBlankAnswer,
+  normalizeMatchAnswer,
+} from "@/features/exam-runtime/questionHelpers";
 import type { AttemptResultQuestionResponse, RuntimeOption } from "@/features/exam-runtime/types";
 
 interface AnswerAnalysisBlockProps {
@@ -5,13 +12,6 @@ interface AnswerAnalysisBlockProps {
   showCorrectAnswer: boolean;
   showMarks: boolean;
 }
-
-const getOptionHtml = (value: RuntimeOption["text"]) => {
-  if (typeof value === "string") return value;
-  if (value && typeof value === "object" && typeof value.html === "string") return value.html;
-  if (value === null || value === undefined) return "";
-  return String(value);
-};
 
 const stripHtml = (value: string) => value.replace(/<[^>]+>/g, "").trim();
 
@@ -88,7 +88,7 @@ const getOptionKeys = (option: RuntimeOption, index: number) => {
 };
 
 const buildOptionsForReview = (question: AttemptResultQuestionResponse): RuntimeOption[] => {
-  if (question.options.length) return question.options;
+  if (Array.isArray(question.options) && question.options.length) return question.options;
   if (question.question_type === "true_false") {
     return [
       { id: "true", text: "True" },
@@ -96,6 +96,149 @@ const buildOptionsForReview = (question: AttemptResultQuestionResponse): Runtime
     ];
   }
   return [];
+};
+
+const normalizeCorrectBlankAnswers = (value: unknown) => {
+  const source = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const blanks = Array.isArray(source.blanks) ? source.blanks : [];
+
+  return blanks
+    .map((item) => {
+      const entry = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
+      return {
+        id: String(entry.id ?? "").trim(),
+        answers: Array.isArray(entry.answers) ? entry.answers.map((answer) => String(answer)) : [],
+      };
+    })
+    .filter((item) => item.id);
+};
+
+const renderMatchAnalysis = (question: AttemptResultQuestionResponse, showCorrectAnswer: boolean) => {
+  if (!isMatchOptions(question.options)) {
+    return (
+      <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+        Matching review is unavailable because the option data is malformed.
+      </div>
+    );
+  }
+
+  const studentMap = new Map(
+    normalizeMatchAnswer(question.student_answer).pairs.map((pair) => [pair.left_id, pair.right_id])
+  );
+  const correctMap = new Map(
+    (showCorrectAnswer ? normalizeMatchAnswer(question.correct_answer).pairs : []).map((pair) => [
+      pair.left_id,
+      pair.right_id,
+    ])
+  );
+  const rightById = new Map(question.options.right.map((item) => [item.id, item]));
+
+  return (
+    <div className="mt-3 space-y-2">
+      {question.options.left.map((leftOption, index) => {
+        const selectedId = studentMap.get(leftOption.id) ?? "";
+        const correctId = correctMap.get(leftOption.id) ?? "";
+        const selectedOption = selectedId ? rightById.get(selectedId) : null;
+        const correctOption = correctId ? rightById.get(correctId) : null;
+        const isCorrectPair = Boolean(showCorrectAnswer && selectedId && correctId && selectedId === correctId);
+
+        const rowClass = !question.is_attempted
+          ? "border-amber-200 bg-amber-50"
+          : isCorrectPair
+            ? "border-emerald-300 bg-emerald-50"
+            : selectedId && showCorrectAnswer
+              ? "border-rose-300 bg-rose-50"
+              : selectedId
+                ? "border-blue-300 bg-blue-50"
+                : "border-slate-200 bg-white";
+
+        return (
+          <div key={leftOption.id} className={`rounded-lg border px-3 py-3 ${rowClass}`}>
+            <div className="flex items-start gap-2">
+              <span className="mt-0.5 text-xs font-semibold text-slate-600">{index + 1}.</span>
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-semibold text-slate-800" dangerouslySetInnerHTML={{ __html: getOptionHtml(leftOption.text) }} />
+                <p className="mt-2 text-xs text-slate-500">Student Match</p>
+                <p className="text-sm font-medium text-slate-800">
+                  {selectedOption ? stripHtml(getOptionHtml(selectedOption.text)) : "Not Answered"}
+                </p>
+                {showCorrectAnswer ? (
+                  <>
+                    <p className="mt-2 text-xs text-emerald-700">Correct Match</p>
+                    <p className="text-sm font-medium text-emerald-800">
+                      {correctOption ? stripHtml(getOptionHtml(correctOption.text)) : "Unavailable"}
+                    </p>
+                  </>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+const renderFillBlankAnalysis = (question: AttemptResultQuestionResponse, showCorrectAnswer: boolean) => {
+  const studentBlanks = normalizeFillBlankAnswer(question.student_answer, question.blank_ids ?? []);
+  const correctBlanks = normalizeCorrectBlankAnswers(question.correct_answer);
+  const blankIds = getBlankIds(question).length
+    ? getBlankIds(question)
+    : Array.from(
+        new Set([
+          ...studentBlanks.blanks.map((item) => item.id),
+          ...correctBlanks.map((item) => item.id),
+        ])
+      );
+
+  const studentById = new Map(studentBlanks.blanks.map((item) => [item.id, item.value]));
+  const correctById = new Map(correctBlanks.map((item) => [item.id, item.answers]));
+
+  if (!blankIds.length) {
+    return (
+      <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+        Fill-in-the-blank review is unavailable because the blank metadata is malformed.
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-3 space-y-2">
+      {blankIds.map((blankId, index) => {
+        const studentValue = studentById.get(blankId) ?? "";
+        const correctAnswers = correctById.get(blankId) ?? [];
+        const normalizedStudent = normalizeToken(studentValue);
+        const isCorrectBlank = Boolean(
+          showCorrectAnswer &&
+            normalizedStudent &&
+            correctAnswers.some((answer) => normalizeToken(answer) === normalizedStudent)
+        );
+
+        const rowClass = !studentValue.trim()
+          ? "border-amber-200 bg-amber-50"
+          : isCorrectBlank
+            ? "border-emerald-300 bg-emerald-50"
+            : showCorrectAnswer
+              ? "border-rose-300 bg-rose-50"
+              : "border-blue-300 bg-blue-50";
+
+        return (
+          <div key={blankId} className={`rounded-lg border px-3 py-3 ${rowClass}`}>
+            <p className="text-xs font-semibold text-slate-500">Blank {index + 1}</p>
+            <p className="mt-1 text-sm font-medium text-slate-800">{studentValue.trim() || "Not Answered"}</p>
+            {showCorrectAnswer ? (
+              <>
+                <p className="mt-2 text-xs font-semibold text-emerald-700">Accepted Answers</p>
+                <p className="text-sm font-medium text-emerald-800">
+                  {correctAnswers.length ? correctAnswers.join(", ") : "Unavailable"}
+                </p>
+              </>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
 };
 
 export default function AnswerAnalysisBlock({
@@ -116,7 +259,11 @@ export default function AnswerAnalysisBlock({
         <p className="mt-2 text-sm font-medium text-amber-700">Not Attempted</p>
       ) : null}
 
-      {hasOptionView ? (
+      {question.question_type === "match_following" ? (
+        renderMatchAnalysis(question, showCorrectAnswer)
+      ) : question.question_type === "fill_in_blank" ? (
+        renderFillBlankAnalysis(question, showCorrectAnswer)
+      ) : hasOptionView ? (
         <div className="mt-3 space-y-2">
           {options.map((option, index) => {
             const keys = getOptionKeys(option, index);
@@ -190,3 +337,4 @@ export default function AnswerAnalysisBlock({
     </div>
   );
 }
+

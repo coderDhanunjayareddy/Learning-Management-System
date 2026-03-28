@@ -66,10 +66,11 @@ export default function ReviewQuestionCard({
           question={{
             question_type: question.question_type,
             question_text: question.question_text,
-            options: [],
+            options: question.options,
+            correct_answer: question.correct_answer,
           }}
           showMeta={false}
-          showOptions={false}
+          showOptions={question.question_type === "match_following"}
           showComprehension={true}
           showEmptyState={false}
         />
