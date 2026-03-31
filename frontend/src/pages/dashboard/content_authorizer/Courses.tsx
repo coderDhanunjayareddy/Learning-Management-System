@@ -4,7 +4,7 @@ import { useAuth } from "@/features/auth/hooks/useAuth";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import SidebarNav from "@/components/layout/SidebarNav";
 import { getDashboardTheme } from "@/components/layout/dashboardTheme";
-import { RiHome2Line, RiFileList3Line } from "react-icons/ri";
+import { RiHome2Line, RiFileList3Line, RiStackLine } from "react-icons/ri";
 import { BiBookOpen } from "react-icons/bi";
 import { PiUsersBold, PiChatsCircleBold } from "react-icons/pi";
 import AdminCourseManager from "@/features/courses/components/list/AdminCourseManager";
@@ -39,6 +39,13 @@ export default function ContentAuthorizerCourses() {
       icon: <RiFileList3Line />,
       active: false,
       onClick: () => navigate("/question-bank"),
+    },
+    {
+      key: "packs",
+      label: "Packs",
+      icon: <RiStackLine />,
+      active: false,
+      onClick: () => navigate("/content-authorizer/packs"),
     },
     {
       key: "users",

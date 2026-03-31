@@ -16,6 +16,7 @@ import EnrollmentRouter from './routes/enrollment.routes.js';
 import CourseRouter from './routes/course.routes.js';
 import userRoutes from './routes/user.routes.js';
 import platformRoutes from './routes/platform.routes.js';
+import packBuilderRoutes from './routes/packBuilder.routes.js';
 import orgRoutes from './routes/org.routes.js';
 import curriculumRoutes from './routes/curriculum.routes.js';
 import questionsRoutes from './routes/questions.routes.js';
@@ -120,6 +121,7 @@ app.use('/api/course', CourseRouter);
 
 app.use('/api/users', userRoutes);
 app.use('/api/platform', platformRoutes);
+app.use('/api', packBuilderRoutes);
 app.use('/api/org', orgRoutes);
 app.use('/api', curriculumRoutes);
 app.use('/api', questionsRoutes);

@@ -21,8 +21,8 @@ Scope: PostgreSQL schema + migration steps up through v1.1 (multi-tenant feature
 - school_memberships: users linked to schools with role_scope (school_owner, teacher, student, admin).
 - batches: groups within a school and client.
 - batch_members: users linked to batches.
-- content_packs: bundles of content items.
-- content_pack_items: join table content_packs <-> content_items.
+- content_packs: bundles of courses.
+- content_pack_items: join table content_packs <-> courses.
 - content_entitlements: time-bound content access for clients (either specific content or a pack).
 - role_permissions: per-role permission map; client_id can be NULL for global defaults.
 - audit_logs: action audit trail with before/after JSONB and metadata.
@@ -52,7 +52,7 @@ Scope: PostgreSQL schema + migration steps up through v1.1 (multi-tenant feature
 - update_timestamp() updates updated_at on rows.
 - Triggers for: courses, content_items, clients, schools, school_memberships, batches, content_packs.
 - log_audit() inserts into audit_logs and returns id.
-- client_has_content_access() checks active entitlement for a content item (direct or via pack).
+- client_has_content_access() checks active entitlement for a content item (direct or via a pack's courses).
 
 ## Views
 - user_hierarchy: user with client/school membership context.

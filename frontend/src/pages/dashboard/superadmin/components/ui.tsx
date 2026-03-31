@@ -1,6 +1,6 @@
 ﻿import React from 'react';
 
-export function Badge({ tone, children }: { tone: string; children: string }) {
+export function Badge({ tone, children }: { tone: string; children: React.ReactNode }) {
   return (
     <span
       className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${tone}`}

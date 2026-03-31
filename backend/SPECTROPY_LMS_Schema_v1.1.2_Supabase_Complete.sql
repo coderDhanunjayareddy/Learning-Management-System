@@ -329,15 +329,15 @@ EXECUTE FUNCTION update_timestamp();
 
 -- =====================================
 -- 1.7 CONTENT_PACK_ITEMS
--- Purpose: Junction table linking content items to packs
+-- Purpose: Junction table linking courses to packs
 CREATE TABLE content_pack_items (
   pack_id INTEGER NOT NULL REFERENCES content_packs(id) ON DELETE CASCADE,
-  content_id INTEGER NOT NULL REFERENCES content_items(id) ON DELETE CASCADE,
-  PRIMARY KEY (pack_id, content_id)
+  item_id INTEGER NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+  PRIMARY KEY (pack_id, item_id)
 );
 
 CREATE INDEX idx_content_pack_items_pack ON content_pack_items(pack_id);
-CREATE INDEX idx_content_pack_items_content ON content_pack_items(content_id);
+CREATE INDEX idx_content_pack_items_item ON content_pack_items(item_id);
 
 -- =====================================
 -- 1.8 CONTENT_ENTITLEMENTS
@@ -838,13 +838,15 @@ DECLARE
   v_has_access BOOLEAN;
 BEGIN
   SELECT EXISTS (
-    SELECT 1 FROM content_entitlements ce
+    SELECT 1
+    FROM content_entitlements ce
     LEFT JOIN content_pack_items cpi ON ce.pack_id = cpi.pack_id
+    LEFT JOIN content_items ci ON ci.course_id = cpi.item_id
     WHERE ce.client_id = p_client_id
       AND ce.status = 'active'
       AND NOW() BETWEEN ce.start_at AND ce.end_at
-      AND (ce.content_id = p_content_id OR cpi.content_id = p_content_id)
-  ) INTO v_has_access;
+      AND (ce.content_id = p_content_id OR ci.id = p_content_id)
+    ) INTO v_has_access;
   
   RETURN v_has_access;
 END;
@@ -921,7 +923,7 @@ SELECT
   END AS has_active_access
 FROM content_items ci
 JOIN courses co ON ci.course_id = co.id
-LEFT JOIN content_pack_items cpi ON ci.id = cpi.content_id
+LEFT JOIN content_pack_items cpi ON ci.course_id = cpi.item_id
 LEFT JOIN content_entitlements ce ON (ce.content_id = ci.id OR ce.pack_id = cpi.pack_id)
 LEFT JOIN clients c ON ce.client_id = c.id;
 

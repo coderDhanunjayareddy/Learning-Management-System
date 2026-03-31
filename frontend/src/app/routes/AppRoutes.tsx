@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '@/app/providers/AuthProvider';
 import Spinner from '@/components/ui/Spinner';
+import type { Role } from '@/features/auth/types';
 import ProtectedRoute from './ProtectedRoute';
 
 // Auth pages
@@ -38,6 +39,7 @@ import ContentAuthorizerProfile from '@/pages/dashboard/content_authorizer/Profi
 import ContentAuthorizerCourseContent from '@/pages/course/content_authorizer/CourseContent';
 import ContentAuthorizerCourses from '@/pages/dashboard/content_authorizer/Courses';
 import ContentAuthorizerDashboard from '@/pages/dashboard/content_authorizer/Dashboard';
+import ContentAuthorizerPacksPage from '@/pages/dashboard/content_authorizer/PacksPage';
 import SchoolOwnerProfile from '@/pages/dashboard/school_owner/Profile';
 import SchoolOwnerCourseContent from '@/pages/course/school_owner/CourseContent';
 import SchoolOwnerCourses from '@/pages/dashboard/school_owner/Courses';
@@ -80,8 +82,8 @@ export default function AppRoutes() {
   if (loading) return <Spinner />;
 
   // Helper to group protected routes and reduce repetition
-  const Protect = ({ roles }: { roles: string[] }) => (
-    <ProtectedRoute allowedRoles={roles as any}>
+  const Protect = ({ roles }: { roles: Role[] }) => (
+    <ProtectedRoute allowedRoles={roles}>
       <Outlet />
     </ProtectedRoute>
   );
@@ -130,6 +132,7 @@ export default function AppRoutes() {
       <Route element={<Protect roles={['content_authorizer', 'super_admin']} />}>
         <Route path="/content-authorizer/dashboard" element={<ContentAuthorizerDashboard />} />
         <Route path="/content-authorizer/courses" element={<ContentAuthorizerCourses />} />
+        <Route path="/content-authorizer/packs" element={<ContentAuthorizerPacksPage />} />
         <Route path="/content-authorizer/courses/:courseId/content" element={<ContentAuthorizerCourseContent />} />
         <Route path="/content-authorizer/profile" element={<ContentAuthorizerProfile />} />
       </Route>

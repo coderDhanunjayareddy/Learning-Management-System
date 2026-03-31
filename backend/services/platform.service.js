@@ -182,19 +182,19 @@ export const deactivateContentPack = async (req, res) => {
 
 export const addContentPackItems = async (req, res) => {
   const { id } = req.params;
-  const { content_ids } = req.body;
+  const rawIds = req.body?.item_ids ?? req.body?.content_ids;
 
-  if (!Array.isArray(content_ids) || content_ids.length === 0) {
-    return res.status(400).json({ error: 'content_ids must be a non-empty array' });
+  if (!Array.isArray(rawIds) || rawIds.length === 0) {
+    return res.status(400).json({ error: 'item_ids must be a non-empty array' });
   }
 
   try {
-    const ids = content_ids.map((contentId) => Number(contentId)).filter(Number.isInteger);
+    const ids = rawIds.map((itemId) => Number(itemId)).filter(Number.isInteger);
     if (ids.length === 0) {
-      return res.status(400).json({ error: 'content_ids must contain integers' });
+      return res.status(400).json({ error: 'item_ids must contain integers' });
     }
     await dbQuery(
-      `INSERT INTO content_pack_items (pack_id, content_id)
+      `INSERT INTO content_pack_items (pack_id, item_id)
        SELECT $1, UNNEST($2::int[])
        ON CONFLICT DO NOTHING`,
       [Number(id), ids]
@@ -210,7 +210,7 @@ export const removeContentPackItem = async (req, res) => {
   const { id, contentId } = req.params;
   try {
     await dbQuery(
-      `DELETE FROM content_pack_items WHERE pack_id = $1 AND content_id = $2`,
+      `DELETE FROM content_pack_items WHERE pack_id = $1 AND item_id = $2`,
       [id, contentId]
     );
     res.json({ success: true });
