@@ -96,3 +96,27 @@ export interface RemovePackItemResponse {
   removed: boolean;
   item_count: number;
 }
+
+export interface EditablePackFormValues {
+  name: string;
+  description: string;
+}
+
+export interface EditableCourseFormValues {
+  name: string;
+  grade: string;
+  subject: string;
+}
+
+export interface ClientOption {
+  id: number;
+  name: string;
+}
+
+export interface PackEntitlementFormValues {
+  client_id: string;
+  pack_id: number;
+  start_at: string;
+  end_at: string;
+  status: string;
+}

@@ -13,6 +13,7 @@ import PlatformDashboard from '@/pages/dashboard/superadmin/PlatformDashboard';
 import RegisterAdmin from '@/pages/dashboard/superadmin/RegisterAdmin';
 import ClientsPage from '@/pages/dashboard/superadmin/ClientsPage';
 import PacksPage from '@/pages/dashboard/superadmin/PacksPage';
+import PackManagePage from '@/pages/dashboard/superadmin/PackManagePage';
 import EntitlementsPage from '@/pages/dashboard/superadmin/EntitlementsPage';
 import UsersPage from '@/pages/dashboard/superadmin/UsersPage';
 import PermissionsPage from '@/pages/dashboard/superadmin/PermissionsPage';
@@ -40,6 +41,7 @@ import ContentAuthorizerCourseContent from '@/pages/course/content_authorizer/Co
 import ContentAuthorizerCourses from '@/pages/dashboard/content_authorizer/Courses';
 import ContentAuthorizerDashboard from '@/pages/dashboard/content_authorizer/Dashboard';
 import ContentAuthorizerPacksPage from '@/pages/dashboard/content_authorizer/PacksPage';
+import ContentAuthorizerPackManagePage from '@/pages/dashboard/content_authorizer/PackManagePage';
 import SchoolOwnerProfile from '@/pages/dashboard/school_owner/Profile';
 import SchoolOwnerCourseContent from '@/pages/course/school_owner/CourseContent';
 import SchoolOwnerCourses from '@/pages/dashboard/school_owner/Courses';
@@ -102,6 +104,7 @@ export default function AppRoutes() {
         <Route path="/superadmin/dashboard" element={<PlatformDashboard />} />
         <Route path="/superadmin/clients" element={<ClientsPage />} />
         <Route path="/superadmin/packs" element={<PacksPage />} />
+        <Route path="/superadmin/packs/:packId" element={<PackManagePage />} />
         <Route path="/superadmin/entitlements" element={<EntitlementsPage />} />
         <Route path="/superadmin/users" element={<UsersPage />} />
         <Route path="/superadmin/permissions" element={<PermissionsPage />} />
@@ -133,6 +136,7 @@ export default function AppRoutes() {
         <Route path="/content-authorizer/dashboard" element={<ContentAuthorizerDashboard />} />
         <Route path="/content-authorizer/courses" element={<ContentAuthorizerCourses />} />
         <Route path="/content-authorizer/packs" element={<ContentAuthorizerPacksPage />} />
+        <Route path="/content-authorizer/packs/:packId" element={<ContentAuthorizerPackManagePage />} />
         <Route path="/content-authorizer/courses/:courseId/content" element={<ContentAuthorizerCourseContent />} />
         <Route path="/content-authorizer/profile" element={<ContentAuthorizerProfile />} />
       </Route>

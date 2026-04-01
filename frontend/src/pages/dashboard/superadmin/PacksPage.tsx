@@ -1,13 +1,13 @@
-import PackBuilderWorkspace from '@/features/packs/components/PackBuilderWorkspace';
+import PackListWorkspace from '@/features/packs/components/PackListWorkspace';
 import SuperAdminShell from './components/SuperAdminShell';
 
 export default function PacksPage() {
   return (
     <SuperAdminShell
-      title="Pack Builder"
-      subtitle="Create platform courses, attach content items to packs, and review grouped composition."
+      title="Content Packs"
+      subtitle="Create, edit, deactivate, and assign pack-level entitlements from one list view."
     >
-      <PackBuilderWorkspace />
+      <PackListWorkspace basePath="/superadmin/packs" />
     </SuperAdminShell>
   );
 }

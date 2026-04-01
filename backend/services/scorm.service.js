@@ -71,23 +71,31 @@ const ensureContentAccessById = async (contentId, req) => {
 const ensureContentAccessByPath = async (filePath, req) => {
   const role = req.user?.role;
   const clientId = req.user?.client_id;
-  if (role === "super_admin") return true;
-  if (!clientId) return false;
+  const isPlatformAdmin = role === "super_admin" || role === "content_authorizer";
+
+  if (!isPlatformAdmin && !clientId) {
+    return false;
+  }
 
   const normalizedPath = String(filePath || "").replace(/^\/+/, "");
   if (!normalizedPath || normalizedPath.includes('..') || normalizedPath.startsWith('http')) return false;
 
-  const result = await dbQuery(
-    `
+  const params = [normalizedPath];
+  let query = `
     SELECT 1
     FROM content_items ci
     JOIN courses c ON ci.course_id = c.id
     WHERE (ci.content_url = $1 OR $1 LIKE (regexp_replace(ci.content_url, '/[^/]+$', '') || '/%'))
-      AND c.client_id = $2
-    LIMIT 1
-    `,
-    [normalizedPath, clientId]
-  );
+  `;
+
+  if (!isPlatformAdmin) {
+    query += ` AND c.client_id = $2`;
+    params.push(clientId);
+  }
+
+  query += ` LIMIT 1`;
+
+  const result = await dbQuery(query, params);
 
   return result.rows.length > 0;
 };
@@ -571,5 +579,3 @@ export const viewScormFile = async (req, res) => {
     res.status(500).send("Server Error");
   }
 };
-
-

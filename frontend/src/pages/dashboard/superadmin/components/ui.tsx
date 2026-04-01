@@ -70,14 +70,17 @@ export function GhostButton({
   onClick,
   disabled,
   className = '',
+  type = 'button',
 }: {
   children: string;
   onClick?: () => void;
   disabled?: boolean;
   className?: string;
+  type?: 'button' | 'submit';
 }) {
   return (
     <button
+      type={type}
       onClick={onClick}
       disabled={disabled}
       className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${

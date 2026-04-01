@@ -1,14 +1,26 @@
-import { startTransition, useDeferredValue, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import {
+  type FormEvent,
+  startTransition,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
-import Pagination from '@/components/ui/Pagination';
-import { Badge, GhostButton, PrimaryButton } from '@/pages/dashboard/superadmin/components/ui';
+import PackOverviewTab from './PackOverviewTab';
+import PackBuilderTab from './PackBuilderTab';
+import PackReviewTab from './PackReviewTab';
+import PackWorkspaceTabs, { type PackWorkspaceTab } from './PackWorkspaceTabs';
+import { CreateCourseDialog } from './PackDialogs';
+import { Badge, GhostButton } from '@/pages/dashboard/superadmin/components/ui';
 import type {
   AddPackItemsResponse,
   CourseContentPreviewItem,
   CourseSearchResult,
   CreateCourseResponse,
-  CreatePackResponse,
+  EditableCourseFormValues,
   PackCompositionSummary,
   PackItemPreview,
   PackSummary,
@@ -18,13 +30,26 @@ import type {
 
 const PACK_PAGE_SIZE = 8;
 const COURSE_PAGE_SIZE = 8;
+const EMPTY_COURSE_FORM: EditableCourseFormValues = { name: '', grade: '', subject: '' };
 
-const prettyType = (value: string) => (value === 'exam' ? 'Quiz' : value === 'pdf' ? 'PDF' : value === 'video' ? 'Video' : value);
-const packLabel = (pack: PackSummary) => `${pack.name} | ${pack.item_count} items`;
 const readError = (error: unknown, fallback: string) =>
-  typeof error === 'object' && error !== null && (error as { response?: { data?: { error?: string } } }).response?.data?.error
+  typeof error === 'object' &&
+  error !== null &&
+  (error as { response?: { data?: { error?: string } } }).response?.data?.error
     ? String((error as { response?: { data?: { error?: string } } }).response?.data?.error)
     : fallback;
+
+const buildPackItemPreview = (item: CourseContentPreviewItem): PackItemPreview => ({
+  id: item.id,
+  course_id: item.course_id,
+  course_name: item.course_name,
+  item_type: item.item_type,
+  title: item.title,
+  created_at: item.created_at,
+  attached_at: new Date().toISOString(),
+  grade: item.grade,
+  subject: item.subject,
+});
 
 type PendingRemoval = {
   packId: number;
@@ -32,14 +57,18 @@ type PendingRemoval = {
   toastId: string;
   packItems: PaginatedResponse<PackItemPreview> | null;
   packSummary: PackCompositionSummary | null;
-  packs: PackSummary[];
+  selectedPack: PackSummary | null;
 };
 
-export default function PackBuilderWorkspace() {
-  const [packs, setPacks] = useState<PackSummary[]>([]);
-  const [packsLoading, setPacksLoading] = useState(true);
-  const [packsError, setPacksError] = useState<string | null>(null);
-  const [selectedPackId, setSelectedPackId] = useState<number | null>(null);
+interface PackBuilderWorkspaceProps {
+  packId: number;
+}
+
+export default function PackBuilderWorkspace({ packId }: PackBuilderWorkspaceProps) {
+  const [activeTab, setActiveTab] = useState<PackWorkspaceTab>('review');
+  const [selectedPack, setSelectedPack] = useState<PackSummary | null>(null);
+  const [packMetaLoading, setPackMetaLoading] = useState(true);
+  const [packMetaError, setPackMetaError] = useState<string | null>(null);
 
   const [packItems, setPackItems] = useState<PaginatedResponse<PackItemPreview> | null>(null);
   const [packItemsLoading, setPackItemsLoading] = useState(false);
@@ -56,7 +85,6 @@ export default function PackBuilderWorkspace() {
   const [courseResults, setCourseResults] = useState<CourseSearchResult[]>([]);
   const [coursesLoading, setCoursesLoading] = useState(false);
   const [coursesError, setCoursesError] = useState<string | null>(null);
-  const [courseReloadKey, setCourseReloadKey] = useState(0);
   const [selectedCourse, setSelectedCourse] = useState<CourseSearchResult | null>(null);
 
   const [courseContent, setCourseContent] = useState<PaginatedResponse<CourseContentPreviewItem> | null>(null);
@@ -68,50 +96,52 @@ export default function PackBuilderWorkspace() {
   const [addSubmitting, setAddSubmitting] = useState(false);
   const [attachSubmitting, setAttachSubmitting] = useState(false);
   const [pendingRemoveIds, setPendingRemoveIds] = useState<number[]>([]);
-
-  const [courseModalOpen, setCourseModalOpen] = useState(false);
-  const [courseModalSubmitting, setCourseModalSubmitting] = useState(false);
-  const [courseForm, setCourseForm] = useState({ name: '', grade: '', subject: '' });
-  const [courseFormErrors, setCourseFormErrors] = useState<{ name?: string; grade?: string }>({});
-  const [packModalOpen, setPackModalOpen] = useState(false);
-  const [packModalSubmitting, setPackModalSubmitting] = useState(false);
-  const [packForm, setPackForm] = useState({ name: '', description: '' });
-  const [packFormErrors, setPackFormErrors] = useState<{ name?: string }>({});
+  const [createCourseOpen, setCreateCourseOpen] = useState(false);
+  const [createCourseSubmitting, setCreateCourseSubmitting] = useState(false);
+  const [createCourseForm, setCreateCourseForm] = useState<EditableCourseFormValues>(EMPTY_COURSE_FORM);
+  const [createCourseErrors, setCreateCourseErrors] = useState<{ name?: string; grade?: string }>({});
 
   const pendingRemovalRef = useRef<Map<number, PendingRemoval>>(new Map());
 
-  const selectedPack = useMemo(() => packs.find((pack) => pack.id === selectedPackId) ?? null, [packs, selectedPackId]);
   const selectedCourseItems = useMemo(
     () => (courseContent?.data ?? []).filter((item) => selectedItemIds.includes(item.id)),
-    [courseContent, selectedItemIds]
+    [courseContent?.data, selectedItemIds],
   );
 
   const syncPackMetrics = (itemCount: number, groups?: PackCompositionSummary['groups']) => {
-    if (!selectedPackId) return;
-    setPacks((current) =>
-      current.map((pack) =>
-        pack.id === selectedPackId
-          ? { ...pack, item_count: itemCount, course_count: groups ? new Set(groups.map((group) => group.course_id)).size : pack.course_count }
-          : pack
-      )
+    setSelectedPack((current) =>
+      current
+        ? {
+            ...current,
+            item_count: itemCount,
+            course_count: groups ? new Set(groups.map((group) => group.course_id)).size : current.course_count,
+          }
+        : current,
     );
   };
 
-  const refreshPacks = async (silent = false) => {
+  const refreshSelectedPack = async (silent = false) => {
     try {
-      if (!silent) setPacksLoading(true);
-      setPacksError(null);
-      const response = await api.get<PaginatedResponse<PackSummary>>('/packs', { params: { page: 1, page_size: 100 } });
-      setPacks(response.data.data);
-      setSelectedPackId((current) => (current && response.data.data.some((pack) => pack.id === current) ? current : response.data.data[0]?.id ?? null));
+      if (!silent) setPackMetaLoading(true);
+      setPackMetaError(null);
+      const response = await api.get<PaginatedResponse<PackSummary>>('/packs', {
+        params: { page: 1, page_size: 100 },
+      });
+      const pack = response.data.data.find((entry) => entry.id === packId) ?? null;
+      if (!pack) {
+        setSelectedPack(null);
+        setPackMetaError('Pack not found.');
+      } else {
+        setSelectedPack(pack);
+      }
     } catch (error) {
-      setPacksError(readError(error, 'Failed to load packs.'));
+      setPackMetaError(readError(error, 'Failed to load pack.'));
     } finally {
-      if (!silent) setPacksLoading(false);
+      if (!silent) setPackMetaLoading(false);
     }
   };
 
-  const refreshPackData = async (packId: number, page = packItemsPage, silent = false) => {
+  const refreshPackData = async (page = packItemsPage, silent = false) => {
     try {
       if (!silent) {
         setPackItemsLoading(true);
@@ -119,10 +149,14 @@ export default function PackBuilderWorkspace() {
       }
       setPackItemsError(null);
       setPackSummaryError(null);
+
       const [itemsResponse, summaryResponse] = await Promise.all([
-        api.get<PaginatedResponse<PackItemPreview>>(`/packs/${packId}/items`, { params: { page, page_size: PACK_PAGE_SIZE } }),
+        api.get<PaginatedResponse<PackItemPreview>>(`/packs/${packId}/items`, {
+          params: { page, page_size: PACK_PAGE_SIZE },
+        }),
         api.get<PackCompositionSummary>(`/packs/${packId}/summary`),
       ]);
+
       setPackItems(itemsResponse.data);
       setPackSummary(summaryResponse.data);
       syncPackMetrics(summaryResponse.data.total_items, summaryResponse.data.groups);
@@ -139,39 +173,51 @@ export default function PackBuilderWorkspace() {
   };
 
   useEffect(() => {
-    void refreshPacks();
+    void refreshSelectedPack();
     return () => {
       pendingRemovalRef.current.forEach((entry) => window.clearTimeout(entry.timerId));
       pendingRemovalRef.current.clear();
     };
-  }, []);
+  }, [packId]);
 
   useEffect(() => {
-    if (!selectedPackId) {
-      setPackItems(null);
-      setPackSummary(null);
-      return;
+    setActiveTab('review');
+    setSelectedPack(null);
+    setPackItemsPage(1);
+    setCourseContentPage(1);
+    setCollapsedGroups([]);
+    setSelectedItemIds([]);
+    setSelectedCourse(null);
+  }, [packId]);
+
+  useEffect(() => {
+    void refreshPackData(packItemsPage);
+  }, [packId, packItemsPage]);
+
+  const loadCourses = async (query = deferredQuery) => {
+    try {
+      setCoursesLoading(true);
+      setCoursesError(null);
+      const response = await api.get<PaginatedResponse<CourseSearchResult>>('/courses', {
+        params: { page: 1, page_size: COURSE_PAGE_SIZE, q: query || undefined },
+      });
+      setCourseResults(response.data.data);
+      return response.data.data;
+    } catch (error) {
+      setCoursesError(readError(error, 'Failed to search courses.'));
+      return [];
+    } finally {
+      setCoursesLoading(false);
     }
-    void refreshPackData(selectedPackId, packItemsPage);
-  }, [selectedPackId, packItemsPage]);
+  };
 
   useEffect(() => {
-    const timer = window.setTimeout(async () => {
-      try {
-        setCoursesLoading(true);
-        setCoursesError(null);
-        const response = await api.get<PaginatedResponse<CourseSearchResult>>('/courses', {
-          params: { page: 1, page_size: COURSE_PAGE_SIZE, q: deferredQuery || undefined },
-        });
-        setCourseResults(response.data.data);
-      } catch (error) {
-        setCoursesError(readError(error, 'Failed to search courses.'));
-      } finally {
-        setCoursesLoading(false);
-      }
+    const timer = window.setTimeout(() => {
+      void loadCourses(deferredQuery);
     }, 250);
+
     return () => window.clearTimeout(timer);
-  }, [deferredQuery, courseReloadKey]);
+  }, [deferredQuery]);
 
   useEffect(() => {
     setSelectedItemIds([]);
@@ -183,14 +229,16 @@ export default function PackBuilderWorkspace() {
       setCourseContentError(null);
       return;
     }
+
     let cancelled = false;
     const load = async () => {
       try {
         setCourseContentLoading(true);
         setCourseContentError(null);
-        const response = await api.get<PaginatedResponse<CourseContentPreviewItem>>(`/courses/${selectedCourse.id}/content`, {
-          params: { page: courseContentPage, page_size: COURSE_PAGE_SIZE },
-        });
+        const response = await api.get<PaginatedResponse<CourseContentPreviewItem>>(
+          `/courses/${selectedCourse.id}/content`,
+          { params: { page: courseContentPage, page_size: COURSE_PAGE_SIZE } },
+        );
         if (!cancelled) setCourseContent(response.data);
       } catch (error) {
         if (!cancelled) setCourseContentError(readError(error, 'Failed to load course content.'));
@@ -198,116 +246,74 @@ export default function PackBuilderWorkspace() {
         if (!cancelled) setCourseContentLoading(false);
       }
     };
+
     void load();
     return () => {
       cancelled = true;
     };
   }, [selectedCourse, courseContentPage]);
 
-  const createCourse = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const nextErrors = {
-      name: courseForm.name.trim() ? undefined : 'Name is required.',
-      grade: courseForm.grade.trim() ? undefined : 'Grade is required.',
-    };
-    setCourseFormErrors(nextErrors);
-    if (nextErrors.name || nextErrors.grade) return;
-
-    try {
-      setCourseModalSubmitting(true);
-      const response = await api.post<CreateCourseResponse>('/courses', {
-        name: courseForm.name.trim(),
-        grade: courseForm.grade.trim(),
-        subject: courseForm.subject.trim() || undefined,
-      });
-      const createdCourse: CourseSearchResult = {
-        id: response.data.course_id,
-        name: courseForm.name.trim(),
-        grade: courseForm.grade.trim(),
-        subject: courseForm.subject.trim() || null,
-        client_id: null,
-        content_item_count: 0,
-        created_at: new Date().toISOString(),
-      };
-      setSelectedCourse(createdCourse);
-      setCourseContent({ data: [], page: 1, page_size: COURSE_PAGE_SIZE, total: 0 });
-      setCourseContentPage(1);
-      setCourseQuery(createdCourse.name);
-      setCourseReloadKey((current) => current + 1);
-      setCourseResults((current) => [createdCourse, ...current.filter((course) => course.id !== createdCourse.id)]);
-      setCourseForm({ name: '', grade: '', subject: '' });
-      setCourseFormErrors({});
-      setCourseModalOpen(false);
-      toast.success('Course created.');
-    } catch (error) {
-      toast.error(readError(error, 'Failed to create course.'));
-    } finally {
-      setCourseModalSubmitting(false);
-    }
-  };
-
-  const createPack = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const nextErrors = {
-      name: packForm.name.trim() ? undefined : 'Name is required.',
-    };
-    setPackFormErrors(nextErrors);
-    if (nextErrors.name) return;
-
-    try {
-      setPackModalSubmitting(true);
-      const response = await api.post<CreatePackResponse>('/packs', {
-        name: packForm.name.trim(),
-        description: packForm.description.trim() || undefined,
-      });
-
-      setPacks((current) => [response.data, ...current.filter((pack) => pack.id !== response.data.id)]);
-      setSelectedPackId(response.data.id);
-      setPackItemsPage(1);
-      setPackForm({ name: '', description: '' });
-      setPackFormErrors({});
-      setPackModalOpen(false);
-      toast.success('Pack created.');
-    } catch (error) {
-      const message = readError(error, 'Failed to create pack.');
-      setPackFormErrors((current) => ({ ...current, name: message.includes('already exists') ? message : current.name }));
-      toast.error(message);
-    } finally {
-      setPackModalSubmitting(false);
-    }
-  };
-
   const addSelectedItems = async () => {
-    if (!selectedPackId || selectedCourseItems.length === 0) return;
+    if (!selectedPack || selectedCourseItems.length === 0) return;
+
     const optimisticItems = selectedCourseItems.map((item) => buildPackItemPreview(item));
-    const snapshot = { packItems, packSummary, packs };
+    const snapshot = { packItems, packSummary, selectedPack };
+
     setAddSubmitting(true);
-    setPackItems((current) => current ? { ...current, total: current.total + optimisticItems.length, data: current.page === 1 ? [...optimisticItems, ...current.data].slice(0, current.page_size) : current.data } : current);
+    setPackItems((current) =>
+      current
+        ? {
+            ...current,
+            total: current.total + optimisticItems.length,
+            data:
+              current.page === 1
+                ? [...optimisticItems, ...current.data].slice(0, current.page_size)
+                : current.data,
+          }
+        : current,
+    );
+    syncPackMetrics((selectedPack.item_count ?? 0) + optimisticItems.length);
     setSelectedItemIds([]);
+
     try {
-      const response = await api.post<AddPackItemsResponse>(`/packs/${selectedPackId}/items`, { item_ids: optimisticItems.map((item) => item.id) });
+      const response = await api.post<AddPackItemsResponse>(`/packs/${packId}/items`, {
+        item_ids: optimisticItems.map((item) => item.id),
+      });
       const addedCount = response.data.added_item_ids.length;
-      toast.success(addedCount > 0 ? `Added ${addedCount} item${addedCount > 1 ? 's' : ''} to the pack.` : 'Those items are already in the pack.');
+      toast.success(
+        addedCount > 0
+          ? `Added ${addedCount} item${addedCount > 1 ? 's' : ''} to the pack.`
+          : 'Those items are already in the pack.',
+      );
+      setActiveTab('review');
     } catch (error) {
       setPackItems(snapshot.packItems);
       setPackSummary(snapshot.packSummary);
-      setPacks(snapshot.packs);
+      setSelectedPack(snapshot.selectedPack);
       toast.error(readError(error, 'Failed to add items to the pack.'));
     } finally {
       setAddSubmitting(false);
-      await refreshPacks(true);
-      await refreshPackData(selectedPackId, packItemsPage, true);
+      await refreshSelectedPack(true);
+      await refreshPackData(packItemsPage, true);
     }
   };
 
   const attachCourse = async () => {
-    if (!selectedPackId || !selectedCourse) return;
+    if (!selectedCourse) return;
+
     try {
       setAttachSubmitting(true);
-      const response = await api.post<AddPackItemsResponse>(`/packs/${selectedPackId}/attach-course`, { course_id: selectedCourse.id });
-      toast.success(response.data.added_item_ids.length > 0 ? `Attached ${response.data.added_item_ids.length} items from ${selectedCourse.name}.` : 'This course had no new items to attach.');
-      await refreshPacks(true);
-      await refreshPackData(selectedPackId, packItemsPage, true);
+      const response = await api.post<AddPackItemsResponse>(`/packs/${packId}/attach-course`, {
+        course_id: selectedCourse.id,
+      });
+      toast.success(
+        response.data.added_item_ids.length > 0
+          ? `Attached ${response.data.added_item_ids.length} items from ${selectedCourse.name}.`
+          : 'This course had no new items to attach.',
+      );
+      setActiveTab('review');
+      await refreshSelectedPack(true);
+      await refreshPackData(packItemsPage, true);
     } catch (error) {
       toast.error(readError(error, 'Failed to attach course.'));
     } finally {
@@ -318,31 +324,45 @@ export default function PackBuilderWorkspace() {
   const undoRemove = async (itemId: number) => {
     const pending = pendingRemovalRef.current.get(itemId);
     if (!pending) return;
+
     window.clearTimeout(pending.timerId);
     toast.dismiss(pending.toastId);
     pendingRemovalRef.current.delete(itemId);
     setPendingRemoveIds((current) => current.filter((id) => id !== itemId));
-    if (pending.packId === selectedPackId) {
+
+    if (pending.packId === packId) {
       setPackItems(pending.packItems);
       setPackSummary(pending.packSummary);
-      setPacks(pending.packs);
+      setSelectedPack(pending.selectedPack);
     }
+
     toast('Removal cancelled.');
   };
 
   const removeItem = (item: PackItemPreview) => {
-    if (!selectedPackId || pendingRemovalRef.current.has(item.id)) return;
-    const snapshot = { packItems, packSummary, packs };
-    setPackItems((current) => current ? { ...current, total: Math.max(current.total - 1, 0), data: current.data.filter((entry) => entry.id !== item.id) } : current);
+    if (!selectedPack || pendingRemovalRef.current.has(item.id)) return;
+
+    const snapshot = { packItems, packSummary, selectedPack };
+    setPackItems((current) =>
+      current
+        ? {
+            ...current,
+            total: Math.max(current.total - 1, 0),
+            data: current.data.filter((entry) => entry.id !== item.id),
+          }
+        : current,
+    );
+    syncPackMetrics(Math.max(selectedPack.item_count - 1, 0));
     setPendingRemoveIds((current) => [...current, item.id]);
+
     const timerId = window.setTimeout(async () => {
       try {
-        await api.delete<RemovePackItemResponse>(`/packs/${selectedPackId}/items/${item.id}`);
+        await api.delete<RemovePackItemResponse>(`/packs/${packId}/items/${item.id}`);
         toast.success(`Removed ${item.title} from the pack.`);
       } catch (error) {
         setPackItems(snapshot.packItems);
         setPackSummary(snapshot.packSummary);
-        setPacks(snapshot.packs);
+        setSelectedPack(snapshot.selectedPack);
         toast.error(readError(error, 'Failed to remove item.'));
       } finally {
         const pending = pendingRemovalRef.current.get(item.id);
@@ -351,189 +371,233 @@ export default function PackBuilderWorkspace() {
           pendingRemovalRef.current.delete(item.id);
         }
         setPendingRemoveIds((current) => current.filter((id) => id !== item.id));
-        await refreshPacks(true);
-        await refreshPackData(selectedPackId, packItemsPage, true);
+        await refreshSelectedPack(true);
+        await refreshPackData(packItemsPage, true);
       }
     }, 3000);
-    const toastId = toast.custom(() => (
-      <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-lg">
-        <span className="text-sm text-slate-700">Removed {item.title}</span>
-        <button type="button" onClick={() => void undoRemove(item.id)} className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700">
-          Undo
-        </button>
-      </div>
-    ), { duration: 3200 });
-    pendingRemovalRef.current.set(item.id, { packId: selectedPackId, timerId, toastId, packItems: snapshot.packItems, packSummary: snapshot.packSummary, packs: snapshot.packs });
+
+    const toastId = toast.custom(
+      () => (
+        <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-lg">
+          <span className="text-sm text-slate-700">Removed {item.title}</span>
+          <button
+            type="button"
+            onClick={() => {
+              void undoRemove(item.id);
+            }}
+            className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700"
+          >
+            Undo
+          </button>
+        </div>
+      ),
+      { duration: 3200 },
+    );
+
+    pendingRemovalRef.current.set(item.id, {
+      packId,
+      timerId,
+      toastId,
+      packItems: snapshot.packItems,
+      packSummary: snapshot.packSummary,
+      selectedPack: snapshot.selectedPack,
+    });
+  };
+
+  const handleToggleItemSelection = (itemId: number) => {
+    setSelectedItemIds((current) =>
+      current.includes(itemId) ? current.filter((id) => id !== itemId) : [...current, itemId],
+    );
+  };
+
+  const handleToggleGroup = (groupKey: string) => {
+    setCollapsedGroups((current) =>
+      current.includes(groupKey)
+        ? current.filter((value) => value !== groupKey)
+        : [...current, groupKey],
+    );
+  };
+
+  const openCreateCourseDialog = () => {
+    setCreateCourseForm(EMPTY_COURSE_FORM);
+    setCreateCourseErrors({});
+    setCreateCourseOpen(true);
+  };
+
+  const closeCreateCourseDialog = () => {
+    setCreateCourseOpen(false);
+    setCreateCourseSubmitting(false);
+    setCreateCourseForm(EMPTY_COURSE_FORM);
+    setCreateCourseErrors({});
+  };
+
+  const submitCreateCourse = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const nextErrors = {
+      name: createCourseForm.name.trim() ? undefined : 'Course name is required.',
+      grade: createCourseForm.grade.trim() ? undefined : 'Grade is required.',
+    };
+    setCreateCourseErrors(nextErrors);
+    if (nextErrors.name || nextErrors.grade) return;
+
+    const payload = {
+      name: createCourseForm.name.trim(),
+      grade: createCourseForm.grade.trim(),
+      subject: createCourseForm.subject.trim() || undefined,
+    };
+
+    try {
+      setCreateCourseSubmitting(true);
+      const response = await api.post<CreateCourseResponse>('/courses', payload);
+      toast.success('Course created.');
+
+      startTransition(() => setCourseQuery(payload.name));
+      const refreshedCourses = await loadCourses(payload.name);
+      const createdCourse =
+        refreshedCourses.find((course) => course.id === response.data.course_id) ??
+        refreshedCourses.find((course) => course.name.trim().toLowerCase() === payload.name.toLowerCase()) ??
+        null;
+
+      if (createdCourse) {
+        setSelectedCourse(createdCourse);
+        setCourseContentPage(1);
+      }
+
+      closeCreateCourseDialog();
+    } catch (error) {
+      const message = readError(error, 'Failed to create course.');
+      setCreateCourseErrors((current) => ({
+        ...current,
+        name: message.includes('already exists') ? message : current.name,
+      }));
+      toast.error(message);
+    } finally {
+      setCreateCourseSubmitting(false);
+    }
   };
 
   return (
-    <div className="space-y-6">
-      <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">Pack Builder</div>
-        <h2 className="mt-2 text-xl font-semibold text-slate-900">Item-based platform packs</h2>
-        <p className="mt-2 text-sm text-slate-600">Create platform courses, select individual items, attach whole courses, and review pack composition in one workspace.</p>
+    <div className="space-y-10">
+      <section className="border-b border-slate-200 pb-7">
+        <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+          <div className="min-w-0">
+            <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">
+              Pack Workspace
+            </div>
+            <h2 className="mt-3 text-[2rem] font-semibold tracking-tight text-slate-950">
+              {packMetaLoading ? 'Loading pack...' : selectedPack?.name ?? 'Pack not found'}
+            </h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+              {selectedPack?.description?.trim() ||
+                'Use this workspace to review attached items, add content from courses, and keep the pack composition clean.'}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3 pt-1">
+            {selectedPack && (
+              <Badge
+                tone={
+                  selectedPack.is_active
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                    : 'border-slate-200 bg-slate-100 text-slate-600'
+                }
+              >
+                {selectedPack.is_active ? 'Active pack' : 'Inactive pack'}
+              </Badge>
+            )}
+            <GhostButton onClick={() => void refreshSelectedPack()} className="!rounded-full !px-4 !py-2 !text-sm">
+              Refresh Pack
+            </GhostButton>
+          </div>
+        </div>
+
+        {packMetaError && (
+          <div className="mt-4 border-l-2 border-rose-300 pl-4 text-sm text-rose-600">{packMetaError}</div>
+        )}
       </section>
 
-      <div className="grid gap-6 xl:grid-cols-[1.1fr_1.4fr_1fr]">
-        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h3 className="text-lg font-semibold text-slate-900">Pack</h3>
-          <p className="mt-1 text-sm text-slate-500">Choose the pack you want to build.</p>
-          <select value={selectedPackId ?? ''} onChange={(event) => { setSelectedPackId(event.target.value ? Number(event.target.value) : null); setPackItemsPage(1); }} disabled={packsLoading || !!packsError || packs.length === 0} className="mt-4 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700">
-            <option value="">{packsLoading ? 'Loading packs...' : packsError ? 'Failed to load packs' : packs.length === 0 ? 'No packs available' : 'Choose a pack'}</option>
-            {packs.map((pack) => <option key={pack.id} value={pack.id}>{packLabel(pack)}</option>)}
-          </select>
-          {packsError && <p className="mt-3 text-sm text-rose-600">{packsError}</p>}
-          <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-            <div className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4"><div className="text-xs uppercase tracking-[0.2em] text-slate-500">Selected</div><div className="mt-2 text-lg font-semibold text-slate-900">{selectedPack?.name ?? 'No pack selected'}</div></div>
-            <div className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4"><div className="text-xs uppercase tracking-[0.2em] text-slate-500">Items</div><div className="mt-2 text-2xl font-semibold text-slate-900">{selectedPack?.item_count ?? 0}</div></div>
-          </div>
-          <div className="mt-5 flex gap-3">
-            <GhostButton onClick={() => setPackModalOpen(true)} className="!rounded-xl !px-4 !py-2 !text-sm">Create Pack</GhostButton>
-            <GhostButton onClick={() => setCourseModalOpen(true)} className="!rounded-xl !px-4 !py-2 !text-sm">Create Course</GhostButton>
-            <GhostButton onClick={() => { if (selectedPackId) void refreshPackData(selectedPackId, packItemsPage); }} disabled={!selectedPackId} className="!rounded-xl !px-4 !py-2 !text-sm">Refresh</GhostButton>
-          </div>
-        </section>
+      <PackWorkspaceTabs
+        activeTab={activeTab}
+        onChange={(tab) => startTransition(() => setActiveTab(tab))}
+      />
 
-        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex items-start justify-between gap-3">
-            <div><h3 className="text-lg font-semibold text-slate-900">Course Browser</h3><p className="mt-1 text-sm text-slate-500">Search by name, grade, or subject.</p></div>
-            {selectedItemIds.length > 0 && <Badge tone="border-emerald-200 bg-emerald-50 text-emerald-700">{selectedItemIds.length} selected</Badge>}
-          </div>
-          <input value={courseQuery} onChange={(event) => startTransition(() => setCourseQuery(event.target.value))} placeholder="Search courses" className="mt-4 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700" />
-          <div className="mt-4 space-y-3">
-            {coursesLoading && <div className="rounded-2xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">Loading courses...</div>}
-            {!coursesLoading && coursesError && <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-600">{coursesError}</div>}
-            {!coursesLoading && !coursesError && courseResults.length === 0 && <div className="rounded-2xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">No global courses matched your search.</div>}
-            {!coursesLoading && !coursesError && courseResults.map((course) => (
-              <button key={course.id} type="button" onClick={() => { setSelectedCourse(course); setCourseContentPage(1); }} className={`w-full rounded-2xl border p-4 text-left ${selectedCourse?.id === course.id ? 'border-sky-300 bg-sky-50' : 'border-slate-100 bg-slate-50/70'}`}>
-                <div className="font-semibold text-slate-900">{course.name}</div>
-                <div className="mt-1 text-xs text-slate-500">{[course.grade, course.subject].filter(Boolean).join(' | ') || 'No grade/subject'} | {course.content_item_count} items</div>
-              </button>
-            ))}
-          </div>
-
-          <div className="mt-5 rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div><div className="text-xs uppercase tracking-[0.2em] text-slate-500">Content Items</div><div className="mt-2 text-base font-semibold text-slate-900">{selectedCourse?.name ?? 'Select a course'}</div></div>
-              <div className="flex gap-2">
-                <GhostButton onClick={() => void attachCourse()} disabled={!selectedCourse || !selectedPackId || attachSubmitting} className="!rounded-xl !px-4 !py-2 !text-sm">{attachSubmitting ? 'Attaching...' : 'Attach Entire Course'}</GhostButton>
-                <button type="button" onClick={() => void addSelectedItems()} disabled={!selectedPackId || selectedItemIds.length === 0 || addSubmitting} className={`rounded-xl px-4 py-2 text-sm font-semibold text-white ${!selectedPackId || selectedItemIds.length === 0 || addSubmitting ? 'bg-slate-300' : 'bg-[#073b8a] hover:bg-[#16263b]'}`}>{addSubmitting ? 'Adding...' : 'Add to Pack'}</button>
-              </div>
-            </div>
-            <div className="mt-4 space-y-3">
-              {!selectedCourse && <div className="rounded-2xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">Pick a course to browse its content items.</div>}
-              {selectedCourse && courseContentLoading && <div className="rounded-2xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">Loading course content...</div>}
-              {selectedCourse && courseContentError && <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-600">{courseContentError}</div>}
-              {selectedCourse && !courseContentLoading && !courseContentError && courseContent?.data.length === 0 && <div className="rounded-2xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">This course does not contain any items yet.</div>}
-              {selectedCourse && !courseContentLoading && !courseContentError && courseContent?.data.map((item) => (
-                <label key={item.id} className="flex items-start gap-3 rounded-2xl border border-slate-100 bg-white p-4">
-                  <input type="checkbox" checked={selectedItemIds.includes(item.id)} onChange={() => setSelectedItemIds((current) => current.includes(item.id) ? current.filter((id) => id !== item.id) : [...current, item.id])} className="mt-1 h-4 w-4 rounded border-slate-300 text-[#073b8a]" />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2"><Badge tone="border-slate-200 bg-slate-50 text-slate-700">{prettyType(item.item_type)}</Badge><span className="truncate text-sm font-semibold text-slate-900">{item.title}</span></div>
-                    <div className="mt-2 text-xs text-slate-500">{[item.course_name, item.grade, item.subject].filter(Boolean).join(' | ')}</div>
-                  </div>
-                </label>
-              ))}
-              {selectedCourse && courseContent && <Pagination page={courseContent.page} pageSize={courseContent.page_size} total={courseContent.total} onPageChange={setCourseContentPage} />}
-            </div>
-          </div>
-        </section>
-
-        <section className="space-y-6">
-          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="flex items-center justify-between gap-3"><div><h3 className="text-lg font-semibold text-slate-900">Current Pack</h3><p className="mt-1 text-sm text-slate-500">Review and remove attached items.</p></div>{selectedPack && <Badge tone="border-slate-200 bg-slate-50 text-slate-700">{selectedPack.item_count} attached</Badge>}</div>
-            <div className="mt-4 space-y-3">
-              {!selectedPack && <div className="rounded-2xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">Choose a pack to inspect its items.</div>}
-              {selectedPack && packItemsLoading && <div className="rounded-2xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">Loading pack items...</div>}
-              {selectedPack && packItemsError && <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-600">{packItemsError}</div>}
-              {selectedPack && !packItemsLoading && !packItemsError && packItems?.data.length === 0 && <div className="rounded-2xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">This pack does not contain any items yet.</div>}
-              {selectedPack && !packItemsLoading && !packItemsError && packItems?.data.map((item) => (
-                <div key={item.id} className="flex items-start justify-between gap-3 rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
-                  <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><Badge tone="border-slate-200 bg-white text-slate-700">{prettyType(item.item_type)}</Badge><span className="truncate text-sm font-semibold text-slate-900">{item.title}</span></div><div className="mt-2 text-xs text-slate-500">{[item.course_name, item.grade, item.subject].filter(Boolean).join(' | ')}</div></div>
-                  <GhostButton onClick={() => removeItem(item)} disabled={pendingRemoveIds.includes(item.id)} className="!rounded-xl !px-3 !py-2">{pendingRemoveIds.includes(item.id) ? 'Undo window...' : 'Remove'}</GhostButton>
-                </div>
-              ))}
-              {selectedPack && packItems && <Pagination page={packItems.page} pageSize={packItems.page_size} total={packItems.total} onPageChange={setPackItemsPage} />}
-            </div>
-          </div>
-
-          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="flex items-center justify-between gap-3"><div><h3 className="text-lg font-semibold text-slate-900">Summary</h3><p className="mt-1 text-sm text-slate-500">Grouped by course and subject.</p></div>{packSummary && <Badge tone="border-emerald-200 bg-emerald-50 text-emerald-700">{packSummary.total_items} total</Badge>}</div>
-            <div className="mt-4 space-y-3">
-              {!selectedPack && <div className="rounded-2xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">Select a pack to view grouped composition.</div>}
-              {selectedPack && packSummaryLoading && <div className="rounded-2xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">Loading summary...</div>}
-              {selectedPack && packSummaryError && <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-600">{packSummaryError}</div>}
-              {selectedPack && !packSummaryLoading && !packSummaryError && packSummary?.groups.length === 0 && <div className="rounded-2xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">No grouped content to summarize yet.</div>}
-              {selectedPack && !packSummaryLoading && !packSummaryError && packSummary?.groups.map((group) => {
-                const groupKey = `${group.course_id}:${group.subject ?? ''}`;
-                const collapsed = collapsedGroups.includes(groupKey);
-                return (
-                  <div key={groupKey} className="rounded-2xl border border-slate-100 bg-slate-50/70">
-                    <button type="button" onClick={() => setCollapsedGroups((current) => current.includes(groupKey) ? current.filter((value) => value !== groupKey) : [...current, groupKey])} className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left">
-                      <div><div className="text-sm font-semibold text-slate-900">{group.course_name}</div><div className="mt-1 text-xs text-slate-500">{[group.grade, group.subject].filter(Boolean).join(' | ') || 'No grade/subject'}</div></div>
-                      <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">{group.item_count} items {collapsed ? '+' : '-'}</span>
-                    </button>
-                    {!collapsed && <div className="space-y-2 border-t border-slate-100 px-4 py-3">{group.items.map((item) => <div key={item.id} className="flex items-center justify-between gap-3 text-sm"><span className="text-slate-700">{item.title}</span><Badge tone="border-slate-200 bg-white text-slate-700">{prettyType(item.item_type)}</Badge></div>)}</div>}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </section>
-      </div>
-
-      {packModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4">
-          <div className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl">
-            <div className="flex items-start justify-between gap-4">
-              <div><div className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">Create Pack</div><h3 className="mt-2 text-xl font-semibold text-slate-900">Create a new content pack</h3></div>
-              <button type="button" onClick={() => setPackModalOpen(false)} className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600">Close</button>
-            </div>
-            <form onSubmit={createPack} className="mt-6 space-y-4">
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Name</label>
-                <input
-                  value={packForm.name}
-                  onChange={(event) => setPackForm((current) => ({ ...current, name: event.target.value }))}
-                  className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700"
-                  placeholder="Pack name"
-                />
-                {packFormErrors.name && <p className="mt-2 text-sm text-rose-600">{packFormErrors.name}</p>}
-              </div>
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Description</label>
-                <textarea
-                  value={packForm.description}
-                  onChange={(event) => setPackForm((current) => ({ ...current, description: event.target.value }))}
-                  className="mt-2 min-h-[120px] w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700"
-                  placeholder="Short description for this pack"
-                />
-              </div>
-              <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => setPackModalOpen(false)} className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100">Cancel</button>
-                <PrimaryButton type="submit" disabled={packModalSubmitting}>{packModalSubmitting ? 'Creating...' : 'Create Pack'}</PrimaryButton>
-              </div>
-            </form>
-          </div>
-        </div>
+      {activeTab === 'overview' && (
+        <PackOverviewTab
+          selectedPack={selectedPack}
+          packItems={packItems?.data ?? null}
+          packItemsLoading={packItemsLoading}
+          packItemsError={packItemsError}
+          packSummary={packSummary}
+          packSummaryLoading={packSummaryLoading}
+          packSummaryError={packSummaryError}
+          onOpenBuilder={() => setActiveTab('builder')}
+          onOpenReview={() => setActiveTab('review')}
+        />
       )}
 
-      {courseModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4">
-          <div className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl">
-            <div className="flex items-start justify-between gap-4">
-              <div><div className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">Create Course</div><h3 className="mt-2 text-xl font-semibold text-slate-900">Add a new platform course</h3></div>
-              <button type="button" onClick={() => setCourseModalOpen(false)} className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600">Close</button>
-            </div>
-            <form onSubmit={createCourse} className="mt-6 space-y-4">
-              <div><label className="block text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Name</label><input value={courseForm.name} onChange={(event) => setCourseForm((current) => ({ ...current, name: event.target.value }))} className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700" placeholder="Course name" />{courseFormErrors.name && <p className="mt-2 text-sm text-rose-600">{courseFormErrors.name}</p>}</div>
-              <div><label className="block text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Grade</label><input value={courseForm.grade} onChange={(event) => setCourseForm((current) => ({ ...current, grade: event.target.value }))} className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700" placeholder="Grade" />{courseFormErrors.grade && <p className="mt-2 text-sm text-rose-600">{courseFormErrors.grade}</p>}</div>
-              <div><label className="block text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Subject</label><input value={courseForm.subject} onChange={(event) => setCourseForm((current) => ({ ...current, subject: event.target.value }))} className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700" placeholder="Subject" /></div>
-              <div className="flex gap-3 pt-2"><button type="button" onClick={() => setCourseModalOpen(false)} className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100">Cancel</button><PrimaryButton type="submit" disabled={courseModalSubmitting}>{courseModalSubmitting ? 'Creating...' : 'Create Course'}</PrimaryButton></div>
-            </form>
-          </div>
-        </div>
+      {activeTab === 'builder' && (
+        <PackBuilderTab
+          selectedPack={selectedPack}
+          courseQuery={courseQuery}
+          onCourseQueryChange={(value) => startTransition(() => setCourseQuery(value))}
+          onOpenCreateCourse={openCreateCourseDialog}
+          courseResults={courseResults}
+          coursesLoading={coursesLoading}
+          coursesError={coursesError}
+          selectedCourse={selectedCourse}
+          onSelectCourse={(course) => {
+            setSelectedCourse(course);
+            setCourseContentPage(1);
+          }}
+          courseContent={courseContent}
+          courseContentLoading={courseContentLoading}
+          courseContentError={courseContentError}
+          courseContentPage={courseContentPage}
+          onCourseContentPageChange={setCourseContentPage}
+          selectedItemIds={selectedItemIds}
+          selectedCourseItems={selectedCourseItems}
+          onToggleItemSelection={handleToggleItemSelection}
+          onClearSelection={() => setSelectedItemIds([])}
+          addSubmitting={addSubmitting}
+          attachSubmitting={attachSubmitting}
+          onAddSelectedItems={() => {
+            void addSelectedItems();
+          }}
+          onAttachCourse={() => {
+            void attachCourse();
+          }}
+        />
       )}
+
+      {activeTab === 'review' && (
+        <PackReviewTab
+          selectedPack={selectedPack}
+          packItems={packItems}
+          packItemsLoading={packItemsLoading}
+          packItemsError={packItemsError}
+          pendingRemoveIds={pendingRemoveIds}
+          onRemoveItem={removeItem}
+          onPackItemsPageChange={setPackItemsPage}
+          packSummary={packSummary}
+          packSummaryLoading={packSummaryLoading}
+          packSummaryError={packSummaryError}
+          collapsedGroups={collapsedGroups}
+          onToggleGroup={handleToggleGroup}
+        />
+      )}
+
+      <CreateCourseDialog
+        open={createCourseOpen}
+        submitting={createCourseSubmitting}
+        form={createCourseForm}
+        errors={createCourseErrors}
+        onClose={closeCreateCourseDialog}
+        onSubmit={submitCreateCourse}
+        onFormChange={(field, value) => {
+          setCreateCourseForm((current) => ({ ...current, [field]: value }));
+        }}
+      />
     </div>
   );
 }
