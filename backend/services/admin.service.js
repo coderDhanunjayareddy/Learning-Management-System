@@ -1,4 +1,5 @@
 import { query as dbQuery, getClient } from '../repositories/db.repository.js';
+import { getMergedCourseContentRows } from './clientContent.service.js';
 // In your backend (e.g., routes/admin/courses.js or .ts)
 
 let contentItemExamSchemaEnsured = false;
@@ -174,50 +175,13 @@ export const getCourseContent = async (req, res) => {
       }
     }
 
-    let query;
-    let params;
-    const metadataSelect = (await hasContentMetadataColumn())
-      ? 'ci.metadata'
-      : `'{}'::jsonb AS metadata`;
-    const metadataSelectWithoutAlias = (await hasContentMetadataColumn())
-      ? 'metadata'
-      : `'{}'::jsonb AS metadata`;
+    const rows = await getMergedCourseContentRows({
+      courseId: Number(courseId),
+      includeAttemptStatus: shouldIncludeAttemptStatus,
+      userId,
+    });
 
-    if (shouldIncludeAttemptStatus) {
-      // Only learner-facing requests need attempt status.
-      query = `
-        SELECT ci.id,
-               ci.course_id,
-               ci.parent_id,
-               ci.item_type,
-               ci.title,
-               ci.content_url,
-               ${metadataSelect},
-               ci.order_index,
-               ci.created_at,
-               sa.completion_status
-        FROM content_items ci
-        LEFT JOIN student_attempts sa
-               ON ci.id = sa.content_item_id
-              AND sa.user_id = $2
-        WHERE ci.course_id = $1
-        ORDER BY ci.parent_id NULLS FIRST, ci.order_index ASC, ci.created_at ASC
-      `;
-      params = [courseId, userId];
-    } else {
-      // Admin/content-authoring requests should not depend on student_attempts.
-      query = `
-        SELECT id, course_id, parent_id, item_type, title, content_url, ${metadataSelectWithoutAlias}, order_index, created_at
-        FROM content_items
-        WHERE course_id = $1
-        ORDER BY parent_id NULLS FIRST, order_index ASC, created_at ASC
-      `;
-      params = [courseId];
-    }
-
-    const result = await dbQuery(query, params);
-
-    res.json(result.rows);
+    res.json(rows);
   } catch (err) {
     console.error('Failed to fetch content:', err);
     res.status(500).json({ error: 'Failed to fetch course content' });

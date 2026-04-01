@@ -10,6 +10,7 @@ import mime from "mime-types"; // ✅ Add this at the top with your imports
 import fsy from "fsy";
 import { url } from "inspector";
 import fetch from "node-fetch"; // add at top if not already
+import { contentIsLinkedIntoCourse, userCanAccessContentItem } from "./clientContent.service.js";
 
 
 // Fix __dirname for ES modules
@@ -50,54 +51,39 @@ const fileFilter = (req, file, cb) => {
 export const upload = multer({ storage, fileFilter });
 
 const ensureContentAccessById = async (contentId, req) => {
-  const role = req.user?.role;
-  const clientId = req.user?.client_id;
-  if (role === "super_admin") return true;
-  if (!clientId) return false;
-
-  const result = await dbQuery(
-    `
-    SELECT 1
-    FROM content_items ci
-    JOIN courses c ON ci.course_id = c.id
-    WHERE ci.id = $1 AND c.client_id = $2
-    `,
-    [contentId, clientId]
-  );
-
-  return result.rows.length > 0;
+  return userCanAccessContentItem({
+    user: req.user,
+    contentItemId: Number(contentId),
+  });
 };
 
 const ensureContentAccessByPath = async (filePath, req) => {
   const role = req.user?.role;
-  const clientId = req.user?.client_id;
   const isPlatformAdmin = role === "super_admin" || role === "content_authorizer";
 
-  if (!isPlatformAdmin && !clientId) {
+  if (!isPlatformAdmin && !req.user?.client_id && !req.user?.id) {
     return false;
   }
 
   const normalizedPath = String(filePath || "").replace(/^\/+/, "");
   if (!normalizedPath || normalizedPath.includes('..') || normalizedPath.startsWith('http')) return false;
 
-  const params = [normalizedPath];
-  let query = `
-    SELECT 1
+  const result = await dbQuery(
+    `
+    SELECT ci.id
     FROM content_items ci
     JOIN courses c ON ci.course_id = c.id
     WHERE (ci.content_url = $1 OR $1 LIKE (regexp_replace(ci.content_url, '/[^/]+$', '') || '/%'))
-  `;
+    LIMIT 1
+  `,
+    [normalizedPath]
+  );
 
-  if (!isPlatformAdmin) {
-    query += ` AND c.client_id = $2`;
-    params.push(clientId);
+  if (result.rows.length === 0) {
+    return false;
   }
 
-  query += ` LIMIT 1`;
-
-  const result = await dbQuery(query, params);
-
-  return result.rows.length > 0;
+  return ensureContentAccessById(result.rows[0].id, req);
 };
 
 /**
@@ -235,6 +221,11 @@ export const updateContentFile = async (req, res) => {
       if (courseCheck.rows.length === 0) {
         return res.status(403).json({ error: "Access denied" });
       }
+    }
+
+    const linkedItem = await contentIsLinkedIntoCourse({ courseId, contentItemId: itemId });
+    if (linkedItem) {
+      return res.status(400).json({ error: "Linked licensed content is read-only." });
     }
 
     // 1️⃣ Fetch existing item

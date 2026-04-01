@@ -36,7 +36,8 @@ interface CourseItem {
     order_index: number;
     created_at: string;
     completion_status?: string | null;
-
+    is_linked_content?: boolean;
+    linked_content_id?: number | null;
 }
 
 interface Chapter {
@@ -52,9 +53,11 @@ interface Props {
     onSelectItem: (item: CourseItem) => void;
     onAddChapter: () => void;
     onAddItem: (chapterId: number) => void;
+    onAddLicensedContent?: (chapterId: number) => void;
     onReorderChapters: (newChapters: Chapter[]) => void;
     onReorderItems: (chapterId: number, newItems: CourseItem[]) => void;
     onUpdateFile: (item: CourseItem) => void;
+    onRemoveLinkedItem?: (item: CourseItem) => void | Promise<void>;
     selectedItemId?: number;
     isGvjbClient?: boolean;
     apiPrefix?: string;
@@ -71,9 +74,11 @@ const LeftPanel: React.FC<Props> = ({
     onSelectItem,
     onAddChapter,
     onAddItem,
+    onAddLicensedContent,
     onReorderChapters,
     onReorderItems,
     onUpdateFile,
+    onRemoveLinkedItem,
     selectedItemId,
     isGvjbClient = false,
     apiPrefix = "/admin",
@@ -167,6 +172,12 @@ const LeftPanel: React.FC<Props> = ({
             console.error("âŒ Failed to delete item", err);
             alert("Failed to delete. Check console.");
         }
+    };
+
+    const removeLinkedItem = async (item: CourseItem) => {
+        if (!canEdit || !onRemoveLinkedItem) return;
+        if (!window.confirm("Remove this licensed item from the course?")) return;
+        await onRemoveLinkedItem(item);
     };
 
     // âœ¨ Rename Chapter
@@ -415,6 +426,11 @@ const LeftPanel: React.FC<Props> = ({
                                                                                 <span className="text-gray-700 font-medium text-[14px]">
                                                                                     {item.title}
                                                                                 </span>
+                                                                                {item.is_linked_content && (
+                                                                                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                                                                                        Licensed
+                                                                                    </span>
+                                                                                )}
                                                                             </div>
 
                                                                             {canEdit && (
@@ -434,23 +450,24 @@ const LeftPanel: React.FC<Props> = ({
                                                                             {canEdit && openItemMenu === item.id && (
                                                                                 <div className={`absolute right-2 top-10 w-40 bg-white shadow-md border rounded-md z-50 ${isGvjbClient ? "border-amber-200" : "border-gray-200"}`}>
 
-                                                                                    {/* Rename */}
-                                                                                    <button
-                                                                                        className={`w-full text-left px-3 py-2 text-sm ${isGvjbClient ? "hover:bg-amber-50" : "hover:bg-gray-100"}`}
-                                                                                        onClick={(e) => {
-                                                                                            e.stopPropagation();
-                                                                                            setOpenItemMenu(null);
+                                                                                    {!item.is_linked_content && (
+                                                                                        <button
+                                                                                            className={`w-full text-left px-3 py-2 text-sm ${isGvjbClient ? "hover:bg-amber-50" : "hover:bg-gray-100"}`}
+                                                                                            onClick={(e) => {
+                                                                                                e.stopPropagation();
+                                                                                                setOpenItemMenu(null);
 
-                                                                                            const newName = prompt("Enter new item name:", item.title);
-                                                                                            if (newName && newName.trim()) {
-                                                                                                renameItem(item.id, chapter.id, newName.trim());
-                                                                                            }
-                                                                                        }}
-                                                                                    >
-                                                                                        âœ Rename
-                                                                                    </button>
+                                                                                                const newName = prompt("Enter new item name:", item.title);
+                                                                                                if (newName && newName.trim()) {
+                                                                                                    renameItem(item.id, chapter.id, newName.trim());
+                                                                                                }
+                                                                                            }}
+                                                                                        >
+                                                                                            âœ Rename
+                                                                                        </button>
+                                                                                    )}
 
-                                                                                    {["video", "audio", "pdf", "scorm", "html", "text"].includes(item.item_type) && (
+                                                                                    {!item.is_linked_content && ["video", "audio", "pdf", "scorm", "html", "text"].includes(item.item_type) && (
                                                                                         <button
                                                                                             className={`w-full text-left px-3 py-2 text-sm ${isGvjbClient ? "hover:bg-amber-50" : "hover:bg-gray-100"}`}
                                                                                             onClick={(e) => {
@@ -463,16 +480,19 @@ const LeftPanel: React.FC<Props> = ({
                                                                                         </button>
                                                                                     )}
 
-                                                                                    {/* Delete */}
                                                                                     <button
                                                                                         className={`w-full text-left px-3 py-2 text-sm text-red-600 ${isGvjbClient ? "hover:bg-amber-50" : "hover:bg-gray-100"}`}
                                                                                         onClick={(e) => {
                                                                                             e.stopPropagation();
                                                                                             setOpenItemMenu(null);
-                                                                                            deleteItem(item.id, chapter.id);
+                                                                                            if (item.is_linked_content) {
+                                                                                                void removeLinkedItem(item);
+                                                                                            } else {
+                                                                                                deleteItem(item.id, chapter.id);
+                                                                                            }
                                                                                         }}
                                                                                     >
-                                                                                        ðŸ—‘ Delete
+                                                                                        {item.is_linked_content ? "Remove from Course" : "ðŸ—‘ Delete"}
                                                                                     </button>
                                                                                 </div>
                                                                             )}
@@ -485,12 +505,22 @@ const LeftPanel: React.FC<Props> = ({
                                                             {dropProvided.placeholder}
 
                                                             {canEdit && (
-                                                                <button
-                                                                    onClick={() => onAddItem(chapter.id)}
-                                                                    className={`text-sm mt-2 hover:underline ${isGvjbClient ? "text-amber-700" : "text-blue-600"}`}
-                                                                >
-                                                                    + Add Topic
-                                                                </button>
+                                                                <div className="mt-2 flex flex-col gap-1">
+                                                                    <button
+                                                                        onClick={() => onAddItem(chapter.id)}
+                                                                        className={`text-left text-sm hover:underline ${isGvjbClient ? "text-amber-700" : "text-blue-600"}`}
+                                                                    >
+                                                                        + Add Topic
+                                                                    </button>
+                                                                    {onAddLicensedContent && (
+                                                                        <button
+                                                                            onClick={() => onAddLicensedContent(chapter.id)}
+                                                                            className={`text-left text-sm hover:underline ${isGvjbClient ? "text-amber-700" : "text-blue-600"}`}
+                                                                        >
+                                                                            + Add from Content Pack
+                                                                        </button>
+                                                                    )}
+                                                                </div>
                                                             )}
                                                         </div>
                                                     )}

@@ -47,6 +47,7 @@ import SchoolOwnerCourseContent from '@/pages/course/school_owner/CourseContent'
 import SchoolOwnerCourses from '@/pages/dashboard/school_owner/Courses';
 import SchoolOwnerDashboard from '@/pages/dashboard/school_owner/Dashboard';
 import AdminProfile from '@/pages/dashboard/admin/Profile';
+import LicensedContentPage from '@/pages/dashboard/admin/LicensedContentPage';
 import TeacherCourseContent from '@/pages/course/teacher/CourseContent';
 import TeacherProfile from '@/pages/dashboard/teacher/Profile';
 import TeacherHome from '@/pages/dashboard/teacher/TeacherHome';
@@ -125,6 +126,10 @@ export default function AppRoutes() {
         <Route path="/admin/courses/:courseId/content" element={<CourseContent />} />
         <Route path="/admin/courses/:courseId/enroll" element={<EnrollUsers />} />
         <Route path="/admin/profile" element={<AdminProfile />} />
+      </Route>
+
+      <Route element={<Protect roles={['client_admin']} />}>
+        <Route path="/admin/licensed-content" element={<LicensedContentPage />} />
       </Route>
 
       <Route element={<Protect roles={['super_admin', 'client_admin', 'school_owner']} />}>
