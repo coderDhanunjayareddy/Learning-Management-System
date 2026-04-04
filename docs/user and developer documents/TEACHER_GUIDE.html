@@ -1,0 +1,1457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SPECTROPY - Teacher Guide</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: white;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+
+        h1 {
+            color: #2c3e50;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            border-bottom: 4px solid #e74c3c;
+            padding-bottom: 15px;
+            text-align: center;
+        }
+
+        h2 {
+            color: #e74c3c;
+            font-size: 1.8em;
+            margin-top: 40px;
+            margin-bottom: 20px;
+            border-left: 5px solid #e74c3c;
+            padding-left: 15px;
+        }
+
+        h3 {
+            color: #2c3e50;
+            font-size: 1.3em;
+            margin-top: 25px;
+            margin-bottom: 15px;
+        }
+
+        .section-intro {
+            background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+
+        .section-intro h2 {
+            color: white;
+            border-left: none;
+            padding-left: 0;
+            margin-top: 0;
+        }
+
+        .step-box {
+            background: #fadbd8;
+            padding: 20px;
+            border-left: 5px solid #e74c3c;
+            margin: 20px 0;
+            border-radius: 5px;
+        }
+
+        .tip-box {
+            background: #fff3cd;
+            padding: 15px;
+            border-left: 4px solid #ffc107;
+            margin: 15px 0;
+            border-radius: 3px;
+        }
+
+        .important-box {
+            background: #f8d7da;
+            padding: 15px;
+            border-left: 4px solid #dc3545;
+            margin: 15px 0;
+            border-radius: 3px;
+        }
+
+        .info-box {
+            background: #d1ecf1;
+            padding: 15px;
+            border-left: 4px solid #17a2b8;
+            margin: 15px 0;
+            border-radius: 3px;
+        }
+
+        .success-box {
+            background: #d4edda;
+            padding: 15px;
+            border-left: 4px solid #28a745;
+            margin: 15px 0;
+            border-radius: 3px;
+        }
+
+        .screenshot-placeholder {
+            background: #f0f0f0;
+            border: 2px dashed #999;
+            padding: 40px;
+            text-align: center;
+            margin: 20px 0;
+            border-radius: 5px;
+            color: #666;
+        }
+
+        .screenshot-label {
+            color: #666;
+            font-size: 0.9em;
+            margin-top: 10px;
+            font-style: italic;
+        }
+
+        ul, ol {
+            margin-left: 30px;
+            margin-bottom: 15px;
+        }
+
+        li {
+            margin-bottom: 8px;
+        }
+
+        p {
+            margin-bottom: 15px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+
+        table th {
+            background: #e74c3c;
+            color: white;
+            padding: 12px;
+            text-align: left;
+        }
+
+        table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #ddd;
+        }
+
+        table tr:nth-child(even) {
+            background: #f9f9f9;
+        }
+
+        .page-break {
+            page-break-after: always;
+        }
+
+        .example {
+            background: #f5f5f5;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+            border-left: 4px solid #3498db;
+        }
+
+        .workflow-step {
+            background: #ecf0f1;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            border-left: 4px solid #95a5a6;
+        }
+
+        .footer {
+            margin-top: 50px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+            text-align: center;
+            color: #7f8c8d;
+            font-size: 0.9em;
+        }
+
+        @media print {
+            body {
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div style="text-align: center; margin-bottom: 40px;">
+        <h1>SPECTROPY Teacher Guide</h1>
+        <p style="font-size: 1.2em; color: #e74c3c; margin-top: 10px;">Create Engaging Questions, Build Powerful Exams & Monitor Student Progress</p>
+        <p style="color: #7f8c8d; margin-top: 20px;">Version 1.0 | 2026</p>
+    </div>
+
+    <div class="section-intro">
+        <h2>Welcome, Educators!</h2>
+        <p>This comprehensive guide will help you master SPECTROPY's powerful tools for creating questions, building exams, and tracking student performance. Whether you're new to digital assessment or a seasoned educator, you'll find everything you need to create engaging learning experiences.</p>
+    </div>
+
+    <h2>Table of Contents</h2>
+    <ol>
+        <li>Dashboard Overview</li>
+        <li>Creating Questions</li>
+        <li>Question Management & Workflow</li>
+        <li>Creating Exams</li>
+        <li>Exam Configuration</li>
+        <li>Question Best Practices</li>
+        <li>Managing Student Attempts</li>
+        <li>Analytics & Reporting</li>
+        <li>Troubleshooting</li>
+    </ol>
+
+    <div class="page-break"></div>
+
+    <h2>1. Dashboard Overview</h2>
+
+    <h3>Teacher Dashboard Components</h3>
+
+    <div class="screenshot-placeholder">
+        [SCREENSHOT 1: Teacher Dashboard]<br>
+        <span class="screenshot-label">Show: Welcome message, sidebar menu, dashboard cards with stats (questions created, exams created, students taught, pending approvals)</span>
+    </div>
+
+    <h3>Key Statistics</h3>
+
+    <table>
+        <tr>
+            <th>Card</th>
+            <th>Shows</th>
+            <th>Use For</th>
+        </tr>
+        <tr>
+            <td><strong>Questions Created</strong></td>
+            <td>Total questions you've written (all statuses)</td>
+            <td>Track your question bank growth</td>
+        </tr>
+        <tr>
+            <td><strong>Exams Created</strong></td>
+            <td>Total exams you've built</td>
+            <td>See your assessment library</td>
+        </tr>
+        <tr>
+            <td><strong>Students Taught</strong></td>
+            <td>Number of unique students in your courses</td>
+            <td>Understand your reach</td>
+        </tr>
+        <tr>
+            <td><strong>Pending Approvals</strong></td>
+            <td>Questions awaiting admin review</td>
+            <td>Track approval status of new questions</td>
+        </tr>
+        <tr>
+            <td><strong>Recent Activity</strong></td>
+            <td>Latest questions/exams you created</td>
+            <td>Quick reference to recent work</td>
+        </tr>
+    </table>
+
+    <h3>Navigation Menu</h3>
+
+    <div class="info-box">
+        <strong>Main Navigation Items:</strong>
+        <ul>
+            <li><strong>Dashboard</strong> - Home page (where you are now)</li>
+            <li><strong>Questions</strong> - Create, edit, manage questions</li>
+            <li><strong>Exams</strong> - Create, edit, publish exams</li>
+            <li><strong>Courses</strong> - View/manage course content (if available)</li>
+            <li><strong>Analytics</strong> - View class/student performance data</li>
+            <li><strong>Profile</strong> - Update personal settings, change password</li>
+        </ul>
+    </div>
+
+    <div class="page-break"></div>
+
+    <h2>2. Creating Questions</h2>
+
+    <h3>Navigate to Question Bank</h3>
+
+    <div class="step-box">
+        <strong>Step 1: Access Questions Section</strong>
+        <ol>
+            <li>Click <strong>"Questions"</strong> in the left sidebar</li>
+            <li>You'll see your existing questions list</li>
+            <li>Use filters to find specific questions</li>
+        </ol>
+    </div>
+
+    <div class="screenshot-placeholder">
+        [SCREENSHOT 2: Questions Page - List View]<br>
+        <span class="screenshot-label">Show: Question bank with list of questions, filters (subject, chapter, type, status), Create Question button</span>
+    </div>
+
+    <h3>Creating Your First Question</h3>
+
+    <div class="step-box">
+        <strong>Step 2: Click "Create Question"</strong>
+        <ol>
+            <li>Click the <strong>"+ CREATE QUESTION"</strong> button (top right)</li>
+            <li>The question creation form will open</li>
+            <li>You'll see sections for different question types</li>
+        </ol>
+    </div>
+
+    <div class="screenshot-placeholder">
+        [SCREENSHOT 3: Question Creation Form - Top Section]<br>
+        <span class="screenshot-label">Show: Question Type selector, Subject/Chapter/Topic dropdowns, Difficulty selector</span>
+    </div>
+
+    <h3>Question Form - Section 1: Basic Information</h3>
+
+    <div class="step-box">
+        <strong>Fill in Basic Details:</strong>
+    </div>
+
+    <h4>Question Type (Required)</h4>
+
+    <table>
+        <tr>
+            <th>Type</th>
+            <th>Description</th>
+            <th>Best For</th>
+        </tr>
+        <tr>
+            <td><strong>MCQ - Single Answer</strong></td>
+            <td>Choose 1 correct option from multiple</td>
+            <td>Testing factual knowledge, straightforward concepts</td>
+        </tr>
+        <tr>
+            <td><strong>MCQ - Multiple Answers</strong></td>
+            <td>Choose ALL correct options</td>
+            <td>Testing comprehensive understanding, multiple concepts</td>
+        </tr>
+        <tr>
+            <td><strong>True/False</strong></td>
+            <td>Determine if statement is true or false</td>
+            <td>Quick assessments, common misconceptions</td>
+        </tr>
+        <tr>
+            <td><strong>Numerical</strong></td>
+            <td>Enter numerical answer with optional tolerance</td>
+            <td>Math, physics, calculations, formulas</td>
+        </tr>
+    </table>
+
+    <h4>Subject, Chapter, Topic (Required)</h4>
+
+    <div class="example">
+        <strong>Example Hierarchy:</strong>
+        <ul>
+            <li><strong>Subject:</strong> Mathematics</li>
+            <li><strong>Chapter:</strong> Quadratic Equations</li>
+            <li><strong>Topic:</strong> Solving using Factorization</li>
+        </ul>
+        This helps with searching and organization later
+    </div>
+
+    <h4>Difficulty Level (Required)</h4>
+
+    <div class="tip-box">
+        <strong>Difficulty Levels:</strong>
+        <ul>
+            <li><strong>Easy</strong> - Basic recall, straightforward application</li>
+            <li><strong>Medium</strong> - Standard application, some problem-solving</li>
+            <li><strong>Hard</strong> - Complex application, analysis, critical thinking</li>
+        </ul>
+        <strong>💡 Tip:</strong> Balance your exams: 20% Easy, 50% Medium, 30% Hard
+    </div>
+
+    <h3>Question Form - Section 2: Question Content</h3>
+
+    <div class="screenshot-placeholder">
+        [SCREENSHOT 4: Question Text Editor]<br>
+        <span class="screenshot-label">Show: Rich text editor with formatting buttons, LaTeX support, image insertion, preview area</span>
+    </div>
+
+    <h4>Writing the Question Text</h4>
+
+    <div class="step-box">
+        <strong>In the Question Text Field:</strong>
+        <ol>
+            <li>Click in the text editor area</li>
+            <li>Type your question</li>
+            <li>Use formatting buttons for: Bold, Italic, Underline, Lists</li>
+            <li>Add images: Click image icon → upload file</li>
+            <li>Add LaTeX formulas: Use $formula$ syntax</li>
+        </ol>
+    </div>
+
+    <h4>Using Rich Text Formatting</h4>
+
+    <table>
+        <tr>
+            <th>Feature</th>
+            <th>How to Use</th>
+            <th>Example</th>
+        </tr>
+        <tr>
+            <td><strong>Bold Text</strong></td>
+            <td>Select text → Click Bold button or Ctrl+B</td>
+            <td><strong>Important</strong></td>
+        </tr>
+        <tr>
+            <td><strong>Italic Text</strong></td>
+            <td>Select text → Click Italic button or Ctrl+I</td>
+            <td><em>Emphasized text</em></td>
+        </tr>
+        <tr>
+            <td><strong>Bullet Points</strong></td>
+            <td>Click bullet list button, press Enter for new item</td>
+            <td>• Item 1<br>• Item 2</td>
+        </tr>
+        <tr>
+            <td><strong>Numbered List</strong></td>
+            <td>Click numbered list button, press Enter for new item</td>
+            <td>1. First<br>2. Second</td>
+        </tr>
+        <tr>
+            <td><strong>Heading</strong></td>
+            <td>Select dropdown → Choose H1, H2, H3</td>
+            <td>Larger text</td>
+        </tr>
+    </table>
+
+    <h4>Adding LaTeX Formulas</h4>
+
+    <div class="example">
+        <strong>LaTeX Syntax Examples:</strong>
+        <ul>
+            <li><code>$\sqrt{16}$</code> → √16</li>
+            <li><code>$x^2 + 3x + 2$</code> → x² + 3x + 2</li>
+            <li><code>$\frac{1}{2}$</code> → ½</li>
+            <li><code>$\pi r^2$</code> → πr²</li>
+            <li><code>$\int_0^1 x dx$</code> → Integral formula</li>
+        </ul>
+        <strong>💡 Tip:</strong> Use $ for inline formulas, $$ for block/display formulas
+    </div>
+
+    <h4>Adding Images</h4>
+
+    <div class="tip-box">
+        <strong>To add an image to your question:</strong>
+        <ol>
+            <li>Position cursor where image should go</li>
+            <li>Click the image icon in toolbar</li>
+            <li>Click "Upload Image"</li>
+            <li>Select image file from your computer</li>
+            <li>Click "Insert"</li>
+            <li>Adjust size if needed</li>
+        </ol>
+    </div>
+
+    <h3>Question Form - Section 3: Marking Scheme</h3>
+
+    <div class="step-box">
+        <strong>Set Up Marks:</strong>
+    </div>
+
+    <h4>Positive Marks</h4>
+
+    <div class="example">
+        <strong>How many points for a correct answer?</strong>
+        <ul>
+            <li>Standard: 1 mark</li>
+            <li>For important questions: 2-4 marks</li>
+            <li>For problem-solving: 5+ marks</li>
+        </ul>
+        <strong>💡 Tip:</strong> Use higher marks for harder questions
+    </div>
+
+    <h4>Negative Marks (Optional)</h4>
+
+    <div class="example">
+        <strong>Deduct marks for wrong answers (discourages guessing)</strong>
+        <ul>
+            <li>Leave as 0 for no negative marking</li>
+            <li>Use -1/4 of positive: If +4, then -1</li>
+            <li>Common pattern: +1 correct, -0.25 wrong</li>
+        </ul>
+        <strong>💡 Tip:</strong> Use negative marking for easier questions, not hard ones
+    </div>
+
+    <h3>Question Form - Section 4: Answer Options (Type Specific)</h3>
+
+    <div class="screenshot-placeholder">
+        [SCREENSHOT 5: Answer Options Section - MCQ Single]<br>
+        <span class="screenshot-label">Show: Option A, B, C, D input fields with radio buttons, one selected as correct</span>
+    </div>
+
+    <h4>For Multiple Choice (Single Answer)</h4>
+
+    <div class="step-box">
+        <strong>Enter Options and Select Correct One:</strong>
+        <ol>
+            <li>You'll see fields for Option A, B, C, D, etc.</li>
+            <li>Type each option in its field</li>
+            <li>Use rich text formatting for each option if needed</li>
+            <li>Click the radio button (○) next to the correct option</li>
+            <li>Radio button will fill in (●) showing it's correct</li>
+        </ol>
+    </div>
+
+    <div class="example">
+        <strong>Example Setup:</strong>
+        <pre>Option A: The mitochondria is the powerhouse of the cell
+Option B: The ribosome is the powerhouse of the cell
+Option C: ● (CORRECT) The nucleus is the control center of the cell
+Option D: The endoplasmic reticulum is the powerhouse of the cell</pre>
+    </div>
+
+    <h4>For Multiple Choice (Multiple Answers)</h4>
+
+    <div class="screenshot-placeholder">
+        [SCREENSHOT 6: Answer Options Section - MCQ Multiple]<br>
+        <span class="screenshot-label">Show: Option A-E with checkboxes, multiple checked as correct</span>
+    </div>
+
+    <div class="step-box">
+        <strong>Enter Options and Check Correct Ones:</strong>
+        <ol>
+            <li>Type each option in its field</li>
+            <li>Check the checkbox (☐) next to EACH correct option</li>
+            <li>Checkboxes will show checkmarks (☑) for correct answers</li>
+            <li>You can check multiple boxes</li>
+        </ol>
+    </div>
+
+    <div class="important-box">
+        <strong>⚠️ Important Note:</strong> For multiple answer questions, grading is ALL-OR-NOTHING. Students must select EVERY correct option and NO incorrect ones to get marks. There's no partial credit.
+    </div>
+
+    <h4>For True/False</h4>
+
+    <div class="step-box">
+        <strong>Select the Correct Answer:</strong>
+        <ol>
+            <li>Write your statement in the question field</li>
+            <li>Click either the "TRUE" or "FALSE" button</li>
+            <li>The selected button highlights</li>
+        </ol>
+    </div>
+
+    <h4>For Numerical Answers</h4>
+
+    <div class="screenshot-placeholder">
+        [SCREENSHOT 7: Numerical Answer Setup]<br>
+        <span class="screenshot-label">Show: Expected Value field, Tolerance field, help text</span>
+    </div>
+
+    <div class="step-box">
+        <strong>Enter Expected Answer and Tolerance Range:</strong>
+        <ol>
+            <li>Enter the <strong>Expected Value</strong> (correct answer): e.g., 9.8</li>
+            <li>Enter the <strong>Tolerance</strong> (acceptable range): e.g., 0.1</li>
+            <li>System accepts answers within ±tolerance</li>
+        </ol>
+    </div>
+
+    <div class="example">
+        <strong>Example - Physics Calculation:</strong>
+        <ul>
+            <li><strong>Question:</strong> If gravity g = 9.8 m/s², calculate acceleration</li>
+            <li><strong>Expected Value:</strong> 9.8</li>
+            <li><strong>Tolerance:</strong> 0.1</li>
+            <li><strong>Accepted Range:</strong> 9.7 to 9.9</li>
+            <li><strong>Student answers 9.75:</strong> ✓ Correct (within range)</li>
+            <li><strong>Student answers 9.5:</strong> ✗ Wrong (outside range)</li>
+        </ul>
+    </div>
+
+    <h3>Question Form - Section 5: Solution & Explanation</h3>
+
+    <div class="step-box">
+        <strong>Add Solution (Highly Recommended):</strong>
+        <ol>
+            <li>Scroll to "Solution/Explanation" section</li>
+            <li>Click <strong>"Add Solution"</strong></li>
+            <li>A rich text editor opens</li>
+            <li>Type detailed explanation of correct answer</li>
+            <li>Include worked examples for math questions</li>
+        </ol>
+    </div>
+
+    <div class="tip-box">
+        <strong>💡 Good Solutions Include:</strong>
+        <ul>
+            <li>✓ Why the correct answer is right</li>
+            <li>✓ Why other options are wrong</li>
+            <li>✓ Key concepts being tested</li>
+            <li>✓ Step-by-step working for calculations</li>
+            <li>✓ Real-world examples or analogies</li>
+            <li>✓ Common mistakes to avoid</li>
+        </ul>
+    </div>
+
+    <h3>Saving Your Question</h3>
+
+    <div class="step-box">
+        <strong>Step 3: Save or Submit Question</strong>
+        <ol>
+            <li>Scroll to the bottom of the form</li>
+            <li>You'll see two buttons: "Save as Draft" and "Submit for Approval"</li>
+        </ol>
+    </div>
+
+    <h4>Save as Draft</h4>
+
+    <div class="success-box">
+        <strong>Use when:</strong>
+        <ul>
+            <li>Question is not yet complete</li>
+            <li>You want to revise it later</li>
+            <li>You want to test it before submitting</li>
+        </ul>
+        <strong>What happens:</strong>
+        <ul>
+            <li>Question saved with status "Draft"</li>
+            <li>Only you can see it</li>
+            <li>You can edit anytime</li>
+            <li>Cannot be used in exams yet</li>
+        </ul>
+    </div>
+
+    <h4>Submit for Approval</h4>
+
+    <div class="success-box">
+        <strong>Use when:</strong>
+        <ul>
+            <li>Question is complete and correct</li>
+            <li>You want admin to review it</li>
+            <li>You're ready to use it in exams</li>
+        </ul>
+        <strong>What happens:</strong>
+        <ul>
+            <li>Question status becomes "Pending Approval"</li>
+            <li>Admin checks correctness, clarity, formatting</li>
+            <li>Admin approves or provides feedback</li>
+            <li>Once approved, you can use in exams</li>
+            <li>Typical approval time: 24 hours</li>
+        </ul>
+    </div>
+
+    <div class="page-break"></div>
+
+    <h2>3. Question Management & Workflow</h2>
+
+    <h3>Understanding Question Status</h3>
+
+    <div class="screenshot-placeholder">
+        [SCREENSHOT 8: Question List with Status Badges]<br>
+        <span class="screenshot-label">Show: List of questions with colored status badges (Draft, Pending, Approved, Rejected)</span>
+    </div>
+
+    <h3>Question Status Workflow</h3>
+
+    <div class="workflow-step">
+        <strong>1️⃣ DRAFT</strong>
+        <ul>
+            <li>Status: Personal work in progress</li>
+            <li>Who sees it: Only you</li>
+            <li>Can edit: Yes, freely</li>
+            <li>Can use in exam: No</li>
+            <li>Actions: Edit, Delete, Submit for Approval</li>
+        </ul>
+    </div>
+
+    <div class="workflow-step">
+        <strong>2️⃣ PENDING APPROVAL</strong>
+        <ul>
+            <li>Status: Awaiting admin review</li>
+            <li>Who sees it: You and admin only</li>
+            <li>Can edit: No, locked while pending</li>
+            <li>Can use in exam: No</li>
+            <li>Wait time: Typically 24 hours</li>
+        </ul>
+    </div>
+
+    <div class="workflow-step">
+        <strong>3️⃣ APPROVED ✓</strong>
+        <ul>
+            <li>Status: Passed review, ready to use</li>
+            <li>Who sees it: You and all teachers</li>
+            <li>Can edit: Yes (re-enters pending workflow)</li>
+            <li>Can use in exam: Yes!</li>
+            <li>Actions: Edit, Use in Exam, Archive</li>
+        </ul>
+    </div>
+
+    <div class="workflow-step">
+        <strong>4️⃣ REJECTED ✗</strong>
+        <ul>
+            <li>Status: Admin found issues</li>
+            <li>Who sees it: You and admin</li>
+            <li>Admin feedback: Included in rejection message</li>
+            <li>Can edit: Yes</li>
+            <li>Actions: Edit and Resubmit</li>
+        </ul>
+    </div>
+
+    <h3>Editing Questions</h3>
+
+    <div class="step-box">
+        <strong>To Edit a Question:</strong>
+        <ol>
+            <li>Find question in your list</li>
+            <li>Click the "Edit" button (pencil icon) or click question name</li>
+            <li>Make your changes</li>
+            <li>Click "Update" to save</li>
+        </ol>
+    </div>
+
+    <div class="tip-box">
+        <strong>💡 What Happens When You Edit:</strong>
+        <ul>
+            <li>Draft questions: Updated immediately</li>
+            <li>Approved questions: Changes put back to "Pending Approval"</li>
+            <li>Already-used questions: Can edit (affects future attempts, not past)</li>
+        </ul>
+    </div>
+
+    <h3>Responding to Admin Feedback</h3>
+
+    <div class="step-box">
+        <strong>If Your Question is Rejected:</strong>
+        <ol>
+            <li>Check the rejection message for feedback</li>
+            <li>Open the question in edit mode</li>
+            <li>Make the requested changes</li>
+            <li>Optionally add a note: "Fixed formatting issue" or "Corrected answer"</li>
+            <li>Click "Submit for Approval" again</li>
+            <li>Wait for re-review</li>
+        </ol>
+    </div>
+
+    <div class="example">
+        <strong>Example Rejection Feedback:</strong>
+        <blockquote style="border-left: 4px solid #999; padding-left: 15px;">
+            "Good question, but the image is blurry. Please replace with higher resolution image. Also add a solution explanation so students understand the concept."
+        </blockquote>
+    </div>
+
+    <h3>Archiving Questions</h3>
+
+    <div class="step-box">
+        <strong>Archive Questions You No Longer Use:</strong>
+        <ol>
+            <li>Find question in list</li>
+            <li>Click menu icon (three dots)</li>
+            <li>Select "Archive"</li>
+            <li>Question is soft-deleted (not permanently removed)</li>
+            <li>Won't appear in normal searches</li>
+            <li>Can restore from archive if needed</li>
+        </ol>
+    </div>
+
+    <div class="page-break"></div>
+
+    <h2>4. Creating Exams</h2>
+
+    <h3>Navigate to Exam Manager</h3>
+
+    <div class="step-box">
+        <strong>Step 1: Access Exams Section</strong>
+        <ol>
+            <li>Click <strong>"Exams"</strong> in the left sidebar</li>
+            <li>You'll see your existing exams organized by status</li>
+        </ol>
+    </div>
+
+    <div class="screenshot-placeholder">
+        [SCREENSHOT 9: Exams Page - List View]<br>
+        <span class="screenshot-label">Show: Exams organized by tabs (Draft, Published, Archived), exam cards with status, Create Exam button</span>
+    </div>
+
+    <h3>Creating Your First Exam</h3>
+
+    <div class="step-box">
+        <strong>Step 2: Click "Create Exam"</strong>
+        <ol>
+            <li>Click <strong>"+ CREATE EXAM"</strong> button</li>
+            <li>Exam creation form opens</li>
+        </ol>
+    </div>
+
+    <div class="screenshot-placeholder">
+        [SCREENSHOT 10: Exam Creation Form - Basic Information]<br>
+        <span class="screenshot-label">Show: Title field, Description area, Duration input, Total Marks input, Passing Score input</span>
+    </div>
+
+    <h3>Exam Form - Section 1: Basic Information</h3>
+
+    <h4>Exam Title (Required)</h4>
+
+    <div class="example">
+        <strong>Good exam titles:</strong>
+        <ul>
+            <li>"Biology Midterm - Chapters 5-7"</li>
+            <li>"Mathematics Quiz 1 - Quadratic Equations"</li>
+            <li>"Physics Final Exam - Mechanics &amp; Thermodynamics"</li>
+        </ul>
+    </div>
+
+    <h4>Description (Optional but Recommended)</h4>
+
+    <div class="example">
+        <strong>Include:</strong>
+        <ul>
+            <li>Topics covered</li>
+            <li>Format (multiple choice, numerical, etc.)</li>
+            <li>Special instructions ("Show working", "No calculator", etc.)</li>
+            <li>Passing marks requirement</li>
+        </ul>
+        <strong>Example:</strong>
+        <blockquote>"This exam covers quadratic equations chapters. Questions are MCQ and numerical. Show working for numerical questions. 75+ marks required to pass. 1 hour duration."</blockquote>
+    </div>
+
+    <h4>Duration (Required)</h4>
+
+    <div class="tip-box">
+        <strong>💡 Time Planning:</strong>
+        <ul>
+            <li>Allocate 1-2 minutes per question minimum</li>
+            <li>30 questions = 30-60 minutes</li>
+            <li>Add 5-10 minutes buffer for review</li>
+            <li>Consider question complexity</li>
+        </ul>
+    </div>
+
+    <h4>Total Marks (Required)</h4>
+
+    <div class="example">
+        <strong>Standard marking:</strong>
+        <ul>
+            <li>Simple exam: 100 marks</li>
+            <li>Comprehensive: 150+ marks</li>
+            <li>Mark distribution: Should match marks in questions</li>
+        </ul>
+        <strong>Note:</strong> System will calculate total from questions you add
+    </div>
+
+    <h4>Passing Score (Optional)</h4>
+
+    <div class="example">
+        <strong>Common passing marks:</strong>
+        <ul>
+            <li>40% (40 marks out of 100)</li>
+            <li>50% (50 marks out of 100)</li>
+            <li>60% (60 marks out of 100)</li>
+        </ul>
+    </div>
+
+    <h3>Exam Form - Section 2: Exam Settings</h3>
+
+    <div class="screenshot-placeholder">
+        [SCREENSHOT 11: Exam Settings Options]<br>
+        <span class="screenshot-label">Show: Max attempts dropdown, Shuffle questions checkbox, Show answers checkbox, Exam timer warnings</span>
+    </div>
+
+    <h4>Maximum Attempts</h4>
+
+    <table>
+        <tr>
+            <th>Option</th>
+            <th>Meaning</th>
+            <th>Use Case</th>
+        </tr>
+        <tr>
+            <td><strong>1</strong></td>
+            <td>Student gets only 1 try</td>
+            <td>High stakes exam, final test</td>
+        </tr>
+        <tr>
+            <td><strong>2-3</strong></td>
+            <td>Student can retake 2-3 times</td>
+            <td>Quiz, formative assessment</td>
+        </tr>
+        <tr>
+            <td><strong>Unlimited</strong></td>
+            <td>Student can attempt anytime</td>
+            <td>Practice tests, learning exercises</td>
+        </tr>
+    </table>
+
+    <h4>Shuffle Questions</h4>
+
+    <div class="info-box">
+        <strong>Enable Shuffle Questions when:</strong>
+        <ul>
+            <li>✓ Multiple students taking exam (reduces cheating)</li>
+            <li>✓ You want each student to see different order</li>
+        </ul>
+        <strong>Disable when:</strong>
+        <ul>
+            <li>✗ Questions are intentionally ordered (easy to hard)</li>
+            <li>✗ You want consistency for fairness</li>
+        </ul>
+    </div>
+
+    <h4>Shuffle Options Within Questions</h4>
+
+    <div class="info-box">
+        <strong>Enable when:</strong>
+        <ul>
+            <li>✓ Multiple choice with different correct answers</li>
+            <li>✓ Want to prevent position-based cheating (always option C, etc.)</li>
+        </ul>
+    </div>
+
+    <h4>Show Answers After Submission</h4>
+
+    <div class="info-box">
+        <strong>Enable when:</strong>
+        <ul>
+            <li>✓ Formative quiz (learning focused)</li>
+            <li>✓ Practice exam</li>
+            <li>✓ Students should see correct answers</li>
+        </ul>
+        <strong>Disable when:</strong>
+        <ul>
+            <li>✗ Summative exam (grades focused)</li>
+            <li>✗ You want to keep answers secret</li>
+        </ul>
+    </div>
+
+    <h3>Exam Form - Section 3: Availability Window</h3>
+
+    <div class="step-box">
+        <strong>Set When Exam is Available:</strong>
+        <ol>
+            <li>Click <strong>Start Date/Time</strong> - when exam becomes available</li>
+            <li>Click <strong>End Date/Time</strong> - when exam closes</li>
+            <li>Students can only start exams between these times</li>
+            <li>If exam duration extends past end time, it auto-submits</li>
+        </ol>
+    </div>
+
+    <div class="example">
+        <strong>Example Timeline:</strong>
+        <ul>
+            <li><strong>Start:</strong> Monday 9:00 AM</li>
+            <li><strong>End:</strong> Friday 5:00 PM</li>
+            <li><strong>Duration:</strong> 60 minutes</li>
+            <li><strong>Result:</strong> Students can start exam anytime Mon-Fri 9am-5pm. They have 60 min from when they start.</li>
+        </ul>
+    </div>
+
+    <h3>Exam Form - Section 4: Adding Questions</h3>
+
+    <div class="step-box">
+        <strong>Step 3: Add Questions to Exam</strong>
+        <ol>
+            <li>Click <strong>"Add Questions"</strong> button</li>
+            <li>Question selection dialog opens</li>
+        </ol>
+    </div>
+
+    <div class="screenshot-placeholder">
+        [SCREENSHOT 12: Add Questions Dialog]<br>
+        <span class="screenshot-label">Show: Search/filter panel, question bank list, Select buttons, question count</span>
+    </div>
+
+    <h4>Using Filters to Find Questions</h4>
+
+    <div class="info-box">
+        <strong>Available Filters:</strong>
+        <ul>
+            <li><strong>Subject:</strong> Filter by academic subject</li>
+            <li><strong>Chapter:</strong> Filter by chapter within subject</li>
+            <li><strong>Topic:</strong> Filter by specific topic</li>
+            <li><strong>Difficulty:</strong> Easy, Medium, Hard</li>
+            <li><strong>Type:</strong> MCQ, True/False, Numerical</li>
+            <li><strong>Status:</strong> Only "Approved" questions show by default</li>
+            <li><strong>Search:</strong> Search by question text</li>
+        </ul>
+    </div>
+
+    <h4>Selecting Questions</h4>
+
+    <div class="step-box">
+        <strong>Adding Questions:</strong>
+        <ol>
+            <li>Filter questions to find what you need</li>
+            <li>Click "Select" button on each question you want</li>
+            <li>Selected questions appear in a selected list</li>
+            <li>You can see marks each question will contribute</li>
+            <li>When done, click "Add Selected Questions"</li>
+        </ol>
+    </div>
+
+    <h4>Question Order in Exam</h4>
+
+    <div class="info-box">
+        <strong>Questions appear in exam in the order you selected them (unless shuffle is enabled)</strong>
+        <ul>
+            <li>Pro Tip: Easy → Medium → Hard progression helps student morale</li>
+            <li>Group related questions together</li>
+            <li>You can reorder later by dragging</li>
+        </ul>
+    </div>
+
+    <h3>Reviewing Exam Before Publishing</h3>
+
+    <div class="step-box">
+        <strong>Before Publishing, Check:</strong>
+        <ol>
+            <li>✓ All questions are approved (status = Approved)</li>
+            <li>✓ Question count and marks look right</li>
+            <li>✓ Questions are in logical order</li>
+            <li>✓ Total marks = Expected marks</li>
+            <li>✓ Difficulty distribution is balanced</li>
+            <li>✓ Duration is appropriate for question count</li>
+            <li>✓ Start/end dates are correct</li>
+        </ol>
+    </div>
+
+    <h3>Saving vs. Publishing</h3>
+
+    <div class="step-box">
+        <strong>Step 4: Save or Publish Exam</strong>
+    </div>
+
+    <h4>Save as Draft</h4>
+
+    <div class="success-box">
+        <strong>Use when:</strong>
+        <ul>
+            <li>Still adding/removing questions</li>
+            <li>Not ready for students yet</li>
+            <li>Need to review with colleague</li>
+        </ul>
+        <strong>Result:</strong>
+        <ul>
+            <li>Exam not visible to students</li>
+            <li>You can continue editing</li>
+            <li>Can add/remove questions freely</li>
+        </ul>
+    </div>
+
+    <h4>Publish Exam</h4>
+
+    <div class="success-box">
+        <strong>Use when:</strong>
+        <ul>
+            <li>Exam is final and ready</li>
+            <li>Start date/time is set correctly</li>
+            <li>All questions are approved</li>
+        </ul>
+        <strong>Result:</strong>
+        <ul>
+            <li>Exam visible to enrolled students</li>
+            <li>Students can start taking exam</li>
+            <li>Limited editing after publishing (can't remove questions with attempts)</li>
+        </ul>
+    </div>
+
+    <div class="page-break"></div>
+
+    <h2>5. Exam Configuration</h2>
+
+    <h3>Editing Published Exams</h3>
+
+    <div class="important-box">
+        <strong>⚠️ Once exam is published and students have started:</strong>
+        <ul>
+            <li>✓ Can edit: Title, description, settings, dates</li>
+            <li>✗ Cannot: Remove questions with existing attempts</li>
+            <li>✓ Can: Add new questions</li>
+            <li>✓ Can: Reorder questions (only affects new attempts)</li>
+        </ul>
+    </div>
+
+    <h3>Creating Exam Sections (Optional)</h3>
+
+    <div class="tip-box">
+        <strong>Organize questions into sections for:</strong>
+        <ul>
+            <li>✓ Different topics (Section A: MCQ, Section B: Numerical)</li>
+            <li>✓ Different skills (Section A: Reading, Section B: Writing)</li>
+            <li>✓ Different time allocations (Section A: 20 min, Section B: 40 min)</li>
+            <li>✓ Better organization for long exams</li>
+        </ul>
+    </div>
+
+    <div class="step-box">
+        <strong>To Create Sections:</strong>
+        <ol>
+            <li>In exam creation, click "Add Section"</li>
+            <li>Enter section name (e.g., "Part A - MCQ")</li>
+            <li>Optionally set time limit for this section</li>
+            <li>Add questions to the section</li>
+            <li>Repeat for additional sections</li>
+        </ol>
+    </div>
+
+    <div class="page-break"></div>
+
+    <h2>6. Question Best Practices</h2>
+
+    <h3>Writing Effective Questions</h3>
+
+    <div class="success-box">
+        <strong>DO:</strong>
+        <ul>
+            <li>✓ Be clear and unambiguous</li>
+            <li>✓ Test important concepts</li>
+            <li>✓ Use appropriate language level</li>
+            <li>✓ Provide realistic scenarios (where applicable)</li>
+            <li>✓ Always include solutions</li>
+            <li>✓ Ensure only one correct answer (for single MCQ)</li>
+            <li>✓ Make incorrect options plausible</li>
+            <li>✓ Review for spelling/grammar errors</li>
+        </ul>
+    </div>
+
+    <div class="important-box">
+        <strong>DON'T:</strong>
+        <ul>
+            <li>✗ Use trick questions or wordplay</li>
+            <li>✗ Make questions too long (unless necessary)</li>
+            <li>✗ Give away answers in incorrect options</li>
+            <li>✗ Use "all of the above" or "none of the above" (ambiguous)</li>
+            <li>✗ Reference other questions</li>
+            <li>✗ Use outdated information</li>
+            <li>✗ Have grammatical errors that confuse</li>
+            <li>✗ Make options different lengths (easy to spot)</li>
+        </ul>
+    </div>
+
+    <h3>Incorrect Option Quality (Distractors)</h3>
+
+    <div class="example">
+        <strong>Good vs. Bad Distractors:</strong>
+        <ul>
+            <li><strong>Bad:</strong> "The moon orbits the sun" (obviously wrong)</li>
+            <li><strong>Good:</strong> "The Earth orbits at 200 million km" (plausible but wrong)</li>
+            <li><strong>Bad:</strong> "The radius is 157.08" (random number)</li>
+            <li><strong>Good:</strong> "The radius is 15.7" (off by factor of 10, common mistake)</li>
+        </ul>
+    </div>
+
+    <h3>Balanced Exam Design</h3>
+
+    <table>
+        <tr>
+            <th>Difficulty</th>
+            <th>Percentage</th>
+            <th>Purpose</th>
+        </tr>
+        <tr>
+            <td><strong>Easy</strong></td>
+            <td>20%</td>
+            <td>Build confidence, test basic knowledge</td>
+        </tr>
+        <tr>
+            <td><strong>Medium</strong></td>
+            <td>50%</td>
+            <td>Test application, problem-solving</td>
+        </tr>
+        <tr>
+            <td><strong>Hard</strong></td>
+            <td>30%</td>
+            <td>Test analysis, critical thinking</td>
+        </tr>
+    </table>
+
+    <h3>Negative Marking Strategy</h3>
+
+    <div class="example">
+        <strong>When to use negative marks:</strong>
+        <ul>
+            <li>Easy questions: -1/4 of positive marks</li>
+            <li>Medium questions: -1/5 of positive marks (optional)</li>
+            <li>Hard questions: No negative (discourages correct guesses)</li>
+        </ul>
+        <strong>Example:</strong>
+        <ul>
+            <li>Easy: +4 marks, -1 for wrong</li>
+            <li>Medium: +3 marks, -0.75 for wrong</li>
+            <li>Hard: +3 marks, 0 for wrong</li>
+        </ul>
+    </div>
+
+    <div class="page-break"></div>
+
+    <h2>7. Managing Student Attempts</h2>
+
+    <h3>Viewing Exam Results</h3>
+
+    <div class="step-box">
+        <strong>To View All Results for an Exam:</strong>
+        <ol>
+            <li>Click on exam from your exam list</li>
+            <li>Click "View Results" or "Results" tab</li>
+            <li>You'll see all student attempts</li>
+        </ol>
+    </div>
+
+    <div class="screenshot-placeholder">
+        [SCREENSHOT 13: Exam Results - Class View]<br>
+        <span class="screenshot-label">Show: Student names, scores, percentages, status (Pass/Fail), date attempted</span>
+    </div>
+
+    <h3>Class Statistics</h3>
+
+    <div class="info-box">
+        <strong>Automatic calculations shown:</strong>
+        <ul>
+            <li>Average score (mean)</li>
+            <li>Highest score</li>
+            <li>Lowest score</li>
+            <li>Pass rate (% who passed)</li>
+            <li>Question-wise performance (which questions students struggled with)</li>
+        </ul>
+    </div>
+
+    <h3>Individual Student Results</h3>
+
+    <div class="step-box">
+        <strong>To View a Specific Student's Attempt:</strong>
+        <ol>
+            <li>Find student in results list</li>
+            <li>Click on their name or result</li>
+            <li>See their detailed response</li>
+        </ol>
+    </div>
+
+    <div class="screenshot-placeholder">
+        [SCREENSHOT 14: Individual Student Result]<br>
+        <span class="screenshot-label">Show: Student name, overall score, question-by-question review, their answers vs correct answers</span>
+    </div>
+
+    <h3>Providing Feedback</h3>
+
+    <div class="tip-box">
+        <strong>💡 Best Practices for Feedback:</strong>
+        <ul>
+            <li>✓ Be constructive and encouraging</li>
+            <li>✓ Point out what they did well</li>
+            <li>✓ Identify areas for improvement</li>
+            <li>✓ Provide resources for learning</li>
+            <li>✓ Be specific ("Study chapters 5-6" not "Study more")</li>
+        </ul>
+    </div>
+
+    <h3>Exporting Results</h3>
+
+    <div class="step-box">
+        <strong>To Export Results to Spreadsheet:</strong>
+        <ol>
+            <li>Go to exam results page</li>
+            <li>Click "Export" button (usually top right)</li>
+            <li>Select format: Excel (.xlsx) or CSV</li>
+            <li>Choose what to include: scores, answers, statistics</li>
+            <li>Download file</li>
+            <li>Open in Excel/Sheets for further analysis</li>
+        </ol>
+    </div>
+
+    <div class="example">
+        <strong>Exported data includes:</strong>
+        <ul>
+            <li>Student name, email</li>
+            <li>Score and percentage</li>
+            <li>Pass/Fail status</li>
+            <li>Time taken</li>
+            <li>Individual question responses</li>
+        </ul>
+    </div>
+
+    <div class="page-break"></div>
+
+    <h2>8. Analytics & Reporting</h2>
+
+    <h3>Class Performance Analytics</h3>
+
+    <div class="step-box">
+        <strong>To Access Analytics:</strong>
+        <ol>
+            <li>Click "Analytics" in sidebar</li>
+            <li>Select the exam or topic</li>
+            <li>System shows comprehensive data</li>
+        </ol>
+    </div>
+
+    <div class="screenshot-placeholder">
+        [SCREENSHOT 15: Analytics Dashboard]<br>
+        <span class="screenshot-label">Show: Score distribution chart, question-wise analysis, pass/fail pie chart, performance trends</span>
+    </div>
+
+    <h3>Key Metrics to Monitor</h3>
+
+    <table>
+        <tr>
+            <th>Metric</th>
+            <th>What It Shows</th>
+            <th>Action If Low</th>
+        </tr>
+        <tr>
+            <td><strong>Pass Rate</strong></td>
+            <td>% of students who passed</td>
+            <td>If &lt;60%, exam may be too hard or students need more prep</td>
+        </tr>
+        <tr>
+            <td><strong>Average Score</strong></td>
+            <td>Mean student score</td>
+            <td>If &lt;50%, review teaching or exam difficulty</td>
+        </tr>
+        <tr>
+            <td><strong>Question Success Rate</strong></td>
+            <td>% who got each question right</td>
+            <td>If &lt;20%, question may be unclear or topic not taught</td>
+        </tr>
+        <tr>
+            <td><strong>Time Taken</strong></td>
+            <td>Average time students used</td>
+            <td>If most finish quickly, questions too easy; if rushing, increase time</td>
+        </tr>
+    </table>
+
+    <h3>Using Data to Improve Teaching</h3>
+
+    <div class="success-box">
+        <strong>Questions with low success rates:</strong>
+        <ul>
+            <li>Review the question - is it unclear?</li>
+            <li>Review teaching - did you cover this concept?</li>
+            <li>Revise the question for clarity</li>
+            <li>Provide additional instruction on concept</li>
+        </ul>
+    </div>
+
+    <div class="success-box">
+        <strong>Class with low average:</strong>
+        <ul>
+            <li>Review exam difficulty - was it appropriately balanced?</li>
+            <li>Review student preparation - did they have time to study?</li>
+            <li>Provide remedial instruction on weak areas</li>
+            <li>Consider follow-up practice exam</li>
+        </ul>
+    </div>
+
+    <div class="page-break"></div>
+
+    <h2>9. Troubleshooting</h2>
+
+    <h3>Common Issues for Teachers</h3>
+
+    <div class="important-box">
+        <strong>Problem: "Question marked as pending, can't use in exam"</strong>
+        <br><br>
+        <strong>Solution:</strong>
+        <ol>
+            <li>Check question status - is it "Pending Approval"?</li>
+            <li>If yes, contact admin - ask them to approve it</li>
+            <li>Once approved, you can use it immediately</li>
+            <li>If rejected, review feedback and resubmit</li>
+        </ol>
+    </div>
+
+    <div class="important-box">
+        <strong>Problem: "I made an error in a question - students already took the exam"</strong>
+        <br><br>
+        <strong>Solutions:</strong>
+        <ol>
+            <li>If error affects grading: Contact admin, they can manually adjust scores</li>
+            <li>If error is just clarity: Update question explanation</li>
+            <li>For future attempts: Edit question before students retake</li>
+            <li>Apologize to students and provide extra credit if major error</li>
+        </ol>
+    </div>
+
+    <div class="important-box">
+        <strong>Problem: "Student says their answer was correct but system marked it wrong"</strong>
+        <br><br>
+        <strong>Investigation steps:</strong>
+        <ol>
+            <li>Review the student's answer in results</li>
+            <li>Check if their answer matches the marked correct answer</li>
+            <li>For numerical: Check tolerance range - is their answer within range?</li>
+            <li>If you made an error in question setup, contact admin for manual adjustment</li>
+            <li>If question is truly ambiguous, award marks to all students who got similar answers</li>
+        </ol>
+    </div>
+
+    <h3>LaTeX & Formatting Issues</h3>
+
+    <div class="important-box">
+        <strong>Problem: "LaTeX formula not rendering correctly"</strong>
+        <br><br>
+        <strong>Common mistakes:</strong>
+        <ul>
+            <li>Missing $ signs: Type $\sqrt{4}$ not \sqrt{4}</li>
+            <li>Mismatched brackets: $\frac{1}{2} correct, not $(1/2)$</li>
+            <li>Missing \ for special symbols: $\pi$ not $pi$</li>
+        </ul>
+        <strong>Solution:</strong>
+        <ol>
+            <li>Test formula in question preview</li>
+            <li>If still not working, try simpler version</li>
+            <li>Add image as fallback if LaTeX fails</li>
+        </ol>
+    </div>
+
+    <h3>Getting Help</h3>
+
+    <div class="step-box">
+        <strong>When to contact support:</strong>
+        <ol>
+            <li><strong>Technical issues:</strong> System won't let you save, form crashes</li>
+            <li><strong>Question approval:</strong> Ask admin why question was rejected</li>
+            <li><strong>Grading issues:</strong> Ask admin to investigate marking errors</li>
+            <li><strong>Account issues:</strong> Can't login, permissions missing</li>
+        </ol>
+    </div>
+
+    <div class="page-break"></div>
+
+    <div class="footer">
+        <h2>Quick Checklist</h2>
+        <h3>Before Creating Exam:</h3>
+        <ul style="margin-left: 0;">
+            <li>☐ Created 50+ approved questions</li>
+            <li>☐ Planned exam duration</li>
+            <li>☐ Set marking scheme</li>
+            <li>☐ Decided on passing score</li>
+        </ul>
+
+        <h3>Before Publishing Exam:</h3>
+        <ul style="margin-left: 0;">
+            <li>☐ Added appropriate mix of difficulty levels</li>
+            <li>☐ Reviewed all questions for correctness</li>
+            <li>☐ Checked total marks</li>
+            <li>☐ Set start/end dates</li>
+            <li>☐ Tested exam myself (optional but recommended)</li>
+        </ul>
+
+        <h3>After Exam Closes:</h3>
+        <ul style="margin-left: 0;">
+            <li>☐ Reviewed class analytics</li>
+            <li>☐ Identified struggling students</li>
+            <li>☐ Provided feedback to students</li>
+            <li>☐ Updated teaching based on results</li>
+        </ul>
+
+        <p style="margin-top: 40px;"><strong>Questions? Contact Your Administrator</strong></p>
+        <p>📧 Admin Email: [Admin contact]<br>
+        💬 Support Portal: [Support link]<br>
+        📞 Phone: [Phone number]</p>
+
+        <p style="margin-top: 40px;"><strong>Teacher Guide Version 1.0</strong></p>
+        <p>Last Updated: March 2026</p>
+    </div>
+</body>
+</html>

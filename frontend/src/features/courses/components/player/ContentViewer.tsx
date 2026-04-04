@@ -1,4 +1,5 @@
 import { useParams, useNavigate } from "react-router-dom";
+import { buildExamContentRouteSearch, buildExamContentRouteState } from "@/features/exam-runtime/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import toast from "react-hot-toast";
@@ -17,6 +18,7 @@ interface ContentItem {
   title: string;
   content_url?: string | null;
   metadata?: Record<string, unknown> | null;
+  course_id?: number | null;
 }
 
 interface ContentViewerProps {
@@ -118,7 +120,7 @@ const extractExamId = (item: ContentItem | null): number | null => {
 };
 
 export default function ContentViewer({ item }: ContentViewerProps) {
-  const { contentId } = useParams<{ contentId: string }>();
+  const { contentId, courseId } = useParams<{ contentId: string; courseId?: string }>();
   const navigate = useNavigate();
 
   const [content, setContent] = useState<ContentItem | null>(item || null);
@@ -131,6 +133,15 @@ export default function ContentViewer({ item }: ContentViewerProps) {
   const [startingExam, setStartingExam] = useState(false);
 
   const examId = useMemo(() => extractExamId(content), [content]);
+  const examRouteContext = useMemo(
+    () => ({
+      courseId: courseId ? Number(courseId) : content?.course_id ?? null,
+      contentId: content?.id ?? (contentId ? Number(contentId) : null),
+    }),
+    [content?.course_id, content?.id, contentId, courseId]
+  );
+  const examRouteSearch = useMemo(() => buildExamContentRouteSearch(examRouteContext), [examRouteContext]);
+  const examRouteState = useMemo(() => buildExamContentRouteState(examRouteContext), [examRouteContext]);
 
   const handleSignedUrl = useCallback(async (nextContent: ContentItem) => {
     if (!nextContent.content_url || nextContent.item_type === "link" || nextContent.item_type === "exam") {
@@ -241,7 +252,7 @@ export default function ContentViewer({ item }: ContentViewerProps) {
         toast.error("Could not open exam attempt. Please try again.");
         return;
       }
-      navigate(`/student/exams/attempt/${attemptId}`);
+      navigate(`/student/exams/attempt/${attemptId}${examRouteSearch}`, { state: examRouteState });
     } catch (err) {
       if (axios.isAxiosError(err)) {
         const message =
@@ -255,7 +266,7 @@ export default function ContentViewer({ item }: ContentViewerProps) {
     } finally {
       setStartingExam(false);
     }
-  }, [exam, navigate, startingExam]);
+  }, [exam, examRouteSearch, examRouteState, navigate, startingExam]);
 
   if (loading) return <p className="p-6">Loading...</p>;
   if (!content) return <p className="p-6 text-red-500">Content not found.</p>;
@@ -360,7 +371,7 @@ export default function ContentViewer({ item }: ContentViewerProps) {
           {showResultButton && (
             <button
               type="button"
-              onClick={() => navigate(`/student/exams/${exam.id}/result`)}
+              onClick={() => navigate(`/student/exams/${exam.id}/result${examRouteSearch}`, { state: examRouteState })}
               className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
             >
               View Result

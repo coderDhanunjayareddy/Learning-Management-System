@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useState } from "react";
 import axios from "axios";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { getAttemptResult, getStudentExams } from "@/features/exam-runtime/api";
 import type { AttemptResultResponse } from "@/features/exam-runtime/types";
@@ -13,11 +13,28 @@ import {
   getTimeSpentSeconds,
   groupQuestionsBySection,
 } from "@/features/exam-runtime/components/result/resultUtils";
+import {
+  buildExamContentRoutePath,
+  getExamContentRouteContextFromSearch,
+  getExamContentRouteContextFromState,
+  mergeExamContentRouteContexts,
+  type ExamContentRouteContext,
+} from "@/features/exam-runtime/navigation";
 
 export default function StudentExamResultPlaceholderPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
   const { examId } = useParams<{ examId: string }>();
+
+  const initialRouteContext = useMemo(
+    () =>
+      mergeExamContentRouteContexts(
+        getExamContentRouteContextFromState(location.state),
+        getExamContentRouteContextFromSearch(location.search)
+      ),
+    [location.search, location.state]
+  );
 
   const examIdNumber = Number(examId);
   const validExamId = Number.isInteger(examIdNumber) && examIdNumber > 0;
@@ -28,6 +45,10 @@ export default function StudentExamResultPlaceholderPage() {
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [result, setResult] = useState<AttemptResultResponse | null>(null);
+  const [resolvedExamRouteContext, setResolvedExamRouteContext] = useState<ExamContentRouteContext>(initialRouteContext);
+  useEffect(() => {
+    setResolvedExamRouteContext(initialRouteContext);
+  }, [examIdNumber, initialRouteContext]);
 
   const handleUnauthorized = useCallback(() => {
     navigate("/login", { replace: true });
@@ -52,6 +73,13 @@ export default function StudentExamResultPlaceholderPage() {
         setError("Exam not found.");
         return;
       }
+
+      setResolvedExamRouteContext((prev) =>
+        mergeExamContentRouteContexts(prev, {
+          courseId: currentExam.course_id ?? null,
+          contentId: currentExam.content_id ?? null,
+        })
+      );
 
       const latestAttemptId = currentExam.latest_completed_attempt_id ?? null;
       if (!latestAttemptId) {
@@ -151,6 +179,22 @@ export default function StudentExamResultPlaceholderPage() {
     [result]
   );
 
+  const finalRouteContext = useMemo(
+    () =>
+      mergeExamContentRouteContexts(initialRouteContext, resolvedExamRouteContext, {
+        courseId: result?.exam.course_id ?? null,
+        contentId: result?.exam.content_id ?? null,
+      }),
+    [initialRouteContext, resolvedExamRouteContext, result?.exam.content_id, result?.exam.course_id]
+  );
+  const fallbackPath = useMemo(
+    () => buildExamContentRoutePath(finalRouteContext) ?? "/student/dashboard",
+    [finalRouteContext]
+  );
+  const fallbackLabel = fallbackPath.includes("/content/") ? "Back to Content" : "Back to Exams";
+
+
+
   const showScore = Boolean(result?.visibility.show_score && result?.visibility.is_released);
   const showCorrectAnswers = Boolean(result?.visibility.show_solutions_to_user && result?.visibility.is_released);
   const showSolutions = showCorrectAnswers;
@@ -186,10 +230,10 @@ export default function StudentExamResultPlaceholderPage() {
             </button>
             <button
               type="button"
-              onClick={() => navigate("/student/exams")}
+              onClick={() => navigate(fallbackPath)}
               className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
             >
-              Back to Exams
+              {fallbackLabel}
             </button>
           </div>
         </div>
@@ -215,10 +259,10 @@ export default function StudentExamResultPlaceholderPage() {
             </button>
             <button
               type="button"
-              onClick={() => navigate("/student/exams")}
+              onClick={() => navigate(fallbackPath)}
               className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
             >
-              Back to Exams
+              {fallbackLabel}
             </button>
           </div>
         </div>
@@ -258,22 +302,15 @@ export default function StudentExamResultPlaceholderPage() {
         <div className="flex flex-wrap gap-3">
           <button
             type="button"
-            onClick={() => navigate("/student/exams")}
+            onClick={() => navigate(fallbackPath)}
             className="rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"
           >
-            Back to Exams
+            {fallbackLabel}
           </button>
-          {resolvedAttemptId ? (
-            <button
-              type="button"
-              onClick={() => navigate(`/student/exams/attempt/${resolvedAttemptId}`)}
-              className="rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-            >
-              Back to Attempt
-            </button>
-          ) : null}
+
         </div>
       </div>
     </div>
   );
 }
+

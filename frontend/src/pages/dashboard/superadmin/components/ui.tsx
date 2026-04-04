@@ -1,6 +1,6 @@
 ﻿import React from 'react';
 
-export function Badge({ tone, children }: { tone: string; children: string }) {
+export function Badge({ tone, children }: { tone: string; children: React.ReactNode }) {
   return (
     <span
       className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${tone}`}
@@ -70,14 +70,17 @@ export function GhostButton({
   onClick,
   disabled,
   className = '',
+  type = 'button',
 }: {
   children: string;
   onClick?: () => void;
   disabled?: boolean;
   className?: string;
+  type?: 'button' | 'submit';
 }) {
   return (
     <button
+      type={type}
       onClick={onClick}
       disabled={disabled}
       className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${

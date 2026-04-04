@@ -1,0 +1,1263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SPECTROPY - Administrator Guide</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: white;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+
+        h1 {
+            color: #2c3e50;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            border-bottom: 4px solid #8e44ad;
+            padding-bottom: 15px;
+            text-align: center;
+        }
+
+        h2 {
+            color: #8e44ad;
+            font-size: 1.8em;
+            margin-top: 40px;
+            margin-bottom: 20px;
+            border-left: 5px solid #8e44ad;
+            padding-left: 15px;
+        }
+
+        h3 {
+            color: #2c3e50;
+            font-size: 1.3em;
+            margin-top: 25px;
+            margin-bottom: 15px;
+        }
+
+        .section-intro {
+            background: linear-gradient(135deg, #8e44ad 0%, #6c3483 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+
+        .section-intro h2 {
+            color: white;
+            border-left: none;
+            padding-left: 0;
+            margin-top: 0;
+        }
+
+        .step-box {
+            background: #ebdef0;
+            padding: 20px;
+            border-left: 5px solid #8e44ad;
+            margin: 20px 0;
+            border-radius: 5px;
+        }
+
+        .tip-box {
+            background: #fff3cd;
+            padding: 15px;
+            border-left: 4px solid #ffc107;
+            margin: 15px 0;
+            border-radius: 3px;
+        }
+
+        .important-box {
+            background: #f8d7da;
+            padding: 15px;
+            border-left: 4px solid #dc3545;
+            margin: 15px 0;
+            border-radius: 3px;
+        }
+
+        .info-box {
+            background: #d1ecf1;
+            padding: 15px;
+            border-left: 4px solid #17a2b8;
+            margin: 15px 0;
+            border-radius: 3px;
+        }
+
+        .success-box {
+            background: #d4edda;
+            padding: 15px;
+            border-left: 4px solid #28a745;
+            margin: 15px 0;
+            border-radius: 3px;
+        }
+
+        .warning-box {
+            background: #fff3cd;
+            padding: 15px;
+            border-left: 4px solid #ff9800;
+            margin: 15px 0;
+            border-radius: 3px;
+        }
+
+        .screenshot-placeholder {
+            background: #f0f0f0;
+            border: 2px dashed #999;
+            padding: 40px;
+            text-align: center;
+            margin: 20px 0;
+            border-radius: 5px;
+            color: #666;
+        }
+
+        .screenshot-label {
+            color: #666;
+            font-size: 0.9em;
+            margin-top: 10px;
+            font-style: italic;
+        }
+
+        ul, ol {
+            margin-left: 30px;
+            margin-bottom: 15px;
+        }
+
+        li {
+            margin-bottom: 8px;
+        }
+
+        p {
+            margin-bottom: 15px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+
+        table th {
+            background: #8e44ad;
+            color: white;
+            padding: 12px;
+            text-align: left;
+        }
+
+        table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #ddd;
+        }
+
+        table tr:nth-child(even) {
+            background: #f9f9f9;
+        }
+
+        .page-break {
+            page-break-after: always;
+        }
+
+        .example {
+            background: #f5f5f5;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+            border-left: 4px solid #3498db;
+        }
+
+        .checklist {
+            background: #f9f9f9;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+            border-left: 4px solid #8e44ad;
+        }
+
+        .checklist li {
+            margin-bottom: 10px;
+        }
+
+        .footer {
+            margin-top: 50px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+            text-align: center;
+            color: #7f8c8d;
+            font-size: 0.9em;
+        }
+
+        code {
+            background: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+
+        @media print {
+            body {
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div style="text-align: center; margin-bottom: 40px;">
+        <h1>SPECTROPY Administrator Guide</h1>
+        <p style="font-size: 1.2em; color: #8e44ad; margin-top: 10px;">System Management, User Administration & Platform Configuration</p>
+        <p style="color: #7f8c8d; margin-top: 20px;">Version 1.0 | 2026</p>
+    </div>
+
+    <div class="section-intro">
+        <h2>Welcome, System Administrators!</h2>
+        <p>This comprehensive guide covers all administrative functions in SPECTROPY, from user management and question approval to analytics and platform configuration. Follow this guide to ensure smooth operation of your learning management system.</p>
+    </div>
+
+    <h2>Table of Contents</h2>
+    <ol>
+        <li>Admin Dashboard Overview</li>
+        <li>User Management</li>
+        <li>Question Approval Workflow</li>
+        <li>Organization Management</li>
+        <li>Content & Entitlements</li>
+        <li>System Analytics & Reporting</li>
+        <li>Platform Configuration</li>
+        <li>Troubleshooting & Maintenance</li>
+        <li>Security & Best Practices</li>
+    </ol>
+
+    <div class="page-break"></div>
+
+    <h2>1. Admin Dashboard Overview</h2>
+
+    <h3>Dashboard Components</h3>
+
+    <div class="screenshot-placeholder">
+        [SCREENSHOT 1: Admin Dashboard]<br>
+        <span class="screenshot-label">Show: System overview cards, key metrics (total users, active exams, pending approvals), recent activities, admin menu sidebar</span>
+    </div>
+
+    <h3>Key Metrics on Dashboard</h3>
+
+    <table>
+        <tr>
+            <th>Card</th>
+            <th>Shows</th>
+            <th>Action Required If</th>
+        </tr>
+        <tr>
+            <td><strong>Total Users</strong></td>
+            <td>All system users by role</td>
+            <td>Monitor for unauthorized accounts</td>
+        </tr>
+        <tr>
+            <td><strong>Active Exams</strong></td>
+            <td>Exams currently in progress</td>
+            <td>High load - monitor system performance</td>
+        </tr>
+        <tr>
+            <td><strong>Pending Approvals</strong></td>
+            <td>Questions awaiting review</td>
+            <td>Process within 24 hours</td>
+        </tr>
+        <tr>
+            <td><strong>System Health</strong></td>
+            <td>Server status, uptime, performance</td>
+            <td>Issues - contact infrastructure team</td>
+        </tr>
+        <tr>
+            <td><strong>Recent Activity</strong></td>
+            <td>Latest user actions, logins</td>
+            <td>Suspicious activity - investigate</td>
+        </tr>
+    </table>
+
+    <h3>Navigation Menu</h3>
+
+    <div class="info-box">
+        <strong>Main Admin Menu Items:</strong>
+        <ul>
+            <li><strong>Dashboard</strong> - System overview and quick stats</li>
+            <li><strong>Users</strong> - Manage all system users</li>
+            <li><strong>Questions</strong> - Approve/manage questions</li>
+            <li><strong>Exams</strong> - Monitor exams and results</li>
+            <li><strong>Organizations</strong> - Manage schools, batches, hierarchies</li>
+            <li><strong>Content Packs</strong> - Bundle and distribute content</li>
+            <li><strong>Analytics</strong> - Comprehensive platform analytics</li>
+            <li><strong>Settings</strong> - System configuration</li>
+            <li><strong>Audit Logs</strong> - Track all system changes</li>
+        </ul>
+    </div>
+
+    <div class="page-break"></div>
+
+    <h2>2. User Management</h2>
+
+    <h3>Accessing User Management</h3>
+
+    <div class="step-box">
+        <strong>Step 1: Navigate to Users Section</strong>
+        <ol>
+            <li>Click <strong>"Users"</strong> in the left sidebar</li>
+            <li>You'll see all system users</li>
+            <li>Use filters and search to find specific users</li>
+        </ol>
+    </div>
+
+    <div class="screenshot-placeholder">
+        [SCREENSHOT 2: Users Page - List View]<br>
+        <span class="screenshot-label">Show: User list with columns (Name, Email, Role, School, Status), filters (role, school, status), Create User button</span>
+    </div>
+
+    <h3>Creating Individual Users</h3>
+
+    <div class="step-box">
+        <strong>Step 2: Add New User</strong>
+        <ol>
+            <li>Click <strong>"+ CREATE USER"</strong> button</li>
+            <li>A form appears with fields to fill</li>
+        </ol>
+    </div>
+
+    <div class="screenshot-placeholder">
+        [SCREENSHOT 3: Create User Form]<br>
+        <span class="screenshot-label">Show: First Name, Last Name, Email, Role dropdown, School selector, Password field</span>
+    </div>
+
+    <h4>User Creation Fields</h4>
+
+    <table>
+        <tr>
+            <th>Field</th>
+            <th>Description</th>
+            <th>Example</th>
+        </tr>
+        <tr>
+            <td><strong>First Name</strong></td>
+            <td>User's first name</td>
+            <td>John</td>
+        </tr>
+        <tr>
+            <td><strong>Last Name</strong></td>
+            <td>User's last name</td>
+            <td>Smith</td>
+        </tr>
+        <tr>
+            <td><strong>Email</strong></td>
+            <td>Login email (must be unique)</td>
+            <td>john.smith@school.edu</td>
+        </tr>
+        <tr>
+            <td><strong>Role</strong></td>
+            <td>User's role in system</td>
+            <td>Student, Teacher, Admin</td>
+        </tr>
+        <tr>
+            <td><strong>School</strong></td>
+            <td>Organization/school assigned to</td>
+            <td>Central High School</td>
+        </tr>
+        <tr>
+            <td><strong>Status</strong></td>
+            <td>Active or Inactive</td>
+            <td>Active</td>
+        </tr>
+    </table>
+
+    <h4>User Roles Explained</h4>
+
+    <table>
+        <tr>
+            <th>Role</th>
+            <th>Permissions</th>
+            <th>Typical Use</th>
+        </tr>
+        <tr>
+            <td><strong>Super Admin</strong></td>
+            <td>Full system access, create admins, configure platform</td>
+            <td>System owner, lead administrator</td>
+        </tr>
+        <tr>
+            <td><strong>Admin</strong></td>
+            <td>User management, question approval, analytics, org management</td>
+            <td>School principal, IT coordinator</td>
+        </tr>
+        <tr>
+            <td><strong>Teacher</strong></td>
+            <td>Create questions, create exams, view results, manage content</td>
+            <td>Classroom educators</td>
+        </tr>
+        <tr>
+            <td><strong>Student</strong></td>
+            <td>Take exams, view courses, see results</td>
+            <td>Learners</td>
+        </tr>
+    </table>
+
+    <h3>Bulk User Import</h3>
+
+    <div class="step-box">
+        <strong>To Import Multiple Users at Once:</strong>
+        <ol>
+            <li>Click <strong>"IMPORT USERS"</strong> button</li>
+            <li>A dialog opens</li>
+        </ol>
+    </div>
+
+    <div class="screenshot-placeholder">
+        [SCREENSHOT 4: Import Users Dialog]<br>
+        <span class="screenshot-label">Show: Download template button, CSV upload area, import preview, Confirm button</span>
+    </div>
+
+    <h4>CSV Format Requirements</h4>
+
+    <div class="example">
+        <strong>CSV Headers (must be in this order):</strong>
+        <pre>FirstName,LastName,Email,Role,SchoolId
+John,Smith,john.smith@school.edu,Student,1
+Jane,Doe,jane.doe@school.edu,Teacher,1
+Robert,Johnson,robert@school.edu,Admin,1</pre>
+        <strong>Rules:</strong>
+        <ul>
+            <li>First row must be headers</li>
+            <li>Email must be unique</li>
+            <li>Role must be: Student, Teacher, or Admin</li>
+            <li>SchoolId must exist in system</li>
+            <li>UTF-8 encoding required</li>
+        </ul>
+    </div>
+
+    <h4>Import Process</h4>
+
+    <div class="step-box">
+        <strong>Steps:</strong>
+        <ol>
+            <li>Click "Download Template" to get CSV template</li>
+            <li>Open template in Excel or Google Sheets</li>
+            <li>Add your user data</li>
+            <li>Save as CSV</li>
+            <li>Return to import dialog</li>
+            <li>Click "Upload CSV"</li>
+            <li>System validates data</li>
+            <li>Review import preview</li>
+            <li>Click "Confirm Import"</li>
+            <li>System creates all users</li>
+        </ol>
+    </div>
+
+    <h3>Editing Users</h3>
+
+    <div class="step-box">
+        <strong>To Edit User Details:</strong>
+        <ol>
+            <li>Find user in the list</li>
+            <li>Click their name or the edit button</li>
+            <li>Modify fields as needed</li>
+            <li>Click "Update"</li>
+        </ol>
+    </div>
+
+    <div class="important-box">
+        <strong>⚠️ Caution When Editing:</strong>
+        <ul>
+            <li>Changing email may break login access</li>
+            <li>Changing role affects system permissions immediately</li>
+            <li>Changing school affects content visibility</li>
+        </ul>
+    </div>
+
+    <h3>Managing User Status</h3>
+
+    <h4>Deactivating Users</h4>
+
+    <div class="step-box">
+        <strong>To Deactivate a User (when they leave):</strong>
+        <ol>
+            <li>Find user in list</li>
+            <li>Click menu (three dots)</li>
+            <li>Select "Deactivate"</li>
+            <li>User can no longer login</li>
+            <li>Their data is preserved</li>
+            <li>Can be reactivated later if needed</li>
+        </ol>
+    </div>
+
+    <h4>Resetting Passwords</h4>
+
+    <div class="step-box">
+        <strong>When User Forgets Password:</strong>
+        <ol>
+            <li>Find user in list</li>
+            <li>Click menu (three dots)</li>
+            <li>Select "Reset Password"</li>
+            <li>System generates temporary password</li>
+            <li>Send to user via email</li>
+            <li>User must change on first login</li>
+        </ol>
+    </div>
+
+    <h3>Viewing User Activity</h3>
+
+    <div class="info-box">
+        <strong>To Track What a User Has Done:</strong>
+        <ul>
+            <li>Find user in list</li>
+            <li>Click "Activity" tab (if available)</li>
+            <li>See: Last login, exams taken, questions created, etc.</li>
+        </ul>
+    </div>
+
+    <div class="page-break"></div>
+
+    <h2>3. Question Approval Workflow</h2>
+
+    <h3>Accessing Pending Questions</h3>
+
+    <div class="step-box">
+        <strong>Step 1: Navigate to Questions</strong>
+        <ol>
+            <li>Click <strong>"Questions"</strong> in sidebar</li>
+            <li>Click <strong>"PENDING APPROVAL"</strong> tab</li>
+            <li>See all questions waiting for review</li>
+        </ol>
+    </div>
+
+    <div class="screenshot-placeholder">
+        [SCREENSHOT 5: Pending Questions List]<br>
+        <span class="screenshot-label">Show: Question list with submitted date, teacher name, subject, question preview, action buttons</span>
+    </div>
+
+    <h3>Reviewing Questions for Quality</h3>
+
+    <div class="step-box">
+        <strong>Step 2: Review Each Question</strong>
+        <ol>
+            <li>Click question to open review view</li>
+            <li>Carefully examine all aspects</li>
+        </ol>
+    </div>
+
+    <div class="screenshot-placeholder">
+        [SCREENSHOT 6: Question Review View]<br>
+        <span class="screenshot-label">Show: Full question text, options, correct answer highlighted, marks, solution, approve/reject buttons</span>
+    </div>
+
+    <h4>Review Checklist</h4>
+
+    <div class="checklist">
+        <strong>Content Quality:</strong>
+        <ul>
+            <li>☐ Question text is clear and unambiguous</li>
+            <li>☐ Correct answer is actually correct</li>
+            <li>☐ All options are plausible</li>
+            <li>☐ Solution explanation is helpful</li>
+            <li>☐ Question tests appropriate concept level</li>
+        </ul>
+    </div>
+
+    <div class="checklist">
+        <strong>Technical Quality:</strong>
+        <ul>
+            <li>☐ No spelling or grammar errors</li>
+            <li>☐ LaTeX formulas render correctly</li>
+            <li>☐ Images are clear and relevant</li>
+            <li>☐ Formatting is consistent</li>
+            <li>☐ Subject/Chapter/Topic are correctly classified</li>
+        </ul>
+    </div>
+
+    <div class="checklist">
+        <strong>Marking Scheme:</strong>
+        <ul>
+            <li>☐ Marks are appropriate for difficulty</li>
+            <li>☐ Negative marking (if used) is reasonable</li>
+            <li>☐ Marks are clear in question</li>
+        </ul>
+    </div>
+
+    <h3>Approving Questions</h3>
+
+    <div class="step-box">
+        <strong>When Quality is Good:</strong>
+        <ol>
+            <li>Click "APPROVE" button</li>
+            <li>Optionally add feedback: "Great question! Well structured."</li>
+            <li>Question status becomes "Approved"</li>
+            <li>Teacher receives approval notification</li>
+            <li>Question available for use in exams</li>
+        </ol>
+    </div>
+
+    <div class="success-box">
+        <strong>✓ Good Approval Feedback:</strong>
+        <ul>
+            <li>"Approved! Clear question with good distractors."</li>
+            <li>"Approved. Good use of LaTeX formatting."</li>
+            <li>"Approved. Excellent solution explanation."</li>
+        </ul>
+    </div>
+
+    <h3>Rejecting or Requesting Changes</h3>
+
+    <div class="step-box">
+        <strong>When Quality Needs Improvement:</strong>
+        <ol>
+            <li>Click "REQUEST CHANGES" or "REJECT"</li>
+            <li>Write detailed feedback explaining issues</li>
+            <li>Be specific: "What's wrong?" and "How to fix it?"</li>
+            <li>Click "Send"</li>
+            <li>Teacher receives feedback via email</li>
+        </ol>
+    </div>
+
+    <div class="example">
+        <strong>✗ Poor Rejection Feedback:</strong>
+        <blockquote>"This question isn't good. Fix it."</blockquote>
+    </div>
+
+    <div class="example">
+        <strong>✓ Good Rejection Feedback:</strong>
+        <blockquote>
+            "The LaTeX formula in the question text isn't rendering correctly. Please use $...$ syntax. Also, the image is blurry - please replace with a clearer version. Finally, add a solution explanation so students understand the concept. Once revised, please resubmit."
+        </blockquote>
+    </div>
+
+    <h3>Managing Approval Queue</h3>
+
+    <div class="tip-box">
+        <strong>💡 Best Practices:</strong>
+        <ul>
+            <li>✓ Process approvals daily to avoid backlog</li>
+            <li>✓ Set SLA: Approve/reject within 24 hours</li>
+            <li>✓ Provide constructive feedback, not just rejection</li>
+            <li>✓ Look for patterns in rejections (e.g., formatting issues) and educate teachers</li>
+            <li>✓ Approve good questions immediately</li>
+        </ul>
+    </div>
+
+    <div class="page-break"></div>
+
+    <h2>4. Organization Management</h2>
+
+    <h3>Managing Schools</h3>
+
+    <div class="step-box">
+        <strong>To Manage Schools:</strong>
+        <ol>
+            <li>Click "Organizations" in sidebar</li>
+            <li>Click "Schools" tab</li>
+        </ol>
+    </div>
+
+    <div class="screenshot-placeholder">
+        [SCREENSHOT 7: Schools Management]<br>
+        <span class="screenshot-label">Show: List of schools, Create School button, school details (name, address, contact), action buttons</span>
+    </div>
+
+    <h4>Creating a School</h4>
+
+    <div class="step-box">
+        <strong>To Add a New School:</strong>
+        <ol>
+            <li>Click "+ CREATE SCHOOL"</li>
+            <li>Enter school details:</li>
+            <ul>
+                <li>School Name (required)</li>
+                <li>Address</li>
+                <li>Contact Email</li>
+                <li>Contact Phone</li>
+                <li>Principal/Administrator Name</li>
+                <li>School Code (optional)</li>
+            </ul>
+            <li>Click "Create"</li>
+        </ol>
+    </div>
+
+    <h4>Managing School Members</h4>
+
+    <div class="step-box">
+        <strong>To Assign Users to a School:</strong>
+        <ol>
+            <li>Click on school name</li>
+            <li>Go to "Members" tab</li>
+            <li>Click "+ ADD MEMBER"</li>
+            <li>Search and select users</li>
+            <li>Assign role (Teacher, Admin, Student)</li>
+            <li>Click "Assign"</li>
+        </ol>
+    </div>
+
+    <h3>Managing Batches</h3>
+
+    <div class="info-box">
+        <strong>What are Batches?</strong>
+        <p>Batches are groups of students (like class sections). They help:</p>
+        <ul>
+            <li>Organize students for better management</li>
+            <li>Assign specific exams to specific groups</li>
+            <li>Track progress by cohort</li>
+            <li>Manage access to content</li>
+        </ul>
+    </div>
+
+    <div class="step-box">
+        <strong>To Create a Batch:</strong>
+        <ol>
+            <li>Click "Organizations" → "Batches"</li>
+            <li>Click "+ CREATE BATCH"</li>
+            <li>Enter batch details:</li>
+            <ul>
+                <li>Batch Name (e.g., "Class 10-A", "Batch Spring 2024")</li>
+                <li>School (which school)</li>
+                <li>Start Date</li>
+                <li>End Date</li>
+            </ul>
+            <li>Click "Create"</li>
+        </ol>
+    </div>
+
+    <h4>Adding Students to Batch</h4>
+
+    <div class="step-box">
+        <strong>To Add Students to a Batch:</strong>
+        <ol>
+            <li>Click on batch name</li>
+            <li>Go to "Members" tab</li>
+            <li>Click "+ ADD STUDENTS"</li>
+            <li>Filter and select students</li>
+            <li>Click "Add to Batch"</li>
+            <li>Students now belong to this batch</li>
+        </ol>
+    </div>
+
+    <div class="page-break"></div>
+
+    <h2>5. Content & Entitlements</h2>
+
+    <h3>Content Packs</h3>
+
+    <div class="info-box">
+        <strong>What are Content Packs?</strong>
+        <p>Bundles of related questions, exams, or courses that can be distributed together to users or schools. Useful for:</p>
+        <ul>
+            <li>Packaging curriculum materials</li>
+            <li>Distributing exam sets</li>
+            <li>Enabling specific content for specific users</li>
+        </ul>
+    </div>
+
+    <div class="step-box">
+        <strong>To Create a Content Pack:</strong>
+        <ol>
+            <li>Click "Content Packs" in sidebar</li>
+            <li>Click "+ CREATE PACK"</li>
+            <li>Enter pack details:</li>
+            <ul>
+                <li>Pack Name</li>
+                <li>Description</li>
+            </ul>
+            <li>Click "Create"</li>
+        </ol>
+    </div>
+
+    <h3>Entitlements (Access Control)</h3>
+
+    <div class="info-box">
+        <strong>Entitlements Control Who Can Access What</strong>
+        <p>Used to:</p>
+        <ul>
+            <li>Grant specific users/schools access to content packs</li>
+            <li>Manage subscriptions</li>
+            <li>Control feature access</li>
+        </ul>
+    </div>
+
+    <div class="step-box">
+        <strong>To Create an Entitlement:</strong>
+        <ol>
+            <li>Click "Entitlements" in sidebar</li>
+            <li>Click "+ CREATE ENTITLEMENT"</li>
+            <li>Specify:</li>
+            <ul>
+                <li>Content Pack or Feature</li>
+                <li>User or School to grant access to</li>
+                <li>Valid From date</li>
+                <li>Valid To date (expiry)</li>
+            </ul>
+            <li>Click "Create"</li>
+        </ol>
+    </div>
+
+    <div class="page-break"></div>
+
+    <h2>6. System Analytics & Reporting</h2>
+
+    <h3>Accessing Analytics</h3>
+
+    <div class="step-box">
+        <strong>To View Platform Analytics:</strong>
+        <ol>
+            <li>Click "Analytics" in sidebar</li>
+            <li>You'll see comprehensive system data</li>
+        </ol>
+    </div>
+
+    <div class="screenshot-placeholder">
+        [SCREENSHOT 8: Analytics Dashboard]<br>
+        <span class="screenshot-label">Show: Charts for user growth, exam statistics, question bank health, performance metrics, date range selector</span>
+    </div>
+
+    <h3>Key Analytics Sections</h3>
+
+    <h4>System Overview</h4>
+
+    <table>
+        <tr>
+            <th>Metric</th>
+            <th>Description</th>
+            <th>Action If High/Low</th>
+        </tr>
+        <tr>
+            <td><strong>Total Users</strong></td>
+            <td>Sum of all users in system</td>
+            <td>Track growth year-over-year</td>
+        </tr>
+        <tr>
+            <td><strong>Active Users (7-day)</strong></td>
+            <td>Users who logged in last 7 days</td>
+            <td>Low = engagement issue, contact schools</td>
+        </tr>
+        <tr>
+            <td><strong>Total Questions</strong></td>
+            <td>All questions in system</td>
+            <td>Low = need more questions, engage teachers</td>
+        </tr>
+        <tr>
+            <td><strong>Approved Questions</strong></td>
+            <td>Questions ready to use</td>
+            <td>Track ratio of approved vs pending</td>
+        </tr>
+    </table>
+
+    <h4>Exam Statistics</h4>
+
+    <table>
+        <tr>
+            <th>Metric</th>
+            <th>Shows</th>
+            <th>Use For</th>
+        </tr>
+        <tr>
+            <td><strong>Total Exams</strong></td>
+            <td>All exams created</td>
+            <td>Understand platform usage</td>
+        </tr>
+        <tr>
+            <td><strong>Total Attempts</strong></td>
+            <td>All exam attempts by students</td>
+            <td>Gauge usage scale</td>
+        </tr>
+        <tr>
+            <td><strong>Average Pass Rate</strong></td>
+            <td>% of students passing exams</td>
+            <td>If low, exams too hard or teaching issue</td>
+        </tr>
+        <tr>
+            <td><strong>Question Difficulty Distribution</strong></td>
+            <td>Questions by difficulty level</td>
+            <td>Check balance</td>
+        </tr>
+    </table>
+
+    <h4>User Analytics</h4>
+
+    <div class="info-box">
+        <strong>Understand User Engagement:</strong>
+        <ul>
+            <li>Login frequency by role</li>
+            <li>Most active schools/teachers/students</li>
+            <li>User growth trends</li>
+            <li>Features most used</li>
+        </ul>
+    </div>
+
+    <h3>Generating Reports</h3>
+
+    <div class="step-box">
+        <strong>To Export Data/Generate Reports:</strong>
+        <ol>
+            <li>Go to Analytics section</li>
+            <li>Select metrics/data you want</li>
+            <li>Choose date range</li>
+            <li>Click "EXPORT REPORT"</li>
+            <li>Choose format: PDF, Excel, CSV</li>
+            <li>Download generated report</li>
+        </ol>
+    </div>
+
+    <div class="tip-box">
+        <strong>💡 Useful Reports to Generate Regularly:</strong>
+        <ul>
+            <li>Monthly: User growth, exam activity, question approvals</li>
+            <li>Quarterly: Platform health, performance metrics, ROI analysis</li>
+            <li>Annually: Complete platform audit, usage trends, recommendations</li>
+        </ul>
+    </div>
+
+    <div class="page-break"></div>
+
+    <h2>7. Platform Configuration</h2>
+
+    <h3>Accessing Settings</h3>
+
+    <div class="step-box">
+        <strong>To Configure System Settings:</strong>
+        <ol>
+            <li>Click "Settings" in sidebar</li>
+            <li>Select configuration area</li>
+        </ol>
+    </div>
+
+    <div class="screenshot-placeholder">
+        [SCREENSHOT 9: Settings Page]<br>
+        <span class="screenshot-label">Show: Settings menu (General, Email, Security, Appearance), configuration options with explanations</span>
+    </div>
+
+    <h3>General Settings</h3>
+
+    <table>
+        <tr>
+            <th>Setting</th>
+            <th>Description</th>
+            <th>Example</th>
+        </tr>
+        <tr>
+            <td><strong>Platform Name</strong></td>
+            <td>Display name of your LMS</td>
+            <td>"Central High School LMS"</td>
+        </tr>
+        <tr>
+            <td><strong>Platform URL</strong></td>
+            <td>Base URL of system</td>
+            <td>"https://lms.school.edu"</td>
+        </tr>
+        <tr>
+            <td><strong>Timezone</strong></td>
+            <td>Server timezone for timestamps</td>
+            <td>"America/New_York"</td>
+        </tr>
+        <tr>
+            <td><strong>Language</strong></td>
+            <td>Default interface language</td>
+            <td>"English"</td>
+        </tr>
+        <tr>
+            <td><strong>Logo</strong></td>
+            <td>Upload organization logo</td>
+            <td>School logo image</td>
+        </tr>
+    </table>
+
+    <h3>Email Configuration</h3>
+
+    <div class="important-box">
+        <strong>⚠️ Critical for notifications and password resets</strong>
+    </div>
+
+    <div class="step-box">
+        <strong>To Configure Email:</strong>
+        <ol>
+            <li>Click "Settings" → "Email"</li>
+            <li>Configure SMTP settings:</li>
+            <ul>
+                <li>SMTP Server (e.g., smtp.gmail.com)</li>
+                <li>SMTP Port (usually 587 or 465)</li>
+                <li>Username (sender email)</li>
+                <li>Password (app password, not regular password)</li>
+                <li>From Email (appears in emails sent)</li>
+                <li>From Name</li>
+            </ul>
+            <li>Click "Test Connection" to verify</li>
+            <li>If successful, click "Save"</li>
+        </ol>
+    </div>
+
+    <h3>Security Settings</h3>
+
+    <table>
+        <tr>
+            <th>Setting</th>
+            <th>Purpose</th>
+            <th>Recommended</th>
+        </tr>
+        <tr>
+            <td><strong>Require HTTPS</strong></td>
+            <td>Force encrypted connections</td>
+            <td>Always ON</td>
+        </tr>
+        <tr>
+            <td><strong>Session Timeout</strong></td>
+            <td>Auto-logout after inactivity</td>
+            <td>30 minutes</td>
+        </tr>
+        <tr>
+            <td><strong>Password Policy</strong></td>
+            <td>Minimum password requirements</td>
+            <td>Min 8 chars, uppercase, number</td>
+        </tr>
+        <tr>
+            <td><strong>Max Login Attempts</strong></td>
+            <td>Failed attempts before lockout</td>
+            <td>5 attempts</td>
+        </tr>
+        <tr>
+            <td><strong>Lockout Duration</strong></td>
+            <td>How long to lock account</td>
+            <td>15 minutes</td>
+        </tr>
+    </table>
+
+    <h3>Appearance Settings</h3>
+
+    <div class="info-box">
+        <strong>Customize Look & Feel:</strong>
+        <ul>
+            <li>Primary Color - Main brand color</li>
+            <li>Secondary Color - Accent color</li>
+            <li>Logo - Upload your school logo</li>
+            <li>Favicon - Browser tab icon</li>
+            <li>Footer Text - Custom footer message</li>
+        </ul>
+    </div>
+
+    <div class="page-break"></div>
+
+    <h2>8. Troubleshooting & Maintenance</h2>
+
+    <h3>Common Admin Issues</h3>
+
+    <div class="important-box">
+        <strong>Problem: Pending questions accumulating (queue too long)</strong>
+        <br><br>
+        <strong>Solutions:</strong>
+        <ol>
+            <li>Check if you have sufficient admin staff</li>
+            <li>Set up approval SLA (e.g., 24-hour target)</li>
+            <li>Conduct teacher training on question quality</li>
+            <li>Consider delegating approvals to school admins</li>
+            <li>Implement automated checks for common errors</li>
+        </ol>
+    </div>
+
+    <div class="important-box">
+        <strong>Problem: User complaints of slow exam performance</strong>
+        <br><br>
+        <strong>Investigation Steps:</strong>
+        <ol>
+            <li>Check server status/load</li>
+            <li>Check network connectivity</li>
+            <li>Look at exam with heavy images/videos</li>
+            <li>Consider CDN for media delivery</li>
+            <li>Contact infrastructure team for optimization</li>
+        </ol>
+    </div>
+
+    <div class="important-box">
+        <strong>Problem: Data integrity - question changed after exam taken</strong>
+        <br><br>
+        <strong>Process:</strong>
+        <ol>
+            <li>Check audit logs for modifications</li>
+            <li>If teacher modified correct answer: Manual adjustment needed</li>
+            <li>Award correct marks to affected students</li>
+            <li>Communicate with teacher about data integrity</li>
+            <li>Consider implementing question versioning</li>
+        </ol>
+    </div>
+
+    <h3>System Maintenance</h3>
+
+    <h4>Regular Maintenance Tasks</h4>
+
+    <div class="checklist">
+        <strong>Daily:</strong>
+        <ul>
+            <li>☐ Check admin dashboard for alerts</li>
+            <li>☐ Monitor active exam count</li>
+            <li>☐ Process pending question approvals</li>
+        </ul>
+        <strong>Weekly:</strong>
+        <ul>
+            <li>☐ Review audit logs for suspicious activity</li>
+            <li>☐ Check user activity/engagement</li>
+            <li>☐ Backup database (if manual backup required)</li>
+        </ul>
+        <strong>Monthly:</strong>
+        <ul>
+            <li>☐ Generate platform health report</li>
+            <li>☐ Review user feedback/support tickets</li>
+            <li>☐ Check for system updates/patches</li>
+            <li>☐ Clean up archived content</li>
+        </ul>
+    </div>
+
+    <h3>Viewing Audit Logs</h3>
+
+    <div class="step-box">
+        <strong>To Track All System Changes:</strong>
+        <ol>
+            <li>Click "Audit Logs" in sidebar (if available)</li>
+            <li>View all actions taken in system</li>
+            <li>Filter by: User, Action, Date, Resource</li>
+            <li>See: Who did what, when, to what</li>
+        </ol>
+    </div>
+
+    <div class="tip-box">
+        <strong>💡 What to Monitor:</strong>
+        <ul>
+            <li>Unusual login times or locations</li>
+            <li>Mass user deletions</li>
+            <li>Question answer changes</li>
+            <li>Settings modifications</li>
+            <li>Access to sensitive data</li>
+        </ul>
+    </div>
+
+    <div class="page-break"></div>
+
+    <h2>9. Security & Best Practices</h2>
+
+    <h3>Security Checklist</h3>
+
+    <div class="checklist">
+        <strong>User Security:</strong>
+        <ul>
+            <li>☐ Enforce strong password policy</li>
+            <li>☐ Regular password resets</li>
+            <li>☐ Deactivate inactive accounts</li>
+            <li>☐ Monitor failed login attempts</li>
+            <li>☐ Implement 2FA for admin accounts</li>
+        </ul>
+        <strong>Data Security:</strong>
+        <ul>
+            <li>☐ Enable HTTPS everywhere</li>
+            <li>☐ Regular database backups</li>
+            <li>☐ Encrypt sensitive data</li>
+            <li>☐ Audit log monitoring</li>
+            <li>☐ GDPR compliance checks</li>
+        </ul>
+        <strong>Access Control:</strong>
+        <ul>
+            <li>☐ Least privilege principle</li>
+            <li>☐ Role-based access control</li>
+            <li>☐ Regular permission audits</li>
+            <li>☐ Segregate duties (don't approve own questions)</li>
+        </ul>
+    </div>
+
+    <h3>Data Privacy & Compliance</h3>
+
+    <div class="info-box">
+        <strong>GDPR Compliance Considerations:</strong>
+        <ul>
+            <li>Maintain privacy policy</li>
+            <li>Get consent for data collection</li>
+            <li>Provide data export on request</li>
+            <li>Support account deletion</li>
+            <li>Maintain audit logs (24 months minimum)</li>
+            <li>Report data breaches within 72 hours</li>
+        </ul>
+    </div>
+
+    <h3>Incident Response</h3>
+
+    <div class="step-box">
+        <strong>If You Suspect a Security Incident:</strong>
+        <ol>
+            <li>Immediately disable affected accounts</li>
+            <li>Check audit logs for suspicious activity</li>
+            <li>Contact your security team/provider</li>
+            <li>Document everything</li>
+            <li>If data breach: Notify affected users within 72 hours</li>
+            <li>Review and strengthen security after incident</li>
+        </ol>
+    </div>
+
+    <h3>Admin Best Practices</h3>
+
+    <div class="success-box">
+        <strong>✓ DO:</strong>
+        <ul>
+            <li>✓ Use strong, unique admin passwords</li>
+            <li>✓ Enable 2FA for admin account</li>
+            <li>✓ Regularly audit user permissions</li>
+            <li>✓ Document admin decisions and changes</li>
+            <li>✓ Keep admin team informed</li>
+            <li>✓ Provide teacher training on question quality</li>
+            <li>✓ Set clear SLAs (e.g., 24-hour approval)</li>
+            <li>✓ Monitor system performance</li>
+        </ul>
+    </div>
+
+    <div class="important-box">
+        <strong>✗ DON'T:</strong>
+        <ul>
+            <li>✗ Share admin credentials</li>
+            <li>✗ Login from public WiFi without VPN</li>
+            <li>✗ Approve/reject questions without review</li>
+            <li>✗ Modify student answers (except in error scenarios)</li>
+            <li>✗ Keep old/unused admin accounts active</li>
+            <li>✗ Ignore system alerts</li>
+            <li>✗ Skip security updates</li>
+            <li>✗ Store passwords in plain text</li>
+        </ul>
+    </div>
+
+    <div class="page-break"></div>
+
+    <div class="footer">
+        <h2>Quick Reference</h2>
+        <h3>Daily Admin Tasks:</h3>
+        <ul style="margin-left: 0;">
+            <li>□ Check dashboard for alerts</li>
+            <li>□ Review pending question approvals</li>
+            <li>□ Monitor active exams</li>
+            <li>□ Check support tickets/issues</li>
+        </ul>
+
+        <h3>Weekly Admin Tasks:</h3>
+        <ul style="margin-left: 0;">
+            <li>□ Review audit logs</li>
+            <li>□ Generate usage report</li>
+            <li>□ Check system performance</li>
+            <li>□ Respond to admin requests</li>
+        </ul>
+
+        <h3>Monthly Admin Tasks:</h3>
+        <ul style="margin-left: 0;">
+            <li>□ Generate comprehensive report</li>
+            <li>□ Review user feedback</li>
+            <li>□ Check for updates/patches</li>
+            <li>□ Conduct permission audit</li>
+            <li>□ Staff training/support meeting</li>
+        </ul>
+
+        <p style="margin-top: 40px;"><strong>Emergency Contacts</strong></p>
+        <p>Technical Support: [Support email/phone]<br>
+        Infrastructure Team: [Infrastructure contact]<br>
+        Security Team: [Security contact]</p>
+
+        <p style="margin-top: 40px;"><strong>Administrator Guide Version 1.0</strong></p>
+        <p>Last Updated: March 2026</p>
+        <p style="margin-top: 20px;">For updates to this guide or feature requests, contact your account manager.</p>
+    </div>
+</body>
+</html>

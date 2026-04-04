@@ -1,0 +1,16 @@
+{
+  "name": "learning-management-system",
+  "private": true,
+  "scripts": {
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:backend": "cd backend && npm run dev",
+    "build": "cd frontend && npm run build",
+    "lint:frontend": "cd frontend && npm run lint",
+    "lint:backend": "cd backend && npm run lint",
+    "lint": "npm run lint:frontend && npm run lint:backend",
+    "test": "cd backend && npm test",
+    "install:frontend": "cd frontend && npm install",
+    "install:backend": "cd backend && npm install",
+    "install:all": "npm run install:frontend && npm run install:backend"
+  }
+}

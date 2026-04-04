@@ -10,6 +10,11 @@ import type {
   RuntimeResponse,
   RuntimeSection,
 } from "@/features/exam-runtime/types";
+import {
+  getBlankIds,
+  normalizeAnswerForQuestion,
+  normalizeQuestionOptions,
+} from "@/features/exam-runtime/questionHelpers";
 
 const asRecord = (value: unknown): Record<string, unknown> =>
   value && typeof value === "object" ? (value as Record<string, unknown>) : {};
@@ -50,49 +55,6 @@ const toBoolean = (value: unknown, fallback = false): boolean => {
   return fallback;
 };
 
-const normalizeOptionText = (value: unknown): string | { html?: string | null } | null => {
-  if (value === null || value === undefined) return null;
-  if (typeof value === "string") return value;
-
-  const source = asRecord(value);
-  const html = source.html;
-  if (typeof html === "string") return { html };
-
-  const text = source.text;
-  if (typeof text === "string") return text;
-
-  const label = source.label;
-  if (typeof label === "string") return label;
-
-  return String(value);
-};
-
-const normalizeOptions = (value: unknown): RuntimeOption[] => {
-  if (!value) return [];
-
-  if (Array.isArray(value)) {
-    return value.map((option, index) => {
-      const source = asRecord(option);
-      const optionId = source.id ?? index + 1;
-      const optionText = source.text ?? source.label ?? option;
-
-      return {
-        id: String(optionId),
-        text: normalizeOptionText(optionText),
-      };
-    });
-  }
-
-  if (typeof value === "object") {
-    return Object.entries(asRecord(value)).map(([key, text]) => ({
-      id: String(key),
-      text: normalizeOptionText(text),
-    }));
-  }
-
-  return [];
-};
-
 const normalizeSection = (item: unknown): RuntimeSection => {
   const source = asRecord(item);
   return {
@@ -109,7 +71,7 @@ const normalizeSection = (item: unknown): RuntimeSection => {
 
 const normalizeQuestion = (item: unknown, index: number): RuntimeQuestion => {
   const source = asRecord(item);
-  return {
+  const question: RuntimeQuestion = {
     id: toNumber(source.id ?? source.question_id),
     question_id: toNumber(source.question_id ?? source.id),
     section_id: toNumber(source.section_id),
@@ -119,25 +81,36 @@ const normalizeQuestion = (item: unknown, index: number): RuntimeQuestion => {
     sequence: toNumber(source.sequence, index + 1),
     question_type: String(source.question_type ?? ""),
     question_text: (source.question_text as string | { html?: string | null } | null | undefined) ?? null,
-    options: normalizeOptions(source.options),
+    options: normalizeQuestionOptions(source.options, String(source.question_type ?? "")),
+    blank_ids: Array.isArray(source.blank_ids)
+      ? source.blank_ids.map((item) => String(item))
+      : undefined,
     marks_positive: toNullableNumber(source.marks_positive),
     marks_negative: toNullableNumber(source.marks_negative),
   };
+
+  question.blank_ids = getBlankIds(question);
+  return question;
 };
 
-const normalizeResponses = (rows: unknown[]): RuntimeResponse[] =>
-  rows.map((row) => {
+const normalizeResponses = (rows: unknown[], questions: RuntimeQuestion[]): RuntimeResponse[] => {
+  const questionById = new Map(questions.map((question) => [question.id, question]));
+
+  return rows.map((row) => {
     const source = asRecord(row);
+    const questionId = toNumber(source.question_id);
+    const question = questionById.get(questionId);
     return {
       id: toNullableNumber(source.id) ?? undefined,
-      question_id: toNumber(source.question_id),
+      question_id: questionId,
       section_id: toNumber(source.section_id),
-      student_answer: source.student_answer ?? null,
+      student_answer: question ? normalizeAnswerForQuestion(question, source.student_answer) : source.student_answer ?? null,
       is_marked_for_review: toBoolean(source.is_marked_for_review),
       is_attempted: toBoolean(source.is_attempted),
       answered_at: (source.answered_at as string | null | undefined) ?? null,
     };
   });
+};
 
 const deriveSectionsFromQuestions = (questions: RuntimeQuestion[]): RuntimeSection[] => {
   const map = new Map<number, RuntimeSection>();
@@ -210,6 +183,8 @@ export const normalizeStudentExam = (item: unknown): StudentExam => {
     id: toNumber(source.id ?? source.exam_id, 0),
     title: String(source.title ?? source.name ?? "Untitled exam"),
     description: typeof source.description === "string" ? source.description : null,
+    course_id: toNullableNumber(source.course_id),
+    content_id: toNullableNumber(source.content_id),
     start_datetime:
       typeof source.start_datetime === "string"
         ? source.start_datetime
@@ -280,6 +255,8 @@ export const normalizeRuntimePayload = (raw: unknown): ExamAttemptRuntime | null
     exam: {
       id: examId,
       title: String(exam.title ?? "Exam"),
+      course_id: toNullableNumber(exam.course_id),
+      content_id: toNullableNumber(exam.content_id),
       instructions: toNullableText(exam.instructions),
       total_duration_minutes: toNullableNumber(exam.total_duration_minutes),
       start_datetime: (exam.start_datetime as string | null | undefined) ?? null,
@@ -291,7 +268,7 @@ export const normalizeRuntimePayload = (raw: unknown): ExamAttemptRuntime | null
     },
     sections,
     questions,
-    responses: normalizeResponses(responsesRaw),
+    responses: normalizeResponses(responsesRaw, questions),
     remaining_seconds: toNullableNumber(source.remaining_seconds),
     status,
     is_read_only: toBoolean(source.is_read_only, status === "submitted" || status === "graded"),
@@ -330,17 +307,36 @@ const normalizeAttemptResultResponse = (raw: unknown): AttemptResultResponse => 
 
   const normalizedResponses: AttemptResultQuestionResponse[] = responses.map((row) => {
     const item = asRecord(row);
+    const questionType = String(item.question_type ?? "");
+    const questionBase: RuntimeQuestion = {
+      id: toNumber(item.question_id),
+      question_id: toNumber(item.question_id),
+      section_id: toNumber(item.section_id),
+      section_order: toNullableNumber(item.section_order) ?? 0,
+      section_title: String(item.section_title ?? "Section"),
+      question_order: toNullableNumber(item.question_order) ?? 0,
+      sequence: toNullableNumber(item.question_order) ?? 0,
+      question_type: questionType,
+      question_text:
+        (item.question_text as string | { html?: string | null } | null | undefined) ?? null,
+      options: normalizeQuestionOptions(item.options, questionType),
+      blank_ids: Array.isArray(item.blank_ids) ? item.blank_ids.map((entry) => String(entry)) : undefined,
+      marks_positive: toNullableNumber(item.max_marks),
+      marks_negative: toNullableNumber(item.negative_marks),
+    };
+    questionBase.blank_ids = getBlankIds(questionBase);
+
     return {
       question_id: toNumber(item.question_id),
       section_id: toNumber(item.section_id),
       section_title: toNullableText(item.section_title),
       section_order: toNullableNumber(item.section_order),
       question_order: toNullableNumber(item.question_order),
-      question_type: String(item.question_type ?? ""),
-      question_text:
-        (item.question_text as string | { html?: string | null } | null | undefined) ?? null,
-      options: normalizeOptions(item.options),
-      student_answer: item.student_answer ?? null,
+      question_type: questionType,
+      question_text: questionBase.question_text,
+      options: questionBase.options,
+      blank_ids: questionBase.blank_ids,
+      student_answer: normalizeAnswerForQuestion(questionBase, item.student_answer),
       is_attempted: toBoolean(item.is_attempted),
       is_marked_for_review: toBoolean(item.is_marked_for_review),
       answered_at: (item.answered_at as string | null | undefined) ?? null,
@@ -351,7 +347,35 @@ const normalizeAttemptResultResponse = (raw: unknown): AttemptResultResponse => 
       marks_awarded: toNullableNumber(item.marks_awarded),
       max_marks: toNullableNumber(item.max_marks),
       negative_marks: toNullableNumber(item.negative_marks),
-      correct_answer: item.correct_answer,
+      correct_answer: questionType === "fill_in_blank" && item.correct_answer && typeof item.correct_answer === "object"
+        ? {
+            ...asRecord(item.correct_answer),
+            blanks: Array.isArray(asRecord(item.correct_answer).blanks)
+              ? (asRecord(item.correct_answer).blanks as unknown[]).map((entry) => {
+                  const blank = asRecord(entry);
+                  return {
+                    id: String(blank.id ?? ""),
+                    answers: Array.isArray(blank.answers)
+                      ? blank.answers.map((answer) => String(answer))
+                      : [],
+                  };
+                })
+              : asRecord(item.correct_answer).blanks,
+          }
+        : questionType === "match_following" && item.correct_answer && typeof item.correct_answer === "object"
+          ? {
+              ...asRecord(item.correct_answer),
+              pairs: Array.isArray(asRecord(item.correct_answer).pairs)
+                ? (asRecord(item.correct_answer).pairs as unknown[]).map((entry) => {
+                    const pair = asRecord(entry);
+                    return {
+                      left_id: String(pair.left_id ?? ""),
+                      right_id: String(pair.right_id ?? ""),
+                    };
+                  })
+                : asRecord(item.correct_answer).pairs,
+            }
+          : item.correct_answer,
       solution:
         (item.solution as string | { html?: string | null } | null | undefined) ?? null,
       solution_video_url:
@@ -377,6 +401,8 @@ const normalizeAttemptResultResponse = (raw: unknown): AttemptResultResponse => 
     exam: {
       id: toNumber(exam.id),
       title: String(exam.title ?? "Exam"),
+      course_id: toNullableNumber(exam.course_id),
+      content_id: toNullableNumber(exam.content_id),
       start_datetime: (exam.start_datetime as string | null | undefined) ?? null,
       end_datetime: (exam.end_datetime as string | null | undefined) ?? null,
       total_duration_minutes: toNullableNumber(exam.total_duration_minutes),
@@ -472,8 +498,3 @@ export const getAttemptResult = async (attemptId: number): Promise<AttemptResult
   const response = await api.get(`/student/attempts/${attemptId}/result`);
   return normalizeAttemptResultResponse(response.data);
 };
-
-
-
-
-

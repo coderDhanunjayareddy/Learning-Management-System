@@ -1,4 +1,5 @@
 import { query as dbQuery, getClient } from "../repositories/db.repository.js";
+import { contentIsLinkedIntoCourse } from "./clientContent.service.js";
 
 const ensureCourseAccess = async (courseId, req) => {
     const role = req.user?.role;
@@ -29,7 +30,11 @@ export const deleteContentItem = async (req, res) => {
             return res.status(403).json({ error: "Access denied" });
         }
 
-        // Check if item belongs to the course
+        const linkedItem = await contentIsLinkedIntoCourse({ courseId, contentItemId: id });
+        if (linkedItem) {
+            return res.status(400).json({ error: "Linked licensed content must be removed from the course, not deleted." });
+        }
+
         const check = await dbQuery(
             `SELECT id, item_type FROM content_items WHERE id = $1 AND course_id = $2`,
             [id, courseId]
@@ -79,7 +84,11 @@ export const renameContentItem = async (req, res) => {
             return res.status(400).json({ error: "Title cannot be empty." });
         }
 
-        // Ensure the content exists
+        const linkedItem = await contentIsLinkedIntoCourse({ courseId, contentItemId: id });
+        if (linkedItem) {
+            return res.status(400).json({ error: "Linked licensed content is read-only." });
+        }
+
         const existing = await dbQuery(
             `SELECT id FROM content_items WHERE id = $1 AND course_id = $2`,
             [id, courseId]

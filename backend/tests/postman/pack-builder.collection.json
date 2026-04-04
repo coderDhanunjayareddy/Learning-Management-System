@@ -1,0 +1,164 @@
+{
+  "info": {
+    "name": "Pack Builder Day 1",
+    "_postman_id": "5c8f8f5b-2f5d-48ad-9972-b2e8862309ad",
+    "description": "Pack Builder coverage for pack list, course creation, item attach/remove, and grouped summary endpoints.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "GET /packs",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/api/packs?page=1&page_size=20",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "packs"],
+          "query": [
+            { "key": "page", "value": "1" },
+            { "key": "page_size", "value": "20" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "POST /packs",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Exam Essentials\",\n  \"description\": \"Starter exam bundle\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/packs",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "packs"]
+        }
+      }
+    },
+    {
+      "name": "GET /packs/:id/items",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/api/packs/{{packId}}/items?page=1&page_size=20",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "packs", "{{packId}}", "items"],
+          "query": [
+            { "key": "page", "value": "1" },
+            { "key": "page_size", "value": "20" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET /packs/:id/summary",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/api/packs/{{packId}}/summary",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "packs", "{{packId}}", "summary"]
+        }
+      }
+    },
+    {
+      "name": "GET /courses",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/api/courses?page=1&page_size=20&q={{courseQuery}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "courses"],
+          "query": [
+            { "key": "page", "value": "1" },
+            { "key": "page_size", "value": "20" },
+            { "key": "q", "value": "{{courseQuery}}" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "POST /courses",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Biology Prime\",\n  \"grade\": \"11\",\n  \"subject\": \"Biology\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/courses",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "courses"]
+        }
+      }
+    },
+    {
+      "name": "GET /courses/:id/content",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/api/courses/{{courseId}}/content?page=1&page_size=20",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "courses", "{{courseId}}", "content"],
+          "query": [
+            { "key": "page", "value": "1" },
+            { "key": "page_size", "value": "20" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "POST /packs/:id/items",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"item_ids\": [101, 102]\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/packs/{{packId}}/items",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "packs", "{{packId}}", "items"]
+        }
+      }
+    },
+    {
+      "name": "POST /packs/:id/attach-course",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"course_id\": {{courseId}}\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/packs/{{packId}}/attach-course",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "packs", "{{packId}}", "attach-course"]
+        }
+      }
+    },
+    {
+      "name": "DELETE /packs/:id/items/:itemId",
+      "request": {
+        "method": "DELETE",
+        "url": {
+          "raw": "{{baseUrl}}/api/packs/{{packId}}/items/{{itemId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "packs", "{{packId}}", "items", "{{itemId}}"]
+        }
+      }
+    }
+  ],
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:5000" },
+    { "key": "packId", "value": "1" },
+    { "key": "courseId", "value": "10" },
+    { "key": "itemId", "value": "100" },
+    { "key": "courseQuery", "value": "physics" }
+  ]
+}

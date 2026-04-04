@@ -1,0 +1,1173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SPECTROPY - Student Guide</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: white;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+
+        h1 {
+            color: #2c3e50;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            border-bottom: 4px solid #27ae60;
+            padding-bottom: 15px;
+            text-align: center;
+        }
+
+        h2 {
+            color: #27ae60;
+            font-size: 1.8em;
+            margin-top: 40px;
+            margin-bottom: 20px;
+            border-left: 5px solid #27ae60;
+            padding-left: 15px;
+        }
+
+        h3 {
+            color: #2c3e50;
+            font-size: 1.3em;
+            margin-top: 25px;
+            margin-bottom: 15px;
+        }
+
+        .section-intro {
+            background: linear-gradient(135deg, #27ae60 0%, #229954 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+
+        .section-intro h2 {
+            color: white;
+            border-left: none;
+            padding-left: 0;
+            margin-top: 0;
+        }
+
+        .step-box {
+            background: #e8f8f5;
+            padding: 20px;
+            border-left: 5px solid #27ae60;
+            margin: 20px 0;
+            border-radius: 5px;
+        }
+
+        .step-box strong {
+            color: #27ae60;
+            font-size: 1.1em;
+        }
+
+        .tip-box {
+            background: #fff3cd;
+            padding: 15px;
+            border-left: 4px solid #ffc107;
+            margin: 15px 0;
+            border-radius: 3px;
+        }
+
+        .important-box {
+            background: #f8d7da;
+            padding: 15px;
+            border-left: 4px solid #dc3545;
+            margin: 15px 0;
+            border-radius: 3px;
+        }
+
+        .info-box {
+            background: #d1ecf1;
+            padding: 15px;
+            border-left: 4px solid #17a2b8;
+            margin: 15px 0;
+            border-radius: 3px;
+        }
+
+        .screenshot-placeholder {
+            background: #f0f0f0;
+            border: 2px dashed #999;
+            padding: 40px;
+            text-align: center;
+            margin: 20px 0;
+            border-radius: 5px;
+            color: #666;
+        }
+
+        .screenshot-label {
+            color: #666;
+            font-size: 0.9em;
+            margin-top: 10px;
+            font-style: italic;
+        }
+
+        ul, ol {
+            margin-left: 30px;
+            margin-bottom: 15px;
+        }
+
+        li {
+            margin-bottom: 8px;
+        }
+
+        p {
+            margin-bottom: 15px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+
+        table th {
+            background: #27ae60;
+            color: white;
+            padding: 12px;
+            text-align: left;
+        }
+
+        table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #ddd;
+        }
+
+        table tr:nth-child(even) {
+            background: #f9f9f9;
+        }
+
+        .page-break {
+            page-break-after: always;
+        }
+
+        .nav-links {
+            background: #e8f8f5;
+            padding: 20px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+
+        .footer {
+            margin-top: 50px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+            text-align: center;
+            color: #7f8c8d;
+            font-size: 0.9em;
+        }
+
+        .example-question {
+            background: #f5f5f5;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+            border-left: 4px solid #3498db;
+        }
+
+        .keyboard-shortcut {
+            background: #f9f9f9;
+            padding: 8px 12px;
+            border-radius: 3px;
+            font-family: monospace;
+            display: inline-block;
+            margin: 5px;
+            border: 1px solid #ddd;
+        }
+
+        @media print {
+            body {
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div style="text-align: center; margin-bottom: 40px;">
+        <h1>SPECTROPY Student Guide</h1>
+        <p style="font-size: 1.2em; color: #27ae60; margin-top: 10px;">Your Complete Guide to Taking Exams & Learning Online</p>
+        <p style="color: #7f8c8d; margin-top: 20px;">Version 1.0 | 2026</p>
+    </div>
+
+    <div class="section-intro">
+        <h2>Welcome to SPECTROPY!</h2>
+        <p>This guide will help you navigate the student experience on SPECTROPY, from logging in to taking your exams and reviewing your results. Whether you're new to online learning or a seasoned test-taker, you'll find everything you need here.</p>
+    </div>
+
+    <h2>Table of Contents</h2>
+    <ol>
+        <li>Getting Started</li>
+        <li>Your Dashboard</li>
+        <li>Viewing Courses</li>
+        <li>Finding & Taking Exams</li>
+        <li>Exam Tips & Best Practices</li>
+        <li>Reviewing Results</li>
+        <li>Troubleshooting</li>
+        <li>Quick Tips & Keyboard Shortcuts</li>
+    </ol>
+
+    <div class="page-break"></div>
+
+    <h2>1. Getting Started</h2>
+
+    <h3>Creating Your Account & First Login</h3>
+
+    <div class="step-box">
+        <strong>Step 1: Access the Login Page</strong>
+        <ol>
+            <li>Open your web browser (Chrome, Firefox, Safari, or Edge)</li>
+            <li>Go to your institution's SPECTROPY portal URL</li>
+            <li>You should see the login screen</li>
+        </ol>
+    </div>
+
+    <div class="screenshot-placeholder">
+        [SCREENSHOT 1: Login Page]<br>
+        <span class="screenshot-label">Show: Email field, Password field, Login button, Forgot password link</span>
+    </div>
+
+    <div class="step-box">
+        <strong>Step 2: Enter Your Credentials</strong>
+        <ol>
+            <li>Enter the email address your school provided</li>
+            <li>Enter your password (provided by your school)</li>
+            <li>Click the <strong>"LOGIN"</strong> button</li>
+        </ol>
+    </div>
+
+    <div class="tip-box">
+        <strong>💡 Tip:</strong> Passwords are case-sensitive! If "abc123" is your password, "ABC123" won't work. Make sure caps lock is OFF.
+    </div>
+
+    <div class="important-box">
+        <strong>⚠️ Important:</strong> If you see "Invalid email or password" error:
+        <ul>
+            <li>Check that you typed your email correctly</li>
+            <li>Check that caps lock is OFF</li>
+            <li>Verify you're using the email your school gave you</li>
+            <li>Contact your teacher or administrator if you still can't login</li>
+        </ul>
+    </div>
+
+    <h3>First Time Setup</h3>
+
+    <div class="info-box">
+        <strong>On your first login, you may be asked to:</strong>
+        <ul>
+            <li>Confirm your email address</li>
+            <li>Update your password to something personal</li>
+            <li>Complete your user profile</li>
+        </ul>
+    </div>
+
+    <div class="page-break"></div>
+
+    <h2>2. Your Dashboard</h2>
+
+    <h3>Understanding the Dashboard Layout</h3>
+
+    <div class="screenshot-placeholder">
+        [SCREENSHOT 2: Student Dashboard]<br>
+        <span class="screenshot-label">Show: Header with name/role, sidebar menu, main dashboard content area with cards/stats</span>
+    </div>
+
+    <h3>Dashboard Components</h3>
+
+    <table>
+        <tr>
+            <th>Component</th>
+            <th>Location</th>
+            <th>What You'll See</th>
+        </tr>
+        <tr>
+            <td><strong>Header</strong></td>
+            <td>Top of page</td>
+            <td>Your name, role (Student), profile menu, logout button</td>
+        </tr>
+        <tr>
+            <td><strong>Sidebar Menu</strong></td>
+            <td>Left side</td>
+            <td>Links to Courses, Exams, Dashboard, Profile, Logout</td>
+        </tr>
+        <tr>
+            <td><strong>Dashboard Cards</strong></td>
+            <td>Main area</td>
+            <td>Quick stats: enrolled courses, available exams, recent results</td>
+        </tr>
+        <tr>
+            <td><strong>Upcoming Exams</strong></td>
+            <td>Main area</td>
+            <td>Exams available for you to take soon</td>
+        </tr>
+        <tr>
+            <td><strong>Quick Links</strong></td>
+            <td>Main area</td>
+            <td>Direct access to view courses or take exams</td>
+        </tr>
+    </table>
+
+    <h3>Quick Actions from Dashboard</h3>
+
+    <div class="info-box">
+        <strong>Most Common Actions:</strong>
+        <ul>
+            <li><strong>"View Courses"</strong> - See all your enrolled courses and course materials</li>
+            <li><strong>"Take Exam"</strong> - Start an available exam</li>
+            <li><strong>"View Results"</strong> - See your exam scores and feedback</li>
+            <li><strong>"Profile"</strong> - Update your personal information or change password</li>
+        </ul>
+    </div>
+
+    <div class="page-break"></div>
+
+    <h2>3. Viewing Courses</h2>
+
+    <h3>Accessing Your Courses</h3>
+
+    <div class="step-box">
+        <strong>Step 1: Navigate to Courses</strong>
+        <ol>
+            <li>Click on <strong>"Courses"</strong> in the left sidebar</li>
+            <li>You'll see all courses you're enrolled in</li>
+            <li>Each course appears as a card showing title, description, and progress</li>
+        </ol>
+    </div>
+
+    <div class="screenshot-placeholder">
+        [SCREENSHOT 3: Courses Page]<br>
+        <span class="screenshot-label">Show: Course cards with title, description, progress bar, "View Content" button</span>
+    </div>
+
+    <h3>Understanding Course Cards</h3>
+
+    <div class="example-question">
+        <strong>Each Course Card Shows:</strong>
+        <ul>
+            <li><strong>Course Title</strong> - Name of the course</li>
+            <li><strong>Instructor</strong> - Who teaches the course</li>
+            <li><strong>Description</strong> - Brief overview of what you'll learn</li>
+            <li><strong>Progress Bar</strong> - How much content you've completed (%)</li>
+            <li><strong>Status Badge</strong> - Active, Completed, or Upcoming</li>
+            <li><strong>"View Content" Button</strong> - Opens the course materials</li>
+        </ul>
+    </div>
+
+    <h3>Viewing Course Content</h3>
+
+    <div class="step-box">
+        <strong>Step 2: Click "View Content"</strong>
+        <ol>
+            <li>Click the "View Content" button on any course card</li>
+            <li>You'll see the course content organized in folders</li>
+            <li>Content types include: Documents, Links, Videos, Folders</li>
+        </ol>
+    </div>
+
+    <div class="screenshot-placeholder">
+        [SCREENSHOT 4: Course Content View]<br>
+        <span class="screenshot-label">Show: Course hierarchy, content items as list with icons, download buttons, folders</span>
+    </div>
+
+    <h3>Course Content Types</h3>
+
+    <table>
+        <tr>
+            <th>Content Type</th>
+            <th>Icon</th>
+            <th>What to Do</th>
+        </tr>
+        <tr>
+            <td><strong>Document</strong></td>
+            <td>📄</td>
+            <td>Click to view or download (PDF, Word, etc.)</td>
+        </tr>
+        <tr>
+            <td><strong>Link</strong></td>
+            <td>🔗</td>
+            <td>Click to open external resource in new tab</td>
+        </tr>
+        <tr>
+            <td><strong>Video</strong></td>
+            <td>📹</td>
+            <td>Click to play video (may open in new window)</td>
+        </tr>
+        <tr>
+            <td><strong>Folder</strong></td>
+            <td>📁</td>
+            <td>Click to expand and view nested content</td>
+        </tr>
+    </table>
+
+    <div class="page-break"></div>
+
+    <h2>4. Finding & Taking Exams</h2>
+
+    <h3>Accessing the Exam Section</h3>
+
+    <div class="step-box">
+        <strong>Step 1: Navigate to Exams</strong>
+        <ol>
+            <li>Click <strong>"Exams"</strong> in the left sidebar</li>
+            <li>You'll see two tabs: <strong>"Available"</strong> and <strong>"My Results"</strong></li>
+            <li>The "Available" tab shows exams you can take</li>
+        </ol>
+    </div>
+
+    <div class="screenshot-placeholder">
+        [SCREENSHOT 5: Exams Page - Available Tab]<br>
+        <span class="screenshot-label">Show: List of available exams with details, Start Exam buttons, exam status</span>
+    </div>
+
+    <h3>Understanding Exam Details</h3>
+
+    <div class="info-box">
+        <strong>Before starting an exam, check these details:</strong>
+        <ul>
+            <li><strong>Exam Title</strong> - Name of the exam</li>
+            <li><strong>Description</strong> - What topics are covered</li>
+            <li><strong>Duration</strong> - How long you have (in minutes)</li>
+            <li><strong>Total Questions</strong> - Number of questions you'll answer</li>
+            <li><strong>Total Marks</strong> - Maximum possible score</li>
+            <li><strong>Passing Score</strong> - Minimum needed to pass</li>
+            <li><strong>Attempts Allowed</strong> - How many times you can take it</li>
+            <li><strong>Attempts Used</strong> - How many you've already used</li>
+            <li><strong>Status</strong> - Open, Closed, or Upcoming</li>
+        </ul>
+    </div>
+
+    <h3>Starting an Exam</h3>
+
+    <div class="step-box">
+        <strong>Step 2: Click "Start Exam"</strong>
+        <ol>
+            <li>Find the exam you want to take in the available list</li>
+            <li>Click the <strong>"START EXAM"</strong> button</li>
+            <li>A confirmation dialog will appear</li>
+            <li>Review the details one more time</li>
+            <li>Click <strong>"BEGIN"</strong> to start the exam</li>
+        </ol>
+    </div>
+
+    <div class="screenshot-placeholder">
+        [SCREENSHOT 6: Start Exam Confirmation Dialog]<br>
+        <span class="screenshot-label">Show: Confirmation message, exam details, Begin/Cancel buttons</span>
+    </div>
+
+    <h3>The Exam Interface - Complete Walkthrough</h3>
+
+    <div class="screenshot-placeholder">
+        [SCREENSHOT 7: Exam Taking Interface]<br>
+        <span class="screenshot-label">Show: Split screen with question navigator (left), question (center), timer/progress (right)</span>
+    </div>
+
+    <h4>Left Panel - Question Navigator</h4>
+
+    <div class="example-question">
+        <strong>The left panel shows:</strong>
+        <ul>
+            <li><strong>All Question Numbers</strong> - 1, 2, 3, etc.</li>
+            <li><strong>Question Status Indicators:</strong>
+                <ul>
+                    <li>🟢 <strong>Green</strong> - You've answered this question</li>
+                    <li>🔵 <strong>Blue</strong> - You marked it for review</li>
+                    <li>⚪ <strong>White/Gray</strong> - Not answered yet</li>
+                </ul>
+            </li>
+            <li><strong>Progress</strong> - How many answered vs. total</li>
+            <li><strong>Click any number</strong> to jump directly to that question</li>
+        </ul>
+    </div>
+
+    <h4>Center Panel - Question Display</h4>
+
+    <div class="example-question">
+        <strong>The question area shows:</strong>
+        <ul>
+            <li><strong>Question Text</strong> - The actual question you need to answer</li>
+            <li><strong>Question Number</strong> - What question you're on</li>
+            <li><strong>Answer Options</strong> - Buttons or input fields depending on question type</li>
+            <li><strong>Images/Diagrams</strong> - If included in the question</li>
+            <li><strong>Action Buttons:</strong>
+                <ul>
+                    <li><strong>Previous</strong> - Go to previous question</li>
+                    <li><strong>Next</strong> - Go to next question</li>
+                    <li><strong>Mark for Review</strong> - Flag for later review</li>
+                    <li><strong>Clear Answer</strong> - Erase your current answer</li>
+                </ul>
+            </li>
+        </ul>
+    </div>
+
+    <h4>Right Panel - Timer & Progress</h4>
+
+    <div class="example-question">
+        <strong>The right panel shows:</strong>
+        <ul>
+            <li><strong>Countdown Timer</strong> - Time remaining (hours:minutes:seconds)</li>
+            <li><strong>Section Progress</strong> - Current section and progress</li>
+            <li><strong>Total Marks</strong> - Maximum marks available</li>
+            <li><strong>Auto-Save Indicator</strong> - "Saving..." message when saving</li>
+            <li><strong>Submit Exam Button</strong> - When you're done answering</li>
+        </ul>
+    </div>
+
+    <div class="tip-box">
+        <strong>💡 Timer Color Warnings:</strong>
+        <ul>
+            <li>🟢 Green - Plenty of time (more than 10 minutes)</li>
+            <li>🟡 Yellow - 10 minutes or less remaining</li>
+            <li>🔴 Red - 1 minute or less remaining</li>
+        </ul>
+    </div>
+
+    <h3>How to Answer Different Question Types</h3>
+
+    <h4>Multiple Choice - Single Answer (Choose ONE)</h4>
+
+    <div class="screenshot-placeholder">
+        [SCREENSHOT 8: MCQ Single Answer Question]<br>
+        <span class="screenshot-label">Show: Question with radio button options, one selected</span>
+    </div>
+
+    <div class="step-box">
+        <strong>How to Answer:</strong>
+        <ol>
+            <li>Read the question carefully</li>
+            <li>Click on the radio button (○) next to your chosen option</li>
+            <li>The button will fill in (●) to show it's selected</li>
+            <li>You can click another option to change your answer</li>
+            <li>Click "Next" to proceed to the next question</li>
+        </ol>
+    </div>
+
+    <div class="example-question">
+        <strong>Example:</strong><br>
+        <em>What is 2 + 2?</em><br>
+        ○ 3<br>
+        ● 4 ← You selected this<br>
+        ○ 5<br>
+        ○ 6
+    </div>
+
+    <h4>Multiple Choice - Multiple Answers (Choose ALL that apply)</h4>
+
+    <div class="screenshot-placeholder">
+        [SCREENSHOT 9: MCQ Multiple Answer Question]<br>
+        <span class="screenshot-label">Show: Question with checkbox options, multiple checked</span>
+    </div>
+
+    <div class="step-box">
+        <strong>How to Answer:</strong>
+        <ol>
+            <li>Read the question carefully - it will say "select ALL that apply"</li>
+            <li>Click on each checkbox (☐) for correct options</li>
+            <li>Checkboxes will show checkmarks (☑) when selected</li>
+            <li>You can click multiple checkboxes</li>
+            <li>Click again to deselect if you change your mind</li>
+            <li>Click "Next" to proceed</li>
+        </ol>
+    </div>
+
+    <div class="important-box">
+        <strong>⚠️ Important for Multiple Answer Questions:</strong> You MUST select ALL correct answers. If you miss even one or select an incorrect one, you get zero points. The system is all-or-nothing!
+    </div>
+
+    <div class="example-question">
+        <strong>Example:</strong><br>
+        <em>Which of these are prime numbers?</em><br>
+        ☑ 7 ← Correct<br>
+        ☐ 8<br>
+        ☑ 11 ← Correct<br>
+        ☐ 15<br>
+        ☑ 19 ← Correct
+    </div>
+
+    <h4>True/False</h4>
+
+    <div class="screenshot-placeholder">
+        [SCREENSHOT 10: True/False Question]<br>
+        <span class="screenshot-label">Show: Question with True and False buttons</span>
+    </div>
+
+    <div class="step-box">
+        <strong>How to Answer:</strong>
+        <ol>
+            <li>Read the statement carefully</li>
+            <li>Determine if it's true or false</li>
+            <li>Click either the "TRUE" or "FALSE" button</li>
+            <li>The button will highlight showing your selection</li>
+            <li>Click the other button to change your answer</li>
+            <li>Click "Next" to proceed</li>
+        </ol>
+    </div>
+
+    <div class="example-question">
+        <strong>Example:</strong><br>
+        <em>The Earth orbits the Sun.</em><br>
+        ☑ TRUE ← You selected this<br>
+        ☐ FALSE
+    </div>
+
+    <h4>Numerical Answer (Enter a number)</h4>
+
+    <div class="screenshot-placeholder">
+        [SCREENSHOT 11: Numerical Answer Question]<br>
+        <span class="screenshot-label">Show: Question with text input field for number entry</span>
+    </div>
+
+    <div class="step-box">
+        <strong>How to Answer:</strong>
+        <ol>
+            <li>Read the question and any special instructions</li>
+            <li>Click in the answer field (text box)</li>
+            <li>Type your numerical answer (can include decimals)</li>
+            <li>The system accepts: integers, decimals, and negative numbers</li>
+            <li>You can clear and retype to change your answer</li>
+            <li>Click "Next" to proceed</li>
+        </ol>
+    </div>
+
+    <div class="tip-box">
+        <strong>💡 Tip:</strong> The system may accept a range of answers. For example, if the correct answer is 9.8 with a tolerance of ±0.1, you can answer anything from 9.7 to 9.9 and get full marks.
+    </div>
+
+    <div class="example-question">
+        <strong>Example:</strong><br>
+        <em>If radius = 5cm, what is the circumference? (use π ≈ 3.14)</em><br>
+        <input type="text" placeholder="Enter your answer" style="padding: 8px; width: 100%;">
+        <br><br>
+        <em>Your answer might be: 31.4 or 31.40 (both accepted)</em>
+    </div>
+
+    <h3>During the Exam - Important Actions</h3>
+
+    <h4>Navigating Between Questions</h4>
+
+    <div class="info-box">
+        <strong>You have multiple ways to navigate:</strong>
+        <ul>
+            <li><strong>Click "Next" button</strong> - Go to the next question in order</li>
+            <li><strong>Click "Previous" button</strong> - Go back to previous question</li>
+            <li><strong>Click question number</strong> in left panel to jump to any question</li>
+            <li><strong>You can answer questions in ANY order</strong> - not required to go sequentially</li>
+        </ul>
+    </div>
+
+    <h4>Mark for Review</h4>
+
+    <div class="step-box">
+        <strong>What is "Mark for Review"?</strong>
+        <p>If you're unsure about an answer, click "Mark for Review" button. This:</p>
+        <ul>
+            <li>Flags the question with a blue marker in the navigator</li>
+            <li>Still submits your current answer when you finish</li>
+            <li>Helps you find questions to double-check before submitting</li>
+            <li>Marked questions count as answered and get graded</li>
+        </ul>
+    </div>
+
+    <h4>Auto-Save Feature</h4>
+
+    <div class="info-box">
+        <strong>Your answers are automatically saved every 30 seconds!</strong>
+        <ul>
+            <li>Look for "Saving..." indicator on the right panel</li>
+            <li>Your answers are saved to the server automatically</li>
+            <li>If internet drops, your answers up to last save are safe</li>
+            <li>When you reconnect, you continue from where you left off</li>
+        </ul>
+    </div>
+
+    <div class="tip-box">
+        <strong>💡 Pro Tip:</strong> You can also click "Save" button manually if you want immediate confirmation your answer is saved, even though auto-save is always working.
+    </div>
+
+    <h3>Submitting Your Exam</h3>
+
+    <div class="step-box">
+        <strong>Step 3: When Ready to Submit</strong>
+        <ol>
+            <li>Answer as many questions as you can</li>
+            <li>Review your answers by looking at the question navigator (green = answered)</li>
+            <li>Click the <strong>"SUBMIT EXAM"</strong> button (bottom right of exam)</li>
+        </ol>
+    </div>
+
+    <div class="screenshot-placeholder">
+        [SCREENSHOT 12: Submit Exam Dialog]<br>
+        <span class="screenshot-label">Show: Confirmation dialog with question counts (answered/unanswered), warning, Submit/Cancel buttons</span>
+    </div>
+
+    <div class="step-box">
+        <strong>Step 4: Confirmation Dialog</strong>
+        <ol>
+            <li>A dialog will appear showing:</li>
+            <ul>
+                <li>Number of questions answered</li>
+                <li>Number of unanswered questions</li>
+            </ul>
+            <li>Review this carefully - are you sure you want to submit?</li>
+            <li>If you want to go back and answer more, click "Cancel"</li>
+            <li>If you're ready, click "Confirm Submission"</li>
+        </ol>
+    </div>
+
+    <div class="important-box">
+        <strong>⚠️ Important:</strong> Once you submit, you CANNOT go back and change your answers. Make sure you're happy with your responses before clicking "Confirm Submission"!
+    </div>
+
+    <h4>What Happens After Submission</h4>
+
+    <ul>
+        <li>Your exam is automatically graded</li>
+        <li>You'll see a "Exam Submitted Successfully" message</li>
+        <li>You'll be shown your initial score</li>
+        <li>You'll be redirected to the results page</li>
+        <li>Results also appear in "My Results" section for later review</li>
+    </ul>
+
+    <div class="page-break"></div>
+
+    <h2>5. Exam Tips & Best Practices</h2>
+
+    <h3>Before the Exam</h3>
+
+    <div class="tip-box">
+        <strong>Preparation Tips:</strong>
+        <ul>
+            <li>✓ Test your internet connection - make sure it's stable</li>
+            <li>✓ Use a computer if possible (better than mobile)</li>
+            <li>✓ Close other browser tabs and applications</li>
+            <li>✓ Disable notifications from email, chat, etc.</li>
+            <li>✓ Use the same browser you used for testing (Chrome recommended)</li>
+            <li>✓ Have a bottle of water nearby</li>
+            <li>✓ Use the bathroom before starting</li>
+            <li>✓ Make sure you have the full duration available (no interruptions)</li>
+        </ul>
+    </div>
+
+    <h3>During the Exam</h3>
+
+    <div class="tip-box">
+        <strong>Exam-Taking Strategy:</strong>
+        <ul>
+            <li>✓ Read each question TWICE before answering</li>
+            <li>✓ Start with easier questions to build confidence</li>
+            <li>✓ Skip difficult questions and come back to them</li>
+            <li>✓ Manage your time - check the timer periodically</li>
+            <li>✓ Mark uncertain answers for review with the flag button</li>
+            <li>✓ Don't leave questions blank if possible</li>
+            <li>✓ Double-check multiple answer questions (must select ALL correct)</li>
+            <li>✓ For numerical questions, double-check your math</li>
+        </ul>
+    </div>
+
+    <h3>Time Management During Exam</h3>
+
+    <div class="example-question">
+        <strong>Example Time Allocation (for 60-minute exam with 30 questions):</strong>
+        <ul>
+            <li><strong>0-2 minutes:</strong> Read through all questions (don't answer yet)</li>
+            <li><strong>2-45 minutes:</strong> Answer all questions you know (spend ~1.5 min per question)</li>
+            <li><strong>45-58 minutes:</strong> Review marked questions and uncertain answers</li>
+            <li><strong>58-60 minutes:</strong> Final review before submitting</li>
+        </ul>
+    </div>
+
+    <h3>Common Mistakes to Avoid</h3>
+
+    <div class="important-box">
+        <strong>❌ Don't:</strong>
+        <ul>
+            <li>✗ Rush through questions - read carefully</li>
+            <li>✗ Leave questions blank (unless instructed)</li>
+            <li>✗ Overthink your answer once selected</li>
+            <li>✗ Change answers multiple times unless you're sure</li>
+            <li>✗ Forget to submit (exam won't submit automatically)</li>
+            <li>✗ Rely only on your browser's back button</li>
+            <li>✗ Switch browsers mid-exam</li>
+            <li>✗ Assume the system will let you go over time</li>
+        </ul>
+    </div>
+
+    <div class="page-break"></div>
+
+    <h2>6. Reviewing Your Results</h2>
+
+    <h3>Accessing Your Results</h3>
+
+    <div class="step-box">
+        <strong>Step 1: Navigate to Results</strong>
+        <ol>
+            <li>Click <strong>"Exams"</strong> in the sidebar</li>
+            <li>Click the <strong>"MY RESULTS"</strong> tab</li>
+            <li>You'll see all exams you've completed</li>
+            <li>Click on any exam to see detailed results</li>
+        </ol>
+    </div>
+
+    <div class="screenshot-placeholder">
+        [SCREENSHOT 13: My Results Page]<br>
+        <span class="screenshot-label">Show: List of completed exams with scores, dates, status (Pass/Fail)</span>
+    </div>
+
+    <h3>Understanding Your Result Report</h3>
+
+    <div class="screenshot-placeholder">
+        [SCREENSHOT 14: Detailed Results Page]<br>
+        <span class="screenshot-label">Show: Overall score, percentage, pass/fail status, section breakdown, performance graph</span>
+    </div>
+
+    <h4>Key Information on Results Page</h4>
+
+    <table>
+        <tr>
+            <th>Information</th>
+            <th>What It Means</th>
+            <th>Example</th>
+        </tr>
+        <tr>
+            <td><strong>Total Score</strong></td>
+            <td>Your points earned / maximum points</td>
+            <td>75/100</td>
+        </tr>
+        <tr>
+            <td><strong>Percentage</strong></td>
+            <td>Your score as a percentage</td>
+            <td>75%</td>
+        </tr>
+        <tr>
+            <td><strong>Status</strong></td>
+            <td>Did you pass? (depends on pass mark set by teacher)</td>
+            <td>Passed / Failed</td>
+        </tr>
+        <tr>
+            <td><strong>Time Taken</strong></td>
+            <td>How long you spent on exam</td>
+            <td>45 minutes</td>
+        </tr>
+        <tr>
+            <td><strong>Attempts Used</strong></td>
+            <td>Which attempt this was (1st, 2nd, etc.)</td>
+            <td>Attempt 1 of 2</td>
+        </tr>
+    </table>
+
+    <h3>Reviewing Individual Questions</h3>
+
+    <div class="step-box">
+        <strong>Step 2: Review Each Question</strong>
+        <ol>
+            <li>Scroll down on the results page</li>
+            <li>You'll see each question listed</li>
+            <li>For each question, you'll see:</li>
+            <ul>
+                <li>The original question</li>
+                <li>Your answer (what you selected)</li>
+                <li>The correct answer</li>
+                <li>Whether you got it right or wrong (✓ or ✗)</li>
+                <li>How many points you earned</li>
+                <li>Teacher's explanation/solution</li>
+            </ul>
+        </ol>
+    </div>
+
+    <div class="screenshot-placeholder">
+        [SCREENSHOT 15: Question-by-Question Review]<br>
+        <span class="screenshot-label">Show: Individual question with your answer, correct answer, explanation, marks</span>
+    </div>
+
+    <h3>Understanding Your Feedback</h3>
+
+    <div class="info-box">
+        <strong>Your teacher may have provided:</strong>
+        <ul>
+            <li><strong>Solution Explanation</strong> - How to solve the problem</li>
+            <li><strong>Why You Were Wrong</strong> - What the common mistake was</li>
+            <li><strong>Additional Resources</strong> - Links to learn more</li>
+            <li><strong>Personal Comments</strong> - Feedback from your teacher</li>
+        </ul>
+    </div>
+
+    <div class="tip-box">
+        <strong>💡 Learning from Results:</strong>
+        <ul>
+            <li>✓ Read all explanations for questions you got wrong</li>
+            <li>✓ Review the concepts you struggled with</li>
+            <li>✓ If you can retake the exam, study before your next attempt</li>
+            <li>✓ Ask your teacher for clarification if confused</li>
+            <li>✓ Print or save results for your records</li>
+        </ul>
+    </div>
+
+    <div class="page-break"></div>
+
+    <h2>7. Troubleshooting</h2>
+
+    <h3>Login Problems</h3>
+
+    <div class="important-box">
+        <strong>Problem: Can't login - "Invalid email or password"</strong>
+        <br><br>
+        <strong>Solutions:</strong>
+        <ol>
+            <li>Check caps lock - password is case sensitive</li>
+            <li>Verify correct email address (check for typos)</li>
+            <li>Make sure you're entering the right password</li>
+            <li>Try copying/pasting your email from your school's email</li>
+            <li>If completely forgotten, contact your teacher for a password reset</li>
+        </ol>
+    </div>
+
+    <h3>Exam-Related Issues</h3>
+
+    <div class="important-box">
+        <strong>Problem: Exam not available / "Exam not found"</strong>
+        <br><br>
+        <strong>Possible causes & solutions:</strong>
+        <ol>
+            <li><strong>Exam hasn't started yet</strong> - Check start date/time. Is it in the future?</li>
+            <li><strong>Exam has closed</strong> - Check end date. Is it in the past?</li>
+            <li><strong>You exceeded max attempts</strong> - Have you tried the maximum times allowed?</li>
+            <li><strong>You're not enrolled</strong> - Contact teacher to verify enrollment</li>
+            <li><strong>Browser issue</strong> - Try refreshing page or different browser</li>
+        </ol>
+        <strong>Action:</strong> Contact your teacher with the exam name and date
+    </div>
+
+    <div class="important-box">
+        <strong>Problem: Internet dropped during exam</strong>
+        <br><br>
+        <strong>What happens:</strong>
+        <ul>
+            <li>Don't panic! Your answers are saved every 30 seconds</li>
+            <li>The exam stays "in progress"</li>
+            <li>When you reconnect, you can resume from where you left off</li>
+        </ul>
+        <strong>What to do:</strong>
+        <ol>
+            <li>Reconnect to internet immediately</li>
+            <li>Refresh the page</li>
+            <li>You should be back in the exam at the question you were on</li>
+            <li>Continue answering questions</li>
+            <li>Submit when done as normal</li>
+        </ol>
+    </div>
+
+    <div class="important-box">
+        <strong>Problem: Answer won't save or shows error message</strong>
+        <br><br>
+        <strong>Solutions:</strong>
+        <ol>
+            <li>Check your internet connection (run speedtest.net)</li>
+            <li>Look for "Saving..." indicator - wait for it to complete</li>
+            <li>Manually click "Save" button</li>
+            <li>Try refreshing the page</li>
+            <li>Try closing exam and reopening (your answer will be there)</li>
+            <li>If error persists, screenshot the error and email to teacher</li>
+        </ol>
+    </div>
+
+    <div class="important-box">
+        <strong>Problem: Timer seems to be running fast or slow</strong>
+        <br><br>
+        <strong>Explanation:</strong>
+        <ul>
+            <li>Timer is server-based, not browser-based (accurate)</li>
+            <li>Your computer clock might be slightly off</li>
+            <li>Browser might have cached old time data</li>
+        </ul>
+        <strong>Solution:</strong>
+        <ol>
+            <li>Refresh the page to sync timer with server</li>
+            <li>Check your system clock is set correctly</li>
+            <li>If still wrong after refresh, contact teacher/admin</li>
+        </ol>
+    </div>
+
+    <h3>Browser & Technical Issues</h3>
+
+    <div class="important-box">
+        <strong>Problem: Page loads slowly or won't load</strong>
+        <br><br>
+        <strong>Try these steps in order:</strong>
+        <ol>
+            <li>Hard refresh: <span class="keyboard-shortcut">Ctrl+Shift+R</span> (Windows) or <span class="keyboard-shortcut">Cmd+Shift+R</span> (Mac)</li>
+            <li>Clear browser cache: Settings → Clear browsing data</li>
+            <li>Try a different browser (Chrome, Firefox, Safari, Edge)</li>
+            <li>Try on a different device (if available)</li>
+            <li>Close other apps/tabs that use internet</li>
+            <li>Wait a few minutes and try again</li>
+        </ol>
+    </div>
+
+    <div class="tip-box">
+        <strong>💡 Browser Recommendations:</strong>
+        <ul>
+            <li>✓ Chrome - Recommended (most reliable)</li>
+            <li>✓ Firefox - Good</li>
+            <li>✓ Edge - Good</li>
+            <li>✓ Safari - Good (Mac)</li>
+            <li>✗ Avoid: Internet Explorer (very old)</li>
+        </ul>
+    </div>
+
+    <h3>Getting Help</h3>
+
+    <div class="step-box">
+        <strong>When to Contact Support:</strong>
+        <ol>
+            <li><strong>Contact your teacher if:</strong>
+                <ul>
+                    <li>You can't access an exam</li>
+                    <li>Exam doesn't show up but should be available</li>
+                    <li>You think there's an error in a question</li>
+                    <li>You need feedback on results</li>
+                </ul>
+            </li>
+            <li><strong>Contact your school admin if:</strong>
+                <ul>
+                    <li>You can't login</li>
+                    <li>You forgot your password</li>
+                    <li>Technical issue persists after troubleshooting</li>
+                    <li>Something seems broken in the system</li>
+                </ul>
+            </li>
+        </ol>
+    </div>
+
+    <div class="info-box">
+        <strong>When contacting support, include:</strong>
+        <ul>
+            <li>Your full name and email</li>
+            <li>What you were trying to do</li>
+            <li>What error message you saw (screenshot helpful)</li>
+            <li>What browser you're using</li>
+            <li>What device (computer, tablet, phone)</li>
+            <li>What time it happened</li>
+        </ul>
+    </div>
+
+    <div class="page-break"></div>
+
+    <h2>8. Quick Tips & Keyboard Shortcuts</h2>
+
+    <h3>Helpful Keyboard Shortcuts</h3>
+
+    <table>
+        <tr>
+            <th>Shortcut</th>
+            <th>What It Does</th>
+            <th>When to Use</th>
+        </tr>
+        <tr>
+            <td><span class="keyboard-shortcut">Tab</span></td>
+            <td>Move between fields/buttons</td>
+            <td>Navigating form without mouse</td>
+        </tr>
+        <tr>
+            <td><span class="keyboard-shortcut">Enter</span></td>
+            <td>Click the selected button</td>
+            <td>Submit login, confirm dialog</td>
+        </tr>
+        <tr>
+            <td><span class="keyboard-shortcut">Space</span></td>
+            <td>Select checkbox or radio button</td>
+            <td>Answering multiple choice without mouse</td>
+        </tr>
+        <tr>
+            <td><span class="keyboard-shortcut">Esc</span></td>
+            <td>Close dialog/popup</td>
+            <td>Cancel a dialog box</td>
+        </tr>
+        <tr>
+            <td><span class="keyboard-shortcut">F5</span></td>
+            <td>Refresh page</td>
+            <td>If page won't load properly</td>
+        </tr>
+        <tr>
+            <td><span class="keyboard-shortcut">Ctrl+A</span> (or <span class="keyboard-shortcut">Cmd+A</span>)</td>
+            <td>Select all text</td>
+            <td>Copying a question to notepad</td>
+        </tr>
+        <tr>
+            <td><span class="keyboard-shortcut">Ctrl+C</span> (or <span class="keyboard-shortcut">Cmd+C</span>)</td>
+            <td>Copy text</td>
+            <td>Copying question or answer</td>
+        </tr>
+        <tr>
+            <td><span class="keyboard-shortcut">Ctrl+P</span> (or <span class="keyboard-shortcut">Cmd+P</span>)</td>
+            <td>Print page</td>
+            <td>Saving results as PDF</td>
+        </tr>
+    </table>
+
+    <h3>Pro Tips for Better Experience</h3>
+
+    <div class="tip-box">
+        <strong>General Tips:</strong>
+        <ul>
+            <li>✓ Bookmark the SPECTROPY login page for quick access</li>
+            <li>✓ Keep your password written down in a safe place</li>
+            <li>✓ Set a calendar reminder for exam dates</li>
+            <li>✓ Visit exams section regularly to see new exams</li>
+            <li>✓ Review results immediately after exam while fresh</li>
+            <li>✓ Keep notes on topics where you struggled</li>
+            <li>✓ Join study groups with classmates</li>
+            <li>✓ Email yourself your results/scores for records</li>
+        </ul>
+    </div>
+
+    <h3>Frequently Asked Questions</h3>
+
+    <div class="example-question">
+        <strong>Q: Can I take an exam multiple times?</strong>
+        <br>A: Yes, if your teacher allows multiple attempts. Check the exam details for "Attempts Allowed".
+        <br><br>
+        <strong>Q: Will I see my score immediately?</strong>
+        <br>A: Yes, usually within seconds. The system auto-grades all questions.
+        <br><br>
+        <strong>Q: Can I see the correct answers?</strong>
+        <br>A: Yes, but only if your teacher enables "Show Answers After Submission". Check the results page.
+        <br><br>
+        <strong>Q: What if I submitted but didn't mean to?</strong>
+        <br>A: Unfortunately, submitted exams can't be reopened. Be sure before clicking confirm!
+        <br><br>
+        <strong>Q: Can I download my results?</strong>
+        <br>A: Use the Print function (Ctrl+P) and choose "Save as PDF" to create a copy.
+    </div>
+
+    <div class="page-break"></div>
+
+    <div class="footer">
+        <h2>Need More Help?</h2>
+        <p><strong>Bookmark these resources:</strong></p>
+        <ul style="margin-left: 0;">
+            <li>📧 Your Teacher's Email: [Teacher email]</li>
+            <li>🏫 School Admin Portal: [Admin contact]</li>
+            <li>💻 SPECTROPY Support: [Support email/link]</li>
+            <li>📚 Full LMS Manual: [Link to main manual]</li>
+        </ul>
+
+        <p style="margin-top: 40px;"><strong>You've got this! 🎓</strong></p>
+        <p>Remember: The best preparation is reading course materials, practicing similar problems, and getting good sleep before the exam.</p>
+
+        <p style="margin-top: 40px;"><strong>Student Guide Version 1.0</strong></p>
+        <p>Last Updated: March 2026</p>
+        <p>For feedback or questions about this guide, contact your teacher.</p>
+    </div>
+</body>
+</html>

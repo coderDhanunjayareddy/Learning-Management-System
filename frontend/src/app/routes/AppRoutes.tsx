@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '@/app/providers/AuthProvider';
 import Spinner from '@/components/ui/Spinner';
+import type { Role } from '@/features/auth/types';
 import ProtectedRoute from './ProtectedRoute';
 
 // Auth pages
@@ -12,6 +13,7 @@ import PlatformDashboard from '@/pages/dashboard/superadmin/PlatformDashboard';
 import RegisterAdmin from '@/pages/dashboard/superadmin/RegisterAdmin';
 import ClientsPage from '@/pages/dashboard/superadmin/ClientsPage';
 import PacksPage from '@/pages/dashboard/superadmin/PacksPage';
+import PackManagePage from '@/pages/dashboard/superadmin/PackManagePage';
 import EntitlementsPage from '@/pages/dashboard/superadmin/EntitlementsPage';
 import UsersPage from '@/pages/dashboard/superadmin/UsersPage';
 import PermissionsPage from '@/pages/dashboard/superadmin/PermissionsPage';
@@ -28,7 +30,6 @@ import TeacherDashboard from '@/pages/dashboard/teacher/Dashboard';
 // Student
 import StudentDashboard from '@/pages/dashboard/student/StudentDashboard';
 import StudentCourseView from '@/pages/course/student/StudentCourseView';
-import StudentExamListPage from '@/pages/exams/student/StudentExamListPage';
 import StudentExamResultPlaceholderPage from '@/pages/exams/student/StudentExamResultPlaceholderPage';
 import StudentExamRuntimePage from '@/pages/exams/student/StudentExamRuntimePage';
 
@@ -39,11 +40,14 @@ import ContentAuthorizerProfile from '@/pages/dashboard/content_authorizer/Profi
 import ContentAuthorizerCourseContent from '@/pages/course/content_authorizer/CourseContent';
 import ContentAuthorizerCourses from '@/pages/dashboard/content_authorizer/Courses';
 import ContentAuthorizerDashboard from '@/pages/dashboard/content_authorizer/Dashboard';
+import ContentAuthorizerPacksPage from '@/pages/dashboard/content_authorizer/PacksPage';
+import ContentAuthorizerPackManagePage from '@/pages/dashboard/content_authorizer/PackManagePage';
 import SchoolOwnerProfile from '@/pages/dashboard/school_owner/Profile';
 import SchoolOwnerCourseContent from '@/pages/course/school_owner/CourseContent';
 import SchoolOwnerCourses from '@/pages/dashboard/school_owner/Courses';
 import SchoolOwnerDashboard from '@/pages/dashboard/school_owner/Dashboard';
 import AdminProfile from '@/pages/dashboard/admin/Profile';
+import LicensedContentPage from '@/pages/dashboard/admin/LicensedContentPage';
 import TeacherCourseContent from '@/pages/course/teacher/CourseContent';
 import TeacherProfile from '@/pages/dashboard/teacher/Profile';
 import TeacherHome from '@/pages/dashboard/teacher/TeacherHome';
@@ -81,8 +85,8 @@ export default function AppRoutes() {
   if (loading) return <Spinner />;
 
   // Helper to group protected routes and reduce repetition
-  const Protect = ({ roles }: { roles: string[] }) => (
-    <ProtectedRoute allowedRoles={roles as any}>
+  const Protect = ({ roles }: { roles: Role[] }) => (
+    <ProtectedRoute allowedRoles={roles}>
       <Outlet />
     </ProtectedRoute>
   );
@@ -101,6 +105,7 @@ export default function AppRoutes() {
         <Route path="/superadmin/dashboard" element={<PlatformDashboard />} />
         <Route path="/superadmin/clients" element={<ClientsPage />} />
         <Route path="/superadmin/packs" element={<PacksPage />} />
+        <Route path="/superadmin/packs/:packId" element={<PackManagePage />} />
         <Route path="/superadmin/entitlements" element={<EntitlementsPage />} />
         <Route path="/superadmin/users" element={<UsersPage />} />
         <Route path="/superadmin/permissions" element={<PermissionsPage />} />
@@ -123,6 +128,10 @@ export default function AppRoutes() {
         <Route path="/admin/profile" element={<AdminProfile />} />
       </Route>
 
+      <Route element={<Protect roles={['client_admin']} />}>
+        <Route path="/admin/licensed-content" element={<LicensedContentPage />} />
+      </Route>
+
       <Route element={<Protect roles={['super_admin', 'client_admin', 'school_owner']} />}>
         <Route path="/admin/org" element={<OrgDashboard />} />
       </Route>
@@ -131,6 +140,8 @@ export default function AppRoutes() {
       <Route element={<Protect roles={['content_authorizer', 'super_admin']} />}>
         <Route path="/content-authorizer/dashboard" element={<ContentAuthorizerDashboard />} />
         <Route path="/content-authorizer/courses" element={<ContentAuthorizerCourses />} />
+        <Route path="/content-authorizer/packs" element={<ContentAuthorizerPacksPage />} />
+        <Route path="/content-authorizer/packs/:packId" element={<ContentAuthorizerPackManagePage />} />
         <Route path="/content-authorizer/courses/:courseId/content" element={<ContentAuthorizerCourseContent />} />
         <Route path="/content-authorizer/profile" element={<ContentAuthorizerProfile />} />
       </Route>
@@ -156,7 +167,6 @@ export default function AppRoutes() {
       {/* Student */}
       <Route element={<Protect roles={['student']} />}>
         <Route path="/student/dashboard" element={<StudentDashboard />} />
-        <Route path="/student/exams" element={<StudentExamListPage />} />
         <Route path="/student/exams/:examId/result" element={<StudentExamResultPlaceholderPage />} />
         <Route path="/student/exams/attempt/:attemptId" element={<StudentExamRuntimePage />} />
         <Route path="/student/course/:courseId" element={<StudentCourseView />}>

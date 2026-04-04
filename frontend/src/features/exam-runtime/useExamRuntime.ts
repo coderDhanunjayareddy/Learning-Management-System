@@ -6,6 +6,11 @@ import {
   saveAttemptResponses,
   submitAttempt,
 } from "@/features/exam-runtime/api";
+import {
+  emptyAnswerForQuestion,
+  isQuestionAttemptedValue,
+  normalizeAnswerForQuestion,
+} from "@/features/exam-runtime/questionHelpers";
 import type {
   AutosaveState,
   ExamAttemptRuntime,
@@ -14,20 +19,17 @@ import type {
   RuntimeResponse,
 } from "@/features/exam-runtime/types";
 
-const isQuestionAttempted = (answer: unknown) => {
-  if (Array.isArray(answer)) return answer.length > 0;
-  if (answer === null || answer === undefined) return false;
-  if (typeof answer === "string") return answer.trim().length > 0;
-  return true;
-};
-
 const normalizeResponseMap = (runtime: ExamAttemptRuntime) => {
   const answers: Record<number, unknown> = {};
   const reviews: Record<number, boolean> = {};
   const visited: Record<number, boolean> = {};
+  const questionById = new Map(runtime.questions.map((question) => [question.id, question]));
 
   runtime.responses.forEach((response) => {
-    answers[response.question_id] = response.student_answer;
+    const question = questionById.get(response.question_id);
+    answers[response.question_id] = question
+      ? normalizeAnswerForQuestion(question, response.student_answer)
+      : response.student_answer;
     reviews[response.question_id] = Boolean(response.is_marked_for_review);
     if (response.is_attempted || response.is_marked_for_review) {
       visited[response.question_id] = true;
@@ -259,13 +261,17 @@ export const useExamRuntime = ({ attemptId }: UseExamRuntimeParams) => {
   const clearQuestionAnswer = useCallback(
     (questionId: number) => {
       if (readOnly) return;
-      setAnswersByQuestionId((prev) => ({ ...prev, [questionId]: null }));
+      const question = questionById.get(questionId);
+      setAnswersByQuestionId((prev) => ({
+        ...prev,
+        [questionId]: question ? emptyAnswerForQuestion(question) : null,
+      }));
       markVisited(questionId);
       queueAutosave(questionId);
       setAutosaveState("idle");
       setAutosaveError(null);
     },
-    [markVisited, queueAutosave, readOnly]
+    [markVisited, questionById, queueAutosave, readOnly]
   );
 
   const flushSave = useCallback(
@@ -287,7 +293,7 @@ export const useExamRuntime = ({ attemptId }: UseExamRuntimeParams) => {
           section_id: question ? question.section_id : 0,
           student_answer: answer,
           is_marked_for_review: Boolean(reviewByQuestionId[questionId]),
-          is_attempted: isQuestionAttempted(answer),
+          is_attempted: isQuestionAttemptedValue(answer),
         };
       }).filter((item) => item.section_id > 0);
 
@@ -395,14 +401,18 @@ export const useExamRuntime = ({ attemptId }: UseExamRuntimeParams) => {
   const clearResponseAndSave = useCallback(
     async (questionId: number) => {
       if (readOnly) return false;
-      setAnswersByQuestionId((prev) => ({ ...prev, [questionId]: null }));
+      const question = questionById.get(questionId);
+      setAnswersByQuestionId((prev) => ({
+        ...prev,
+        [questionId]: question ? emptyAnswerForQuestion(question) : null,
+      }));
       markVisited(questionId);
       queueAutosave(questionId);
       setAutosaveState("idle");
       setAutosaveError(null);
       return flushSave([questionId]);
     },
-    [flushSave, markVisited, queueAutosave, readOnly]
+    [flushSave, markVisited, questionById, queueAutosave, readOnly]
   );
 
   const submitCurrentAttempt = useCallback(async (): Promise<SubmitOutcome> => {
@@ -602,7 +612,7 @@ export const useExamRuntime = ({ attemptId }: UseExamRuntimeParams) => {
 
     questions.forEach((question) => {
       const hasReview = Boolean(reviewByQuestionId[question.id]);
-      const isAnswered = isQuestionAttempted(answersByQuestionId[question.id]);
+      const isAnswered = isQuestionAttemptedValue(answersByQuestionId[question.id]);
       const isVisited = Boolean(visitedByQuestionId[question.id]);
 
       if (hasReview && isAnswered) {

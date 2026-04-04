@@ -66,6 +66,15 @@ export default function CourseStudents() {
       active: activeTab === 'courses',
       onClick: () => setActiveTab('courses'),
     },
+    ...(user?.role === 'client_admin'
+      ? [{
+          key: 'licensed-content',
+          label: 'Licensed Content',
+          icon: <RiFileList3Line />,
+          active: false,
+          onClick: () => navigate('/admin/licensed-content'),
+        }]
+      : []),
     {
       key: 'question-bank',
       label: 'Question Bank',

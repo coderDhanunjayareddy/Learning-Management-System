@@ -5,6 +5,7 @@ import LeftPanel from "./LeftPanel";
 import ContentViewer from "@/features/courses/components/player/ContentViewer";
 import toast from "react-hot-toast";
 import { SlControlPlay, SlControlRewind } from "react-icons/sl";
+import { useAuth } from "@/features/auth/hooks/useAuth";
 
 interface ContentItem {
   id: number;
@@ -17,6 +18,13 @@ interface ContentItem {
   order_index: number;
   created_at: string;
   completion_status?: string | null;
+  is_linked_content?: boolean;
+  linked_content_id?: number | null;
+  source_pack_id?: number | null;
+  download_allowed?: boolean;
+  link_origin?: "course" | "licensed_pack";
+  is_editable?: boolean;
+  is_linked_to_course?: boolean;
 }
 
 interface ExamOption {
@@ -29,6 +37,13 @@ interface Chapter {
   id: number;
   title: string;
   items: ContentItem[];
+}
+
+interface LicensedPack {
+  id: number;
+  name: string;
+  description?: string | null;
+  item_count: number;
 }
 
 const ITEM_TYPES = [
@@ -67,6 +82,7 @@ export default function CourseContentManager({
   panelTitle = "Course Content",
 }: CourseContentManagerProps) {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [selectedChapter, setSelectedChapter] = useState<number | null>(null);
 
@@ -88,6 +104,15 @@ export default function CourseContentManager({
   const [isUpdating, setIsUpdating] = useState(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [leftPanelOpen, setLeftPanelOpen] = useState(false);
+  const [showLicensedContentModal, setShowLicensedContentModal] = useState(false);
+  const [licensedPacks, setLicensedPacks] = useState<LicensedPack[]>([]);
+  const [selectedPackId, setSelectedPackId] = useState<number | null>(null);
+  const [licensedItems, setLicensedItems] = useState<ContentItem[]>([]);
+  const [licensedSearchResults, setLicensedSearchResults] = useState<ContentItem[]>([]);
+  const [licensedSearch, setLicensedSearch] = useState("");
+  const [loadingLicensedPacks, setLoadingLicensedPacks] = useState(false);
+  const [loadingLicensedItems, setLoadingLicensedItems] = useState(false);
+  const [linkingLicensedContent, setLinkingLicensedContent] = useState(false);
 
   const [chapterTitle, setChapterTitle] = useState("");
   const [addingChapter, setAddingChapter] = useState(false);
@@ -95,6 +120,7 @@ export default function CourseContentManager({
   const normalizedPrefix = apiPrefix.startsWith("/") ? apiPrefix : `/${apiPrefix}`;
   const resolvedCourseId = courseId ? String(courseId) : "";
   const canEdit = !readOnly && !disableFetch;
+  const canLinkLicensedContent = canEdit && user?.role === "client_admin";
 
   const items = useMemo(() => allItems, [allItems]);
   const filteredExamOptions = useMemo(() => {
@@ -175,6 +201,119 @@ export default function CourseContentManager({
     }
   };
 
+  const fetchLicensedPacks = async () => {
+    if (!canLinkLicensedContent) return;
+    setLoadingLicensedPacks(true);
+    try {
+      const res = await api.get("/client/licensed-packs", {
+        params: { page: 1, page_size: 100 },
+      });
+      const packs = Array.isArray(res.data?.data) ? res.data.data : [];
+      setLicensedPacks(packs);
+      if (!selectedPackId && packs.length > 0) {
+        setSelectedPackId(Number(packs[0].id));
+      }
+    } catch (err) {
+      console.error("Failed to load licensed packs", err);
+      toast.error("Unable to load licensed packs.");
+    } finally {
+      setLoadingLicensedPacks(false);
+    }
+  };
+
+  const fetchLicensedPackItems = async (packId: number) => {
+    if (!canLinkLicensedContent) return;
+    setLoadingLicensedItems(true);
+    try {
+      const res = await api.get(`/client/licensed-packs/${packId}/items`, {
+        params: { page: 1, page_size: 200, course_id: resolvedCourseId },
+      });
+      setLicensedItems(Array.isArray(res.data?.data) ? res.data.data : []);
+    } catch (err) {
+      console.error("Failed to load licensed pack items", err);
+      toast.error("Unable to load licensed pack items.");
+    } finally {
+      setLoadingLicensedItems(false);
+    }
+  };
+
+  const searchLicensedContent = async (searchValue: string) => {
+    if (!canLinkLicensedContent) return;
+    const normalized = searchValue.trim();
+    if (!normalized) {
+      setLicensedSearchResults([]);
+      return;
+    }
+
+    try {
+      const res = await api.get("/client/licensed-content", {
+        params: {
+          q: normalized,
+          page: 1,
+          page_size: 50,
+          pack_id: selectedPackId ?? undefined,
+        },
+      });
+      setLicensedSearchResults(Array.isArray(res.data?.data) ? res.data.data : []);
+    } catch (err) {
+      console.error("Failed to search licensed content", err);
+      toast.error("Unable to search licensed content.");
+    }
+  };
+
+  const handleLinkLicensedItem = async (item: ContentItem) => {
+    if (!canLinkLicensedContent || selectedChapter === null || !resolvedCourseId) return;
+    setLinkingLicensedContent(true);
+    try {
+      await api.post(`/admin/courses/${resolvedCourseId}/linked-content`, {
+        content_item_id: item.id,
+        source_pack_id: selectedPackId,
+        parent_content_id: selectedChapter,
+      });
+      toast.success("Licensed content added to the course.");
+      setShowLicensedContentModal(false);
+      setLicensedSearch("");
+      setLicensedSearchResults([]);
+      await fetchContent();
+    } catch (err: any) {
+      const message = err?.response?.data?.error || "Failed to add licensed content.";
+      toast.error(String(message));
+    } finally {
+      setLinkingLicensedContent(false);
+    }
+  };
+
+  const handleLinkLicensedPack = async () => {
+    if (!canLinkLicensedContent || selectedChapter === null || !resolvedCourseId || !selectedPackId) return;
+    setLinkingLicensedContent(true);
+    try {
+      await api.post(`/admin/courses/${resolvedCourseId}/linked-content/bulk`, {
+        pack_id: selectedPackId,
+        parent_content_id: selectedChapter,
+      });
+      toast.success("Licensed pack added to the course.");
+      setShowLicensedContentModal(false);
+      await fetchContent();
+    } catch (err: any) {
+      const message = err?.response?.data?.error || "Failed to add licensed pack.";
+      toast.error(String(message));
+    } finally {
+      setLinkingLicensedContent(false);
+    }
+  };
+
+  const handleRemoveLinkedItem = async (item: ContentItem) => {
+    if (!canLinkLicensedContent || !resolvedCourseId || !item.linked_content_id) return;
+    try {
+      await api.delete(`/admin/courses/${resolvedCourseId}/linked-content/${item.linked_content_id}`);
+      toast.success("Licensed content removed from the course.");
+      await fetchContent();
+    } catch (err: any) {
+      const message = err?.response?.data?.error || "Failed to remove licensed content.";
+      toast.error(String(message));
+    }
+  };
+
   useEffect(() => {
     if (!resolvedCourseId) return;
 
@@ -196,6 +335,21 @@ export default function CourseContentManager({
     if (!EXAM_ITEM_TYPES.includes(itemType)) return;
     void fetchExamOptions();
   }, [showAddItemModal, itemType]);
+
+  useEffect(() => {
+    if (!showLicensedContentModal || !canLinkLicensedContent) return;
+    void fetchLicensedPacks();
+  }, [showLicensedContentModal, canLinkLicensedContent]);
+
+  useEffect(() => {
+    if (!showLicensedContentModal || !selectedPackId || !canLinkLicensedContent) return;
+    void fetchLicensedPackItems(selectedPackId);
+  }, [showLicensedContentModal, selectedPackId, canLinkLicensedContent]);
+
+  useEffect(() => {
+    if (!showLicensedContentModal || !canLinkLicensedContent) return;
+    void searchLicensedContent(licensedSearch);
+  }, [licensedSearch, selectedPackId, showLicensedContentModal, canLinkLicensedContent]);
 
   const handleReplaceFile = async () => {
     if (!itemToUpdate || !canEdit || !resolvedCourseId) return;
@@ -273,6 +427,10 @@ export default function CourseContentManager({
 
   const openReplaceModal = (item: ContentItem) => {
     if (!canEdit) return;
+    if (item.is_linked_content) {
+      toast.error("Licensed content is read-only.");
+      return;
+    }
     setItemToUpdate(item);
     setShowUpdateFileModal(true);
   };
@@ -448,9 +606,16 @@ export default function CourseContentManager({
             setExamSearch("");
             setShowAddItemModal(true);
           }}
+          onAddLicensedContent={canLinkLicensedContent ? (id) => {
+            setSelectedChapter(id);
+            setLicensedSearch("");
+            setLicensedSearchResults([]);
+            setShowLicensedContentModal(true);
+          } : undefined}
           onReorderChapters={handleReorderChapters}
           onReorderItems={handleReorderItems}
           onUpdateFile={openReplaceModal}
+          onRemoveLinkedItem={canLinkLicensedContent ? handleRemoveLinkedItem : undefined}
           hideProgress
         />
       </div>
@@ -690,6 +855,182 @@ export default function CourseContentManager({
               >
                 Add
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showLicensedContentModal && canLinkLicensedContent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="flex max-h-[85vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900">Add From Content Pack</h3>
+                <p className="text-sm text-slate-500">Licensed platform content is read-only and added into the selected chapter.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowLicensedContentModal(false)}
+                className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-gray-50"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="grid flex-1 overflow-hidden md:grid-cols-[280px_1fr]">
+              <div className="border-r border-gray-200 bg-slate-50">
+                <div className="border-b border-gray-200 px-4 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Licensed Packs</p>
+                </div>
+                <div className="max-h-[60vh] overflow-y-auto p-3">
+                  {loadingLicensedPacks ? (
+                    <p className="text-sm text-slate-500">Loading packs...</p>
+                  ) : licensedPacks.length === 0 ? (
+                    <p className="text-sm text-slate-500">No licensed packs are active for this client.</p>
+                  ) : (
+                    licensedPacks.map((pack) => (
+                      <button
+                        key={pack.id}
+                        type="button"
+                        onClick={() => setSelectedPackId(pack.id)}
+                        className={`mb-2 w-full rounded-lg border px-3 py-3 text-left transition ${
+                          selectedPackId === pack.id
+                            ? "border-blue-900 bg-blue-50 text-blue-900"
+                            : "border-gray-200 bg-white hover:bg-gray-50"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="font-medium">{pack.name}</p>
+                            {pack.description && <p className="mt-1 text-xs text-slate-500">{pack.description}</p>}
+                          </div>
+                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
+                            {pack.item_count}
+                          </span>
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div className="flex flex-1 flex-col overflow-hidden">
+                <div className="border-b border-gray-200 px-6 py-4">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">
+                        {selectedPackId
+                          ? licensedPacks.find((pack) => pack.id === selectedPackId)?.name ?? "Licensed Items"
+                          : "Licensed Items"}
+                      </p>
+                      <p className="text-xs text-slate-500">Link one item or add the full pack into the selected chapter.</p>
+                    </div>
+                    <div className="flex flex-col gap-2 md:flex-row">
+                      <input
+                        type="text"
+                        value={licensedSearch}
+                        onChange={(event) => setLicensedSearch(event.target.value)}
+                        placeholder="Search licensed items"
+                        className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                      />
+                      <button
+                        type="button"
+                        disabled={!selectedPackId || linkingLicensedContent}
+                        onClick={() => {
+                          void handleLinkLicensedPack();
+                        }}
+                        className="rounded-lg bg-blue-900 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {linkingLicensedContent ? "Adding..." : "Add Entire Pack"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid flex-1 overflow-hidden md:grid-cols-[1.2fr_0.8fr]">
+                  <div className="overflow-y-auto p-4">
+                    {licensedSearch.trim().length > 0 && (
+                      <div className="mb-4 rounded-lg border border-blue-100 bg-blue-50 px-3 py-3">
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-blue-700">Search Results</p>
+                        {licensedSearchResults.length === 0 ? (
+                          <p className="text-sm text-blue-700">No licensed items match this search.</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {licensedSearchResults.map((item) => (
+                              <div key={`search-${item.id}`} className="flex items-center justify-between rounded-lg border border-blue-100 bg-white px-3 py-3">
+                                <div>
+                                  <p className="font-medium text-slate-900">{item.title}</p>
+                                  <p className="text-xs uppercase tracking-wide text-slate-500">{item.item_type}</p>
+                                </div>
+                                <button
+                                  type="button"
+                                  disabled={linkingLicensedContent}
+                                  onClick={() => {
+                                    void handleLinkLicensedItem(item);
+                                  }}
+                                  className="rounded-md border border-blue-900 px-3 py-1.5 text-sm font-medium text-blue-900 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  Link Item
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {loadingLicensedItems ? (
+                      <p className="text-sm text-slate-500">Loading licensed items...</p>
+                    ) : licensedItems.length === 0 ? (
+                      <p className="text-sm text-slate-500">This pack has no licensed items available for linking.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {licensedItems.map((item) => (
+                          <div key={item.id} className="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-3">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <p className="font-medium text-slate-900">{item.title}</p>
+                                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-700">
+                                  Licensed
+                                </span>
+                                {item.is_linked_to_course && (
+                                  <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-emerald-700">
+                                    Linked
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs uppercase tracking-wide text-slate-500">{item.item_type}</p>
+                            </div>
+                            <button
+                              type="button"
+                              disabled={Boolean(item.is_linked_to_course) || linkingLicensedContent}
+                              onClick={() => {
+                                void handleLinkLicensedItem(item);
+                              }}
+                              className="rounded-md border border-blue-900 px-3 py-1.5 text-sm font-medium text-blue-900 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {item.is_linked_to_course ? "Already Linked" : "Link Item"}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="border-l border-gray-200 bg-slate-50 p-4">
+                    <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-600">
+                      <p className="font-semibold text-slate-900">How this works</p>
+                      <p className="mt-2">Linked items stay platform-owned. Client admins can place them into a chapter, but cannot rename, replace, or download them.</p>
+                      <p className="mt-3 text-xs uppercase tracking-wide text-slate-500">Selected chapter</p>
+                      <p className="mt-1 font-medium text-slate-900">
+                        {selectedChapter !== null
+                          ? chapters.find((chapter) => chapter.id === selectedChapter)?.title ?? "Chapter"
+                          : "No chapter selected"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
