@@ -211,12 +211,12 @@ export const authenticateToken = async (req, res, next) => {
 
 export const requireRole = (roles) => {
   const roleList = Array.isArray(roles) ? roles : [roles];
+  console.log('roleList:', roleList);
 
   const normalizedRoles = roleList.map(normalizeRole).filter(Boolean);
 
   return (req, res, next) => {
     console.log('roleList:', roleList);
-    console.log('req.user:', req.user);
     console.log('normalizedRoles:', normalizedRoles);
     const userRole = normalizeRole(req.user?.role);
     console.log('userRole:', userRole);

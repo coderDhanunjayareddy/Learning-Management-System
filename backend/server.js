@@ -122,12 +122,13 @@ app.use('/api/course', CourseRouter);
 
 app.use('/api/users', userRoutes);
 app.use('/api/platform', platformRoutes);
-app.use('/api', packBuilderRoutes);
 app.use('/api', clientContentRoutes);
 app.use('/api/org', orgRoutes);
 app.use('/api', curriculumRoutes);
 app.use('/api', questionsRoutes);
 app.use('/api', examsRoutes);
+app.use('/api', packBuilderRoutes);
+
 
 
 
