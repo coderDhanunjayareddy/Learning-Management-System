@@ -211,15 +211,11 @@ export const authenticateToken = async (req, res, next) => {
 
 export const requireRole = (roles) => {
   const roleList = Array.isArray(roles) ? roles : [roles];
-  console.log('roleList:', roleList);
 
   const normalizedRoles = roleList.map(normalizeRole).filter(Boolean);
 
   return (req, res, next) => {
-    console.log('roleList:', roleList);
-    console.log('normalizedRoles:', normalizedRoles);
     const userRole = normalizeRole(req.user?.role);
-    console.log('userRole:', userRole);
 
     if (!userRole) return res.status(401).json({ error: 'Unauthorized' });
     if (normalizedRoles.length === 0) return res.status(500).json({ error: 'Role requirements not configured' });

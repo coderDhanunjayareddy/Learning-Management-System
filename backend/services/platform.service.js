@@ -235,7 +235,16 @@ export const listEntitlements = async (req, res) => {
     const result = await dbQuery(
       `
       SELECT ce.id, ce.client_id, ce.content_id, ce.pack_id, ce.start_at, ce.end_at,
-             ce.status, ce.granted_by, ce.granted_at, ce.revoked_at, ce.notes,
+             CASE
+               WHEN ce.status = 'revoked' OR ce.revoked_at IS NOT NULL THEN 'revoked'
+               WHEN ce.status = 'expired' THEN 'expired'
+               WHEN ce.status = 'grace' AND NOW() <= ce.end_at THEN 'grace'
+               WHEN NOW() < ce.start_at THEN 'pending'
+               WHEN NOW() > ce.end_at THEN 'expired'
+               ELSE ce.status
+             END AS status,
+             ce.status AS stored_status,
+             ce.granted_by, ce.granted_at, ce.revoked_at, ce.notes,
              c.name AS client_name, cp.name AS pack_name, ci.title AS content_title
       FROM content_entitlements ce
       LEFT JOIN clients c ON ce.client_id = c.id

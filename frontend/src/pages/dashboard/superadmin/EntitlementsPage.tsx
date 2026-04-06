@@ -10,6 +10,12 @@ const statusTone: Record<string, string> = {
   pending: 'border-amber-200 bg-amber-50 text-amber-700',
   grace: 'border-indigo-200 bg-indigo-50 text-indigo-700',
   expired: 'border-rose-200 bg-rose-50 text-rose-700',
+  revoked: 'border-slate-300 bg-slate-100 text-slate-700',
+};
+
+const toUtcIsoString = (value: string) => {
+  if (!value) return value;
+  return new Date(value).toISOString();
 };
 
 export default function EntitlementsPage() {
@@ -72,6 +78,8 @@ export default function EntitlementsPage() {
         client_id: Number(entitlementForm.client_id),
         content_id: entitlementForm.content_id ? Number(entitlementForm.content_id) : null,
         pack_id: entitlementForm.pack_id ? Number(entitlementForm.pack_id) : null,
+        start_at: toUtcIsoString(entitlementForm.start_at),
+        end_at: toUtcIsoString(entitlementForm.end_at),
       });
       setEntitlementForm({
         client_id: '',
@@ -122,6 +130,7 @@ export default function EntitlementsPage() {
               <option value="pending">Pending</option>
               <option value="grace">Grace</option>
               <option value="expired">Expired</option>
+              <option value="revoked">Revoked</option>
             </select>
           </div>
           <div className="mt-5 space-y-3">

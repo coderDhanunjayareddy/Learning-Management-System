@@ -46,6 +46,11 @@ const toDateTimeLocalValue = (date: Date) => {
   return local.toISOString().slice(0, 16);
 };
 
+const toUtcIsoString = (value: string) => {
+  if (!value) return value;
+  return new Date(value).toISOString();
+};
+
 interface PackListWorkspaceProps {
   basePath: string;
 }
@@ -253,8 +258,8 @@ export default function PackListWorkspace({ basePath }: PackListWorkspaceProps) 
       await api.post('/platform/entitlements', {
         client_id: Number(entitlementForm.client_id),
         pack_id: entitlementForm.pack_id,
-        start_at: entitlementForm.start_at,
-        end_at: entitlementForm.end_at,
+        start_at: toUtcIsoString(entitlementForm.start_at),
+        end_at: toUtcIsoString(entitlementForm.end_at),
         status: entitlementForm.status,
       });
       toast.success('Entitlement granted.');
