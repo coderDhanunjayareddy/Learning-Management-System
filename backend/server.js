@@ -35,12 +35,14 @@ const PORT = process.env.PORT || 5000;
 // ✅ MUST come BEFORE any other helmet middleware
 
 app.use(helmet());
-const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5100,http://localhost:5173')
+
+const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5100,http://localhost:5173,http://192.168.0.102:5100')
   .split(',')
   .map((origin) => origin.trim())
   .filter(Boolean);
 const isProduction = process.env.NODE_ENV === 'production';
 const isAllowedOrigin = (origin) => Boolean(origin && allowedOrigins.includes(origin));
+
 
 app.use(
   cors({

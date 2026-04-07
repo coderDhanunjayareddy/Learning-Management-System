@@ -1,3 +1,4 @@
+import { memo } from "react";
 import QuestionRenderer from "@/components/questions/QuestionRenderer";
 import type { Question } from "@/types/questionBank";
 import type { QuestionPermissions } from "@/features/question-bank/utils/questionPermissions";
@@ -30,7 +31,16 @@ interface QuestionCardProps {
   onReject: (question: Question) => void;
 }
 
-export default function QuestionCard({
+const arePermissionsEqual = (prev: QuestionPermissions, next: QuestionPermissions) =>
+  prev.canView === next.canView &&
+  prev.canCreate === next.canCreate &&
+  prev.canEdit === next.canEdit &&
+  prev.canApprove === next.canApprove &&
+  prev.canReject === next.canReject &&
+  prev.canDelete === next.canDelete &&
+  prev.canViewAnswer === next.canViewAnswer;
+
+function QuestionCard({
   number,
   question,
   permissions,
@@ -78,6 +88,7 @@ export default function QuestionCard({
       </div>
 
       <QuestionRenderer
+        key={`${question.id}-${question.status}`}
         question={question}
         showMeta={false}
         showAnswer
@@ -94,6 +105,7 @@ export default function QuestionCard({
       <div className="flex flex-wrap items-center gap-2">
         {isEditable && (
           <button
+            type="button"
             onClick={() => onEdit(question)}
             className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
           >
@@ -102,6 +114,7 @@ export default function QuestionCard({
         )}
         {permissions.canDelete && onDelete && (
           <button
+            type="button"
             onClick={() => onDelete(question)}
             className="rounded-lg border border-rose-200 px-3 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50"
           >
@@ -110,6 +123,7 @@ export default function QuestionCard({
         )}
         {permissions.canApprove && question.status === "draft" && (
           <button
+            type="button"
             onClick={() => onApprove(question)}
             className="rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-600"
           >
@@ -118,6 +132,7 @@ export default function QuestionCard({
         )}
         {permissions.canReject && question.status === "draft" && (
           <button
+            type="button"
             onClick={() => onReject(question)}
             className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100"
           >
@@ -128,3 +143,12 @@ export default function QuestionCard({
     </div>
   );
 }
+
+export default memo(QuestionCard, (prev, next) => {
+  return (
+    prev.number === next.number &&
+    prev.question === next.question &&
+    arePermissionsEqual(prev.permissions, next.permissions) &&
+    Boolean(prev.onDelete) === Boolean(next.onDelete)
+  );
+});

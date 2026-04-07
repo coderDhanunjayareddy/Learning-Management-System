@@ -2,6 +2,7 @@ declare global {
   interface Window {
     MathJax?: any;
     __mathjaxLoadingPromise?: Promise<void>;
+    __mathjaxTypesetPromise?: Promise<void>;
   }
 }
 
@@ -46,4 +47,29 @@ export const ensureMathJax = async () => {
     window.__mathjaxLoadingPromise = loadScript(MATHJAX_SRC);
   }
   await window.__mathjaxLoadingPromise;
+};
+
+export const typesetMathJax = async (elements?: HTMLElement[]) => {
+  await ensureMathJax();
+  if (!window.MathJax) return;
+
+  const runTypeset = async () => {
+    if (window.MathJax.typesetClear) {
+      window.MathJax.typesetClear(elements);
+    }
+
+    if (window.MathJax.typesetPromise) {
+      await window.MathJax.typesetPromise(elements);
+      return;
+    }
+
+    if (window.MathJax.typeset) {
+      window.MathJax.typeset(elements);
+    }
+  };
+
+  const previous = window.__mathjaxTypesetPromise ?? Promise.resolve();
+  const next = previous.catch(() => undefined).then(runTypeset);
+  window.__mathjaxTypesetPromise = next.catch(() => undefined);
+  await next;
 };
