@@ -564,9 +564,18 @@ export const viewScormFile = async (req, res) => {
       return res.status(upstreamResponse.status === 404 ? 404 : 502).send("File not found");
     }
 
+    const upstreamContentType = upstreamResponse.headers.get("content-type");
+    const inferredMimeType = mime.lookup(filePath);
+    const inferredContentType = inferredMimeType ? mime.contentType(inferredMimeType) : false;
+    const shouldPreferInferredType =
+      Boolean(inferredContentType) &&
+      (!upstreamContentType ||
+        upstreamContentType.startsWith("text/plain") ||
+        upstreamContentType.startsWith("application/octet-stream"));
+
     const contentType =
-      upstreamResponse.headers.get("content-type") ||
-      mime.lookup(filePath) ||
+      (shouldPreferInferredType ? inferredContentType : upstreamContentType) ||
+      inferredContentType ||
       "application/octet-stream";
 
     res.setHeader("Content-Type", contentType);
