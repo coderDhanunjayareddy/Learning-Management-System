@@ -1,6 +1,7 @@
 ﻿import React, { useEffect, useRef, useState } from "react";
 import ScormAPI from "@/lib/ScormAPIWrapper";
 import { useAuth } from "@/features/auth/hooks/useAuth";
+import { resolveApiBaseUrl } from "@/lib/apiBaseUrl";
 
 
 interface Props {
@@ -25,12 +26,15 @@ const ScormPlayer: React.FC<Props> = ({ contentUrl, contentId }) => {
         const cleanPath = contentUrl.replace(/^\/+/, "");
 
         // âœ… Build proxy URL for backend
-        const backendBase = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
+        const backendBase = resolveApiBaseUrl();
 
-        const finalUrl = `${backendBase}/api/scorm/${cleanPath}`;
+        const accessToken = localStorage.getItem("token");
+        if (!accessToken) {
+            setProxyUrl("");
+            return;
+        }
 
-
-        console.log("âœ… SCORM Proxy URL:", finalUrl);
+        const finalUrl = `${backendBase}/api/scorm/launch/${encodeURIComponent(accessToken)}/${cleanPath}`;
 
         setProxyUrl(finalUrl);
 

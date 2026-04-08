@@ -2,10 +2,11 @@
 import { Trash2, ImageIcon, Video, FileText, Youtube, Link as LinkIcon } from 'lucide-react';
 import { useAuth } from '@/features/auth/hooks/useAuth';
 import axios from 'axios';
+import { resolveApiBaseUrl } from '@/lib/apiBaseUrl';
 
 // Initialize Axios instance using your existing pattern
 const apiaxis = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000',
+  baseURL: resolveApiBaseUrl(),
 });
 
 // --- Types ---

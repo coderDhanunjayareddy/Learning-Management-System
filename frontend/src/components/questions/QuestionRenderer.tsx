@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { ensureMathJax } from "@/components/ui/mathjax";
+import { typesetMathJax } from "@/components/ui/mathjax";
 import { sanitizeHtml } from "@/utils/htmlSanitizer";
 
 type RichTextLike = { html?: string | null } | string | null | undefined;
@@ -181,7 +181,7 @@ const formatCorrectAnswer = (question: RenderableQuestion) => {
     if (typed.answer !== undefined) return String(typed.answer);
     if (typed.value !== undefined) {
       const tolerance = typed.tolerance ?? 0;
-      return `Value: ${typed.value} (±${tolerance})`;
+      return `Value: ${typed.value} (+/-${tolerance})`;
     }
     if (Array.isArray(typed.answers)) return typed.answers.join(", ");
     if (Array.isArray(typed.pairs)) return `${typed.pairs.length} pairs`;
@@ -210,19 +210,21 @@ export default function QuestionRenderer({
   useEffect(() => {
     let mounted = true;
     const typeset = async () => {
-      await ensureMathJax();
-      if (!mounted || !window.MathJax || !containerRef.current) return;
-      if (window.MathJax.typesetPromise) {
-        await window.MathJax.typesetPromise([containerRef.current]);
-      } else if (window.MathJax.typeset) {
-        window.MathJax.typeset([containerRef.current]);
-      }
+      if (!mounted || !containerRef.current) return;
+      await typesetMathJax([containerRef.current]);
     };
     typeset();
     return () => {
       mounted = false;
     };
-  }, [questionHtml, passageHtml, solutionHtml, question.options, question.comprehension_questions]);
+  }, [
+    question,
+    questionHtml,
+    passageHtml,
+    solutionHtml,
+    question.options,
+    question.comprehension_questions,
+  ]);
 
   const typeLabel =
     (question.question_type && QUESTION_TYPE_LABELS[question.question_type]) || "Question";

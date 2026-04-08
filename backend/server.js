@@ -22,7 +22,7 @@ import orgRoutes from './routes/org.routes.js';
 import curriculumRoutes from './routes/curriculum.routes.js';
 import questionsRoutes from './routes/questions.routes.js';
 import examsRoutes from './routes/exams.routes.js';
-import { authenticateToken } from './middleware/auth.js';
+import { authenticateAccessTokenValue, authenticateToken } from './middleware/auth.js';
 import supabase from './config/supabaseClient.js';
 import { startAttemptExpiryCron } from './services/student.service.js';
 
@@ -35,12 +35,55 @@ const PORT = process.env.PORT || 5000;
 // ✅ MUST come BEFORE any other helmet middleware
 
 app.use(helmet());
-const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5100,http://localhost:5173')
+
+const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5100,http://localhost:5173,http://192.168.0.102:5100')
   .split(',')
   .map((origin) => origin.trim())
   .filter(Boolean);
 const isProduction = process.env.NODE_ENV === 'production';
-const isAllowedOrigin = (origin) => Boolean(origin && allowedOrigins.includes(origin));
+const selfOrigins = new Set([
+  `http://localhost:${PORT}`,
+  `http://127.0.0.1:${PORT}`,
+]);
+const isAllowedOrigin = (origin) => Boolean(origin && (allowedOrigins.includes(origin) || selfOrigins.has(origin)));
+
+const applyScormFrameHeaders = (req, res, next) => {
+  const allowedFrameAncestors = allowedOrigins.length > 0 ? allowedOrigins.join(' ') : "'self'";
+  res.removeHeader('X-Frame-Options');
+  res.setHeader('Content-Security-Policy', `frame-ancestors 'self' ${allowedFrameAncestors};`);
+  next();
+};
+
+const authenticateScormLaunch = async (req, res, next) => {
+  const accessToken = typeof req.params.accessToken === 'string'
+    ? decodeURIComponent(req.params.accessToken)
+    : '';
+
+  if (!accessToken) {
+    return res.status(401).send('Access token required');
+  }
+
+  try {
+    const session = await authenticateAccessTokenValue(accessToken);
+    if (!session) {
+      return res.status(401).send('Invalid token');
+    }
+
+    req.auth = session.decoded;
+    req.user = session.user;
+    return next();
+  } catch (error) {
+    if (error?.name === 'TokenExpiredError') {
+      return res.status(401).send('Token expired');
+    }
+    if (error?.name === 'JsonWebTokenError') {
+      return res.status(401).send('Invalid token');
+    }
+    console.error('SCORM launch auth error:', error);
+    return res.status(401).send('Invalid token');
+  }
+};
+
 
 app.use(
   cors({
@@ -90,16 +133,18 @@ app.get('/health', async (req, res) => {
 
 app.use('/api/scorm', scormRoutes); // Serve SCORM uploads
 app.get(
-  "/api/scorm/*",
-  authenticateToken,
-  helmet({ frameguard: false }),             // <- disables X-Frame-Options here
-  (req, res, next) => {                      // <- extra hardening: kill any pre-set header
-    const allowedFrameAncestors = allowedOrigins.length > 0 ? allowedOrigins.join(' ') : "'self'";
-    res.removeHeader("X-Frame-Options");
-    res.setHeader("Content-Security-Policy", `frame-ancestors 'self' ${allowedFrameAncestors};`);
-    next();
-  },
+  '/api/scorm/launch/:accessToken/*',
+  helmet({ frameguard: false }),
+  applyScormFrameHeaders,
+  authenticateScormLaunch,
+  viewScormFile
+);
 
+app.get(
+  "/api/scorm/*",
+  helmet({ frameguard: false }),             // <- disables X-Frame-Options here
+  applyScormFrameHeaders,
+  authenticateToken,
   viewScormFile
 );
 

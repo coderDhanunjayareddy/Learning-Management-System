@@ -1,6 +1,7 @@
 // app/courses/page.tsx
 import { useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
+import { resolveApiBaseUrl } from '@/lib/apiBaseUrl';
 
 interface Course {
   id: number;
@@ -10,7 +11,7 @@ interface Course {
   created_at: string;
 }
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
+const API_BASE = resolveApiBaseUrl();
 
 
 export default function CoursesPage() {

@@ -1,7 +1,8 @@
 // frontend/src/services/api.ts
 import axios from 'axios';
+import { resolveApiBaseUrl } from './apiBaseUrl';
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
+const apiBaseUrl = resolveApiBaseUrl();
 
 const api = axios.create({
   baseURL: `${apiBaseUrl}/api`,

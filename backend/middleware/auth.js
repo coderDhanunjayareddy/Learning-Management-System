@@ -104,6 +104,28 @@ const resolveAuthenticatedUser = async (decoded) => {
   return user.rows[0];
 };
 
+export const authenticateAccessTokenValue = async (candidateToken) => {
+  const decoded = jwt.verify(candidateToken, JWT_SECRET, getJwtVerifyOptions());
+  if (!isValidDecodedToken(decoded)) {
+    return null;
+  }
+
+  const user = await resolveAuthenticatedUser(decoded);
+  if (!user) {
+    return null;
+  }
+
+  if (normalizeRole(user.role) !== normalizeRole(decoded.role)) {
+    return null;
+  }
+
+  if ((user.client_id ?? null) !== (decoded.clientId ?? null)) {
+    return null;
+  }
+
+  return { decoded, user };
+};
+
 const getCachedPermissions = (userId, role, clientId) => {
   const key = `${userId}:${role}:${clientId ?? 'global'}`;
   const cached = permissionsCache.get(key);
@@ -160,32 +182,16 @@ export const authenticateToken = async (req, res, next) => {
 
   for (const candidateToken of candidateTokens) {
     try {
-      const decoded = jwt.verify(candidateToken, JWT_SECRET, getJwtVerifyOptions());
-      if (!isValidDecodedToken(decoded)) {
-        authError = { error: 'Invalid token', code: 'TOKEN_INVALID' };
-        continue;
-      }
-      const user = await resolveAuthenticatedUser(decoded);
-
-      if (!user) {
+      const session = await authenticateAccessTokenValue(candidateToken);
+      if (!session) {
         authError = { error: 'Invalid token', code: 'TOKEN_INVALID' };
         continue;
       }
 
-      if (normalizeRole(user.role) !== normalizeRole(decoded.role)) {
-        authError = { error: 'Invalid token', code: 'TOKEN_INVALID' };
-        continue;
-      }
+      req.auth = session.decoded;
+      req.user = session.user;
 
-      if ((user.client_id ?? null) !== (decoded.clientId ?? null)) {
-        authError = { error: 'Invalid token', code: 'TOKEN_INVALID' };
-        continue;
-      }
-
-      req.auth = decoded;
-      req.user = user;
-
-      if (refreshToken && shouldRefreshAccessToken(decoded)) {
+      if (refreshToken && shouldRefreshAccessToken(session.decoded)) {
         try {
           const refreshedSession = await rotateRefreshSession({ refreshToken, req, res });
           if (refreshedSession) {
@@ -234,6 +240,7 @@ export const authenticateToken = async (req, res, next) => {
 
 export const requireRole = (roles) => {
   const roleList = Array.isArray(roles) ? roles : [roles];
+
   const normalizedRoles = roleList.map(normalizeRole).filter(Boolean);
 
   return (req, res, next) => {

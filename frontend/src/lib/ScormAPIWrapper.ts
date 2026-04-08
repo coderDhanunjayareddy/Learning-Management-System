@@ -1,4 +1,5 @@
 import axios from "axios";
+import { resolveApiBaseUrl } from "./apiBaseUrl";
 
 interface ScormData {
     [key: string]: string;
@@ -46,8 +47,7 @@ class ScormAPI {
 
         const resolvedBaseUrl =
             baseUrl ||
-            import.meta.env.VITE_API_BASE_URL ||
-            "http://localhost:5000";
+            resolveApiBaseUrl();
         const token = localStorage.getItem("token");
         const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
 

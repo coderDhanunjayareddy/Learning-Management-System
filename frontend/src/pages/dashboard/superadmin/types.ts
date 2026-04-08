@@ -21,6 +21,7 @@ export interface Entitlement {
   start_at: string;
   end_at: string;
   status: string;
+  stored_status?: string;
   client_name?: string;
   pack_name?: string;
   content_title?: string;

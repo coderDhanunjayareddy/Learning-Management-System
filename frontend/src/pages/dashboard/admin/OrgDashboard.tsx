@@ -363,9 +363,11 @@ export default function OrgDashboard() {
         toast.success('Permission granted');
       } else {
         for (const perm of permissionsToToggle) {
-          const existingPerm = permissionMap.get(perm);
-          if (!existingPerm?.id) continue;
-          await api.delete(`/org/role-permissions/${existingPerm.id}`);
+          await api.post('/org/role-permissions', {
+            role: selectedRole,
+            permission: perm,
+            granted: false,
+          });
         }
         toast.success('Permission removed');
       }
@@ -391,7 +393,7 @@ export default function OrgDashboard() {
     const pending = uniquePermissionsToToggle.filter((permission) => {
       const existing = permissionMap.get(permission);
       const enabled = Boolean(existing?.granted);
-      return nextValue ? !enabled : Boolean(existing?.id);
+      return nextValue ? !enabled : enabled || Boolean(existing?.id);
     });
 
     if (pending.length === 0) return;
@@ -409,8 +411,12 @@ export default function OrgDashboard() {
             granted: true,
           };
           await api.post('/org/role-permissions', payload);
-        } else if (existing?.id) {
-          await api.delete(`/org/role-permissions/${existing.id}`);
+        } else {
+          await api.post('/org/role-permissions', {
+            role: selectedRole,
+            permission,
+            granted: false,
+          });
         }
       }
 

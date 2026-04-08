@@ -72,18 +72,25 @@ const ensureContentAccessByPath = async (filePath, req) => {
     `
     SELECT ci.id
     FROM content_items ci
-    JOIN courses c ON ci.course_id = c.id
-    WHERE (ci.content_url = $1 OR $1 LIKE (regexp_replace(ci.content_url, '/[^/]+$', '') || '/%'))
-    LIMIT 1
+    WHERE (
+      ci.content_url = $1
+      OR regexp_replace(ci.content_url, '/[^/]+$', '') = regexp_replace($1, '/[^/]+$', '')
+      OR $1 LIKE (regexp_replace(ci.content_url, '/[^/]+$', '') || '/%')
+    )
+    ORDER BY
+      CASE WHEN ci.content_url = $1 THEN 0 ELSE 1 END,
+      LENGTH(ci.content_url) DESC
   `,
     [normalizedPath]
   );
 
-  if (result.rows.length === 0) {
-    return false;
+  for (const row of result.rows) {
+    if (await ensureContentAccessById(row.id, req)) {
+      return true;
+    }
   }
 
-  return ensureContentAccessById(result.rows[0].id, req);
+  return false;
 };
 
 /**
@@ -542,31 +549,40 @@ export const viewScormFile = async (req, res) => {
     const hasAccess = await ensureContentAccessByPath(filePath, req);
     if (!hasAccess) return res.status(403).send("Access denied");
 
-    const { data, error } = await supabase
-      .storage
-      .from("course-files")
-      .download(filePath);
+    const bucket = process.env.SUPABASE_BUCKET || "course-files";
+    const { data: signedData, error: signedError } = await supabase.storage
+      .from(bucket)
+      .createSignedUrl(filePath, 60);
 
-    if (error) {
+    if (signedError || !signedData?.signedUrl) {
+      console.error("SCORM signed URL error:", signedError);
       return res.status(404).send("File not found");
     }
 
-    // ✅ Correct MIME type
-    const contentType = mime.lookup(filePath) || "application/octet-stream";
-    res.setHeader("Content-Type", contentType);
+    const upstreamResponse = await fetch(signedData.signedUrl);
+    if (!upstreamResponse.ok) {
+      return res.status(upstreamResponse.status === 404 ? 404 : 502).send("File not found");
+    }
 
-    // ✅ SCORM CSP FIX (allows inline JS + eval)
+    const contentType =
+      upstreamResponse.headers.get("content-type") ||
+      mime.lookup(filePath) ||
+      "application/octet-stream";
+
+    res.setHeader("Content-Type", contentType);
     res.setHeader(
       "Content-Security-Policy",
       "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:;"
     );
 
-    // ✅ Return raw file contents
-    const buffer = Buffer.from(await data.arrayBuffer());
+    const buffer = Buffer.from(await upstreamResponse.arrayBuffer());
     res.send(buffer);
 
   } catch (err) {
-    console.error(err);
+    console.error("SCORM file serve error:", {
+      filePath: req.params?.[0],
+      message: err instanceof Error ? err.message : String(err),
+    });
     res.status(500).send("Server Error");
   }
 };
