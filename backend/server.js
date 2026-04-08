@@ -45,10 +45,28 @@ const selfOrigins = new Set([
   `http://localhost:${PORT}`,
   `http://127.0.0.1:${PORT}`,
 ]);
-const isAllowedOrigin = (origin) => Boolean(origin && (allowedOrigins.includes(origin) || selfOrigins.has(origin)));
+const originPatterns = [
+  /^https:\/\/.*\.vercel\.app$/,
+  /^https:\/\/.*\.onrender\.com$/,
+  /^http:\/\/localhost(?::\d+)?$/,
+  /^http:\/\/127\.0\.0\.1(?::\d+)?$/,
+  /^http:\/\/192\.168\.\d+\.\d+(?::\d+)?$/,
+];
+const isPatternAllowedOrigin = (origin) => originPatterns.some((pattern) => pattern.test(origin));
+const isAllowedOrigin = (origin) =>
+  Boolean(origin && (allowedOrigins.includes(origin) || selfOrigins.has(origin) || isPatternAllowedOrigin(origin)));
+
+const frameAncestorSources = Array.from(
+  new Set([
+    ...allowedOrigins,
+    ...selfOrigins,
+    'https://*.vercel.app',
+    'https://*.onrender.com',
+  ])
+);
 
 const applyScormFrameHeaders = (req, res, next) => {
-  const allowedFrameAncestors = allowedOrigins.length > 0 ? allowedOrigins.join(' ') : "'self'";
+  const allowedFrameAncestors = frameAncestorSources.length > 0 ? frameAncestorSources.join(' ') : "'self'";
   res.removeHeader('X-Frame-Options');
   res.setHeader('Content-Security-Policy', `frame-ancestors 'self' ${allowedFrameAncestors};`);
   next();
