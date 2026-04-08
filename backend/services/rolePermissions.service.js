@@ -7,6 +7,7 @@ import {
 } from '../schemas/rolePermissions.schema.js';
 import * as rolePermissionsRepo from '../repositories/rolePermissions.repository.js';
 import { getPermissionCatalog } from '../utils/permissionCatalog.js';
+import { invalidatePermissionCacheForRoleClient } from '../middleware/auth.js';
 
 const ensureSuperAdmin = (user) => {
   if (user?.role !== 'super_admin') {
@@ -67,7 +68,29 @@ export const listRolePermissions = async ({ user, query }) => {
   const scope = query?.scope === 'all' ? 'all' : 'client';
   const role = query?.role ? requireRole(query?.role) : null;
   const result = await rolePermissionsRepo.fetchRolePermissions({ clientId, scope, role });
-  return result.rows;
+  if (!role) {
+    return result.rows;
+  }
+
+  const catalog = await getPermissionCatalog();
+  const byPermission = new Map();
+  for (const row of result.rows) {
+    if (!byPermission.has(row.permission)) {
+      byPermission.set(row.permission, row);
+    }
+  }
+
+  return catalog.map((permission) => {
+    const existing = byPermission.get(permission);
+    if (existing) return existing;
+    return {
+      id: null,
+      client_id: clientId,
+      role,
+      permission,
+      granted: false,
+    };
+  });
 };
 
 export const upsertRolePermission = async ({ user, body }) => {
@@ -87,6 +110,7 @@ export const upsertRolePermission = async ({ user, body }) => {
       permission,
       granted,
     });
+    invalidatePermissionCacheForRoleClient(role, clientId ?? null);
     return result.rows[0];
   }
 
@@ -109,19 +133,51 @@ export const upsertRolePermission = async ({ user, body }) => {
     permission,
     granted,
   });
+  invalidatePermissionCacheForRoleClient(role, clientId);
   return result.rows[0];
 };
 
 export const deleteRolePermission = async ({ user, params }) => {
-  ensureSuperAdmin(user);
   const id = Number(params?.id);
   if (!Number.isInteger(id)) {
     throw new AppError('id must be an integer', 400);
   }
+
+  if (user?.role === 'super_admin') {
+    const existing = await rolePermissionsRepo.fetchRolePermissionById(id);
+    if (existing.rows.length === 0) {
+      throw new AppError('Role permission not found', 404);
+    }
+
+    const permissionRow = existing.rows[0];
+    const result = await rolePermissionsRepo.deleteRolePermission(id);
+    if (result.rows.length === 0) {
+      throw new AppError('Role permission not found', 404);
+    }
+    invalidatePermissionCacheForRoleClient(permissionRow.role, permissionRow.client_id ?? null);
+    return { success: true };
+  }
+
+  ensureClientAdmin(user);
+  const clientId = requireClientId(parseClientId(user?.client_id));
+  const existing = await rolePermissionsRepo.fetchRolePermissionById(id);
+  if (existing.rows.length === 0) {
+    throw new AppError('Role permission not found', 404);
+  }
+
+  const permissionRow = existing.rows[0];
+  if (Number(permissionRow.client_id) !== Number(clientId)) {
+    throw new AppError('Access denied', 403);
+  }
+  if (['super_admin', 'content_authorizer'].includes(permissionRow.role)) {
+    throw new AppError('Access denied', 403);
+  }
+
   const result = await rolePermissionsRepo.deleteRolePermission(id);
   if (result.rows.length === 0) {
     throw new AppError('Role permission not found', 404);
   }
+  invalidatePermissionCacheForRoleClient(permissionRow.role, permissionRow.client_id ?? null);
   return { success: true };
 };
 

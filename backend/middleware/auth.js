@@ -48,6 +48,8 @@ const normalizeRole = (role) => {
   return role;
 };
 
+const TENANT_ROLES = new Set(['client_admin', 'school_owner', 'teacher', 'student']);
+
 const isValidDecodedToken = (decoded) => {
   if (!decoded || typeof decoded !== 'object') return false;
   const userId = Number(decoded.userId);
@@ -119,6 +121,27 @@ const setCachedPermissions = (userId, role, clientId, permissions) => {
     permissions,
     expiresAt: Date.now() + PERMISSIONS_CACHE_TTL_MS,
   });
+};
+
+export const invalidatePermissionCacheForUser = (userId) => {
+  const userKeyPrefix = `${userId}:`;
+  for (const key of permissionsCache.keys()) {
+    if (key.startsWith(userKeyPrefix)) {
+      permissionsCache.delete(key);
+    }
+  }
+};
+
+export const invalidatePermissionCacheForRoleClient = (role, clientId) => {
+  const normalizedRole = normalizeRole(role);
+  const normalizedClientId = clientId ?? 'global';
+
+  for (const key of permissionsCache.keys()) {
+    const [, cachedRole, cachedClientId] = key.split(':');
+    if (cachedRole === normalizedRole && cachedClientId === String(normalizedClientId)) {
+      permissionsCache.delete(key);
+    }
+  }
 };
 
 export const authenticateToken = async (req, res, next) => {
@@ -211,15 +234,10 @@ export const authenticateToken = async (req, res, next) => {
 
 export const requireRole = (roles) => {
   const roleList = Array.isArray(roles) ? roles : [roles];
-
   const normalizedRoles = roleList.map(normalizeRole).filter(Boolean);
 
   return (req, res, next) => {
-    console.log('roleList:', roleList);
-    console.log('req.user:', req.user);
-    console.log('normalizedRoles:', normalizedRoles);
     const userRole = normalizeRole(req.user?.role);
-    console.log('userRole:', userRole);
 
     if (!userRole) return res.status(401).json({ error: 'Unauthorized' });
     if (normalizedRoles.length === 0) return res.status(500).json({ error: 'Role requirements not configured' });
@@ -253,13 +271,18 @@ export const loadPermissions = async (req, res, next) => {
       return next();
     }
 
-    const result = await pool.query(
-      `SELECT permission, granted, client_id
-       FROM role_permissions
-       WHERE role = $1 AND (client_id = $2 OR client_id IS NULL)
-       ORDER BY client_id NULLS LAST`,
-      [role, clientId]
-    );
+    const isTenantRole = TENANT_ROLES.has(role);
+    const permissionsQuery = isTenantRole
+      ? `SELECT permission, granted, client_id
+         FROM role_permissions
+         WHERE role = $1 AND client_id = $2
+         ORDER BY client_id NULLS LAST`
+      : `SELECT permission, granted, client_id
+         FROM role_permissions
+         WHERE role = $1 AND (client_id = $2 OR client_id IS NULL)
+         ORDER BY client_id NULLS LAST`;
+
+    const result = await pool.query(permissionsQuery, [role, clientId]);
 
     const permissions = new Map();
     for (const row of result.rows) {

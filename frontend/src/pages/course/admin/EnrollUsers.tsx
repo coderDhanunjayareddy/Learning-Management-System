@@ -36,6 +36,8 @@ export default function EnrollUsers() {
   const primaryButtonClass = isGvjbClient
     ? 'bg-amber-400 text-slate-900 hover:bg-amber-500'
     : 'bg-blue-900 text-white hover:bg-blue-700';
+  const backLabel =
+    user?.role === 'school_owner' ? 'Back To School Owner Courses' : 'Back To Admin Dashboard';
 
   const [role, setRole] = useState<'student' | 'teacher' | null>(null);
   const [email, setEmail] = useState('');
@@ -184,6 +186,10 @@ const handleUpdateRole = async (userId: number, currentRole: 'student' | 'teache
       setRole(null);
       setMessage(null);
     } else {
+      if (user?.role === 'school_owner') {
+        navigate('/school-owner/courses');
+        return;
+      }
       navigate('/admin/dashboard');
     }
   };
@@ -263,7 +269,7 @@ const handleUpdateRole = async (userId: number, currentRole: 'student' | 'teache
                 d="M10 19l-7-7m0 0l7-7m-7 7h18"
               />
             </svg>
-            Back To Admin Dashboard
+            {backLabel}
           </button>
         </div>
       </div>

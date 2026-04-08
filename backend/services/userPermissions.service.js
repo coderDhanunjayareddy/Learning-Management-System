@@ -2,6 +2,7 @@
 import { AppError } from '../utils/errors.js';
 import { requirePermission } from '../schemas/rolePermissions.schema.js';
 import * as userPermissionsRepo from '../repositories/userPermissions.repository.js';
+import { invalidatePermissionCacheForUser } from '../middleware/auth.js';
 
 const ensureAllowedAdmin = (user) => {
   if (!['super_admin', 'client_admin'].includes(user?.role)) {
@@ -51,6 +52,7 @@ export const upsertUserPermission = async ({ user, body }) => {
     permission,
     granted,
   });
+  invalidatePermissionCacheForUser(userId);
   return result.rows[0];
 };
 
@@ -69,5 +71,6 @@ export const deleteUserPermission = async ({ user, params }) => {
   if (result.rows.length === 0) {
     throw new AppError('User permission not found', 404);
   }
+  invalidatePermissionCacheForUser(existing.rows[0].user_id);
   return { success: true };
 };

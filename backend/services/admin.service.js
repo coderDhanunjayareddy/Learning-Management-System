@@ -95,7 +95,7 @@ export const getAllCourses = async (req, res) => {
   const role = req.user?.role;
   const clientId = req.user?.client_id;
   const shouldScope = Boolean(clientId) && role !== 'super_admin';
-  const adminRoles = ['super_admin', 'client_admin', 'school_owner', 'content_authorizer'];
+  const adminRoles = ['super_admin', 'client_admin', 'school_owner', 'content_authorizer', 'teacher'];
   const isAdminRole = adminRoles.includes(role);
 
   try {

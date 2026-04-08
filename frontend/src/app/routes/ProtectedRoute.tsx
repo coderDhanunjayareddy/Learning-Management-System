@@ -15,9 +15,11 @@ function Spinner() {
 export default function ProtectedRoute({
   children,
   allowedRoles,
+  requiredPermissions,
 }: {
   children: React.ReactNode;
   allowedRoles: Role[];
+  requiredPermissions?: string[];
 }) {
   const { user, token, loading } = useAuth();
 
@@ -32,6 +34,17 @@ export default function ProtectedRoute({
 
   if (!allowedRoles.includes(user.role)) {
     return <Navigate to="/unauthorized" replace />;
+  }
+
+  if (user.role !== 'super_admin' && requiredPermissions?.length) {
+    const permissionSet = new Set((user.permissions ?? []).filter(Boolean));
+    const hasRequiredPermissions = requiredPermissions.every((permission) =>
+      permissionSet.has(permission)
+    );
+
+    if (!hasRequiredPermissions) {
+      return <Navigate to="/unauthorized" replace />;
+    }
   }
 
   return children;

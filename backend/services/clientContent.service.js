@@ -609,15 +609,30 @@ export const userCanAccessContentItem = async ({ user, contentItemId }) => {
     return hasClientContentAccess({ clientId, contentItemId });
   }
 
-  if (role === 'school_owner') {
+  if (role === 'school_owner' || role === 'teacher') {
     if (!clientId) return false;
+    const activeEntitlementSql = await buildActiveEntitlementExistsSql({
+      clientIdExpression: 'linked_course.client_id',
+      contentIdExpression: 'ci.id',
+    });
+
     const result = await dbQuery(
       `
-        SELECT 1
-        FROM content_items ci
-        JOIN courses c ON c.id = ci.course_id
-        WHERE ci.id = $1
-          AND c.client_id = $2
+      SELECT 1
+      FROM content_items ci
+      LEFT JOIN courses direct_course ON direct_course.id = ci.course_id
+      LEFT JOIN course_linked_content clc
+        ON clc.content_item_id = ci.id
+       AND clc.is_active = true
+      LEFT JOIN courses linked_course ON linked_course.id = clc.course_id
+      WHERE ci.id = $1
+        AND (
+          direct_course.client_id = $2
+          OR (
+            linked_course.client_id = $2
+            AND ${activeEntitlementSql}
+          )
+        )
         LIMIT 1
       `,
       [contentItemId, clientId]

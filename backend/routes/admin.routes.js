@@ -13,7 +13,7 @@ router.get("/view/*", authenticateToken, viewScormFile);
 // Auth + RBAC chain for admin routes
 router.use(
   authenticateToken,
-  requireRole(['super_admin', 'client_admin', 'content_authorizer', 'school_owner']),
+  requireRole(['super_admin', 'client_admin', 'content_authorizer', 'school_owner', 'teacher']),
   attachClientContext,
   loadPermissions
 );

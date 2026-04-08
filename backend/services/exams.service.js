@@ -171,9 +171,7 @@ const buildExamWhere = async ({ user, query }) => {
   })();
 
   const createdBy = parseNullableInt(query?.created_by, 'created_by');
-  if (isTeacher(user?.role)) {
-    conditions.push(`e.created_by = ${addParam(user.id)}`);
-  } else if (mine) {
+  if (mine) {
     conditions.push(`e.created_by = ${addParam(user.id)}`);
   } else if (createdBy) {
     conditions.push(`e.created_by = ${addParam(createdBy)}`);
@@ -340,8 +338,8 @@ export const addQuestionToSection = async (req, res) => {
     const { id: examId, sectionId } = req.params;
     const questionId = parseRequiredInt(req.body?.question_id, 'question_id');
 
-    const section = await getSectionByIdForAccess({ examId, sectionId, user: req.user, requireOwner: isTeacher(req.user.role) });
-    const exam = await getExamByIdForAccess({ examId, user: req.user, requireOwner: isTeacher(req.user.role) });
+    const section = await getSectionByIdForAccess({ examId, sectionId, user: req.user });
+    const exam = await getExamByIdForAccess({ examId, user: req.user });
     ensureExamEditable(exam);
 
     const questionResult = await dbQuery('SELECT * FROM questions WHERE id = $1', [questionId]);
@@ -400,7 +398,7 @@ export const publishExam = async (req, res) => {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const exam = await getExamByIdForAccess({ examId: req.params.id, user: req.user, requireOwner: isTeacher(req.user.role) });
+    const exam = await getExamByIdForAccess({ examId: req.params.id, user: req.user });
 
     if (exam.status === 'published' || exam.status === 'active' || exam.status === 'completed') {
       throw new AppError('Exam is already published or locked', 409);
@@ -463,7 +461,6 @@ export const getExamAssignedCourses = async (req, res) => {
     const exam = await getExamByIdForAccess({
       examId: req.params.id,
       user: req.user,
-      requireOwner: isTeacher(req.user.role),
     });
 
     const courses = await listAssignedCoursesForExam(exam.id);
@@ -488,7 +485,6 @@ export const assignExamCourses = async (req, res) => {
     const exam = await getExamByIdForAccess({
       examId: req.params.id,
       user: req.user,
-      requireOwner: isTeacher(req.user.role),
     });
 
     const courseIds = parseCourseIds(req.body?.course_ids);
@@ -607,7 +603,7 @@ export const getExamById = async (req, res) => {
     await ensureExamResultConfigColumns();
     await ensureCourseExamsTable();
 
-    const exam = await getExamByIdForAccess({ examId: req.params.id, user: req.user, requireOwner: isTeacher(req.user.role) });
+    const exam = await getExamByIdForAccess({ examId: req.params.id, user: req.user });
 
     const examResult = await dbQuery(
       `
@@ -683,7 +679,6 @@ export const getExamResults = async (req, res) => {
     const exam = await getExamByIdForAccess({
       examId: req.params.id,
       user: req.user,
-      requireOwner: isTeacher(req.user.role),
     });
 
     const { page, pageSize, offset } = parsePagination(req.query);
@@ -900,7 +895,6 @@ export const updateExam = async (req, res) => {
     const exam = await getExamByIdForAccess({
       examId: req.params.id,
       user: req.user,
-      requireOwner: isTeacher(req.user.role),
     });
     const supportsExamInstructions = await hasExamInstructionsColumn();
 
@@ -1008,7 +1002,6 @@ export const deleteExam = async (req, res) => {
     const exam = await getExamByIdForAccess({
       examId: req.params.id,
       user: req.user,
-      requireOwner: isTeacher(req.user.role),
     });
 
     ensureExamDeletable(exam);
@@ -1049,7 +1042,6 @@ export const createExamSection = async (req, res) => {
     const exam = await getExamByIdForAccess({
       examId: req.params.id,
       user: req.user,
-      requireOwner: isTeacher(req.user.role),
     });
     ensureExamEditable(exam);
 
@@ -1095,9 +1087,8 @@ export const updateExamSection = async (req, res) => {
       examId: req.params.id,
       sectionId: req.params.sectionId,
       user: req.user,
-      requireOwner: isTeacher(req.user.role),
     });
-    const exam = await getExamByIdForAccess({ examId: req.params.id, user: req.user, requireOwner: isTeacher(req.user.role) });
+    const exam = await getExamByIdForAccess({ examId: req.params.id, user: req.user });
     ensureExamEditable(exam);
 
     const updates = [];
@@ -1154,9 +1145,8 @@ export const deleteExamSection = async (req, res) => {
       examId: req.params.id,
       sectionId: req.params.sectionId,
       user: req.user,
-      requireOwner: isTeacher(req.user.role),
     });
-    const exam = await getExamByIdForAccess({ examId: req.params.id, user: req.user, requireOwner: isTeacher(req.user.role) });
+    const exam = await getExamByIdForAccess({ examId: req.params.id, user: req.user });
     ensureExamEditable(exam);
 
     await dbQuery(`DELETE FROM exam_sections WHERE id = $1`, [section.id]);

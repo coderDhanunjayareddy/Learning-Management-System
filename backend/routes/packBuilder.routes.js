@@ -16,18 +16,17 @@ import { authenticateToken, requireRole } from '../middleware/auth.js';
 const router = Router();
 
 router.use(authenticateToken);
-router.use(requireRole(['super_admin', 'content_authorizer']));
 
-router.get('/packs', listPacks);
-router.post('/packs', createPack);
-router.get('/packs/:id/items', getPackItems);
-router.get('/packs/:id/summary', getPackSummary);
-router.post('/packs/:id/items', addPackItems);
-router.delete('/packs/:id/items/:itemId', removePackItem);
-router.post('/packs/:id/attach-course', attachCourseToPack);
+router.get('/packs', requireRole(['super_admin', 'content_authorizer']), listPacks);
+router.post('/packs', requireRole(['super_admin', 'content_authorizer']), createPack);
+router.get('/packs/:id/items', requireRole(['super_admin', 'content_authorizer']), getPackItems);
+router.get('/packs/:id/summary', requireRole(['super_admin', 'content_authorizer']), getPackSummary);
+router.post('/packs/:id/items', requireRole(['super_admin', 'content_authorizer']), addPackItems);
+router.delete('/packs/:id/items/:itemId', requireRole(['super_admin', 'content_authorizer']), removePackItem);
+router.post('/packs/:id/attach-course', requireRole(['super_admin', 'content_authorizer']), attachCourseToPack);
 
-router.get('/courses', listCourses);
-router.get('/courses/:id/content', getCourseContent);
-router.post('/courses', createCourse);
+router.get('/courses', requireRole(['super_admin', 'content_authorizer']), listCourses);
+router.get('/courses/:id/content', requireRole(['super_admin', 'content_authorizer']), getCourseContent);
+router.post('/courses', requireRole(['super_admin', 'content_authorizer']), createCourse);
 
 export default router;

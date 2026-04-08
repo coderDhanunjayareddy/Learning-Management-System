@@ -85,8 +85,14 @@ export default function AppRoutes() {
   if (loading) return <Spinner />;
 
   // Helper to group protected routes and reduce repetition
-  const Protect = ({ roles }: { roles: Role[] }) => (
-    <ProtectedRoute allowedRoles={roles}>
+  const Protect = ({
+    roles,
+    permissions,
+  }: {
+    roles: Role[];
+    permissions?: string[];
+  }) => (
+    <ProtectedRoute allowedRoles={roles} requiredPermissions={permissions}>
       <Outlet />
     </ProtectedRoute>
   );
@@ -123,9 +129,29 @@ export default function AppRoutes() {
       {/* Admin */}
       <Route element={<Protect roles={['super_admin', 'client_admin', 'content_authorizer', 'school_owner']} />}>
         <Route path="/admin/dashboard" element={<AdminDashboard />} />
-        <Route path="/admin/courses/:courseId/content" element={<CourseContent />} />
-        <Route path="/admin/courses/:courseId/enroll" element={<EnrollUsers />} />
         <Route path="/admin/profile" element={<AdminProfile />} />
+      </Route>
+
+      <Route
+        element={
+          <Protect
+            roles={['super_admin', 'client_admin', 'content_authorizer', 'school_owner']}
+            permissions={['courses.read']}
+          />
+        }
+      >
+        <Route path="/admin/courses/:courseId/content" element={<CourseContent />} />
+      </Route>
+
+      <Route
+        element={
+          <Protect
+            roles={['super_admin', 'client_admin', 'content_authorizer', 'school_owner']}
+            permissions={['courses.update']}
+          />
+        }
+      >
+        <Route path="/admin/courses/:courseId/enroll" element={<EnrollUsers />} />
       </Route>
 
       <Route element={<Protect roles={['client_admin']} />}>
@@ -149,9 +175,22 @@ export default function AppRoutes() {
       {/* School Owner */}
       <Route element={<Protect roles={['school_owner', 'client_admin', 'super_admin']} />}>
         <Route path="/school-owner/dashboard" element={<SchoolOwnerDashboard />} />
-        <Route path="/school-owner/courses" element={<SchoolOwnerCourses />} />
-        <Route path="/school-owner/courses/:courseId/content" element={<SchoolOwnerCourseContent />} />
         <Route path="/school-owner/profile" element={<SchoolOwnerProfile />} />
+      </Route>
+
+      <Route element={<Protect roles={['school_owner', 'client_admin', 'super_admin']} permissions={['courses.read']} />}>
+        <Route path="/school-owner/courses" element={<SchoolOwnerCourses />} />
+      </Route>
+
+      <Route
+        element={
+          <Protect
+            roles={['school_owner', 'client_admin', 'super_admin']}
+            permissions={['courses.read']}
+          />
+        }
+      >
+        <Route path="/school-owner/courses/:courseId/content" element={<SchoolOwnerCourseContent />} />
       </Route>
 
       {/* Teacher */}
@@ -159,8 +198,21 @@ export default function AppRoutes() {
 
         <Route path="/teacher" element={<TeacherHome />} />
         <Route path="/teacher/dashboard" element={<TeacherHome />} />
-        <Route path="/teacher/courses" element={<TeacherDashboard />} />
         <Route path="/teacher/profile" element={<TeacherProfile />} />
+      </Route>
+
+      <Route element={<Protect roles={['super_admin', 'client_admin', 'school_owner', 'teacher']} permissions={['courses.read']} />}>
+        <Route path="/teacher/courses" element={<TeacherDashboard />} />
+      </Route>
+
+      <Route
+        element={
+          <Protect
+            roles={['super_admin', 'client_admin', 'school_owner', 'teacher']}
+            permissions={['courses.read']}
+          />
+        }
+      >
         <Route path="/teacher/courses/:courseId/content" element={<TeacherCourseContent />} />
       </Route>
 
@@ -186,32 +238,65 @@ export default function AppRoutes() {
               'school_owner',
               'teacher',
             ]}
+            permissions={['questions.read']}
           />
         }
       >
         <Route path="/question-bank" element={<QuestionBankPage />} />
+        <Route path="/question-bank/programs" element={<QuestionProgramsPage />} />
+        <Route path="/question-bank/grades" element={<QuestionGradesPage />} />
+        <Route path="/question-bank/subjects" element={<QuestionSubjectsPage />} />
+        <Route path="/question-bank/chapters" element={<QuestionChaptersPage />} />
+        <Route path="/question-bank/topics" element={<QuestionTopicsPage />} />
+        <Route path="/question-bank/folders" element={<QuestionFoldersPage />} />
+      </Route>
+
+      <Route
+        element={
+          <Protect
+            roles={[
+              'super_admin',
+              'client_admin',
+              'content_authorizer',
+              'school_owner',
+              'teacher',
+            ]}
+            permissions={['questions.create']}
+          />
+        }
+      >
         <Route path="/question-bank/new" element={<QuestionCreatePage />} />
         <Route path="/question-bank/:id/edit" element={<QuestionEditPage />} />
-        <Route path="/question-bank/:id/delete" element={<QuestionDeletePage />} />
         <Route path="/question-bank/bulk-upload" element={<QuestionBulkUploadPage />} />
-        <Route path="/question-bank/programs" element={<QuestionProgramsPage />} />
         <Route path="/question-bank/programs/new" element={<QuestionProgramCreatePage />} />
         <Route path="/question-bank/programs/:id/edit" element={<QuestionProgramEditPage />} />
-        <Route path="/question-bank/grades" element={<QuestionGradesPage />} />
         <Route path="/question-bank/grades/new" element={<QuestionGradeCreatePage />} />
         <Route path="/question-bank/grades/:id/edit" element={<QuestionGradeEditPage />} />
-        <Route path="/question-bank/subjects" element={<QuestionSubjectsPage />} />
         <Route path="/question-bank/subjects/new" element={<QuestionSubjectCreatePage />} />
         <Route path="/question-bank/subjects/:id/edit" element={<QuestionSubjectEditPage />} />
-        <Route path="/question-bank/chapters" element={<QuestionChaptersPage />} />
         <Route path="/question-bank/chapters/new" element={<QuestionChapterCreatePage />} />
         <Route path="/question-bank/chapters/:id/edit" element={<QuestionChapterEditPage />} />
-        <Route path="/question-bank/topics" element={<QuestionTopicsPage />} />
         <Route path="/question-bank/topics/new" element={<QuestionTopicCreatePage />} />
         <Route path="/question-bank/topics/:id/edit" element={<QuestionTopicEditPage />} />
-        <Route path="/question-bank/folders" element={<QuestionFoldersPage />} />
         <Route path="/question-bank/folders/new" element={<QuestionFolderCreatePage />} />
         <Route path="/question-bank/folders/:id/edit" element={<QuestionFolderEditPage />} />
+      </Route>
+
+      <Route
+        element={
+          <Protect
+            roles={[
+              'super_admin',
+              'client_admin',
+              'content_authorizer',
+              'school_owner',
+              'teacher',
+            ]}
+            permissions={['questions.delete']}
+          />
+        }
+      >
+        <Route path="/question-bank/:id/delete" element={<QuestionDeletePage />} />
       </Route>
 
       {/* Exam Management */}
@@ -225,11 +310,44 @@ export default function AppRoutes() {
               'school_owner',
               'teacher',
             ]}
+            permissions={['exams.read']}
           />
         }
       >
         <Route path="/exams" element={<ExamListPage />} />
+      </Route>
+
+      <Route
+        element={
+          <Protect
+            roles={[
+              'super_admin',
+              'client_admin',
+              'content_authorizer',
+              'school_owner',
+              'teacher',
+            ]}
+            permissions={['exams.create']}
+          />
+        }
+      >
         <Route path="/exams/new" element={<ExamCreatePage />} />
+      </Route>
+
+      <Route
+        element={
+          <Protect
+            roles={[
+              'super_admin',
+              'client_admin',
+              'content_authorizer',
+              'school_owner',
+              'teacher',
+            ]}
+            permissions={['exams.update']}
+          />
+        }
+      >
         <Route path="/exams/:id/builder" element={<ExamBuilderPage />} />
         <Route path="/exams/:id/sections/:sectionId/questions" element={<ExamSectionQuestionsPage />} />
       </Route>

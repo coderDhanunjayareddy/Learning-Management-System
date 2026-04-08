@@ -4,6 +4,7 @@ import { GrChapterAdd } from "react-icons/gr";
 import { PiUsersBold } from "react-icons/pi";
 import type { DashboardTheme } from "@/components/layout/dashboardTheme";
 import spectropyLogo from "/logo.png";
+import { getCoursePermissions, type CoursePermissions } from "@/features/courses/utils/coursePermissions";
 
 type Course = {
   id: number;
@@ -16,79 +17,10 @@ type Course = {
 
 type CourseManagerMode = "admin" | "student" | "custom";
 
-type CoursePermissions = {
-  canView: boolean;
-  canCreate: boolean;
-  canEdit: boolean;
-  canDelete: boolean;
-  canPublish: boolean;
-  canManageContent: boolean;
-  canEnroll: boolean;
-};
-
-const defaultPermissions: CoursePermissions = {
-  canView: true,
-  canCreate: false,
-  canEdit: false,
-  canDelete: false,
-  canPublish: false,
-  canManageContent: false,
-  canEnroll: false,
-};
-
-const getPermissionsFromRole = (role?: string | null): CoursePermissions => {
-  switch (role) {
-    case "super_admin":
-    case "client_admin":
-      return {
-        canView: true,
-        canCreate: true,
-        canEdit: true,
-        canDelete: true,
-        canPublish: true,
-        canManageContent: true,
-        canEnroll: true,
-      };
-    case "content_authorizer":
-      return {
-        canView: true,
-        canCreate: true,
-        canEdit: true,
-        canDelete: false,
-        canPublish: true,
-        canManageContent: true,
-        canEnroll: true,
-      };
-    case "school_owner":
-      return {
-        canView: true,
-        canCreate: true,
-        canEdit: true,
-        canDelete: false,
-        canPublish: false,
-        canManageContent: true,
-        canEnroll: true,
-      };
-    case "teacher":
-      return {
-        canView: true,
-        canCreate: false,
-        canEdit: false,
-        canDelete: false,
-        canPublish: false,
-        canManageContent: true,
-        canEnroll: false,
-      };
-    case "student":
-      return defaultPermissions;
-    default:
-      return defaultPermissions;
-  }
-};
-
 interface AdminCourseManagerProps {
   mode?: CourseManagerMode;
   role?: string | null;
+  permissionKeys?: string[] | null;
   permissions?: Partial<CoursePermissions>;
   theme: DashboardTheme;
   brandLogo?: string;
@@ -106,6 +38,7 @@ interface AdminCourseManagerProps {
 export default function AdminCourseManager({
   mode = "admin",
   role,
+  permissionKeys,
   permissions,
   theme,
   brandLogo,
@@ -120,7 +53,7 @@ export default function AdminCourseManager({
   onViewCourse,
 }: AdminCourseManagerProps) {
   const mergedPermissions: CoursePermissions = {
-    ...getPermissionsFromRole(role),
+    ...getCoursePermissions({ role, permissions: permissionKeys }),
     ...permissions,
   };
 

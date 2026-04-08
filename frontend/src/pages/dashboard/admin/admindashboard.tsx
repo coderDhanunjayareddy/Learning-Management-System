@@ -1,5 +1,5 @@
 ﻿// src/pages/admin/admindashboard.tsx
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/features/auth/hooks/useAuth';
 
@@ -15,6 +15,9 @@ import DashboardLayout from '@/components/layout/DashboardLayout';
 import SidebarNav from '@/components/layout/SidebarNav';
 import { getDashboardTheme } from '@/components/layout/dashboardTheme';
 import AdminCourseManager from '@/features/courses/components/list/AdminCourseManager';
+import { getCoursePermissions } from '@/features/courses/utils/coursePermissions';
+import { getQuestionPermissions } from '@/features/question-bank/utils/questionPermissions';
+import { getExamPermissions } from '@/features/exams/utils/examPermissions';
 
 type ClientUser = {
   logo?: string;
@@ -40,9 +43,18 @@ export default function CourseStudents() {
   const clientMeta = clientUser?.client_name ? `${clientUser.client_name} Client` : null;
   const theme = getDashboardTheme(false);
   const courseBannerClass = isContentAuthorizer ? 'bg-sky-100' : 'bg-amber-50';
+  const coursePermissions = getCoursePermissions(user);
+  const questionPermissions = getQuestionPermissions(user);
+  const examPermissions = getExamPermissions(user);
 
   const [activeTab, setActiveTab] = useState<'courses' | 'home' | 'users' | 'community'>('home');
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    if (activeTab === 'courses' && !coursePermissions.canView) {
+      setActiveTab('home');
+    }
+  }, [activeTab, coursePermissions.canView]);
 
   const navItems = [
     {
@@ -59,13 +71,15 @@ export default function CourseStudents() {
       active: false,
       onClick: () => navigate('/admin/org'),
     },
-    {
-      key: 'courses',
-      label: 'Courses',
-      icon: <BiBookOpen />,
-      active: activeTab === 'courses',
-      onClick: () => setActiveTab('courses'),
-    },
+    ...(coursePermissions.canView
+      ? [{
+          key: 'courses',
+          label: 'Courses',
+          icon: <BiBookOpen />,
+          active: activeTab === 'courses',
+          onClick: () => setActiveTab('courses'),
+        }]
+      : []),
     ...(user?.role === 'client_admin'
       ? [{
           key: 'licensed-content',
@@ -75,20 +89,24 @@ export default function CourseStudents() {
           onClick: () => navigate('/admin/licensed-content'),
         }]
       : []),
-    {
-      key: 'question-bank',
-      label: 'Question Bank',
-      icon: <RiFileList3Line />,
-      active: false,
-      onClick: () => navigate('/question-bank'),
-    },
-    {
-      key: 'exams',
-      label: 'Exams',
-      icon: <RiFileList3Line />,
-      active: false,
-      onClick: () => navigate('/exams'),
-    },
+    ...(questionPermissions.canView
+      ? [{
+          key: 'question-bank',
+          label: 'Question Bank',
+          icon: <RiFileList3Line />,
+          active: false,
+          onClick: () => navigate('/question-bank'),
+        }]
+      : []),
+    ...(examPermissions.canRead
+      ? [{
+          key: 'exams',
+          label: 'Exams',
+          icon: <RiFileList3Line />,
+          active: false,
+          onClick: () => navigate('/exams'),
+        }]
+      : []),
     {
       key: 'users',
       label: 'Users',
@@ -172,6 +190,7 @@ export default function CourseStudents() {
           <AdminCourseManager
             mode="admin"
             role={user?.role}
+            permissionKeys={user?.permissions}
             theme={theme}
             brandLogo={brandLogo}
             brandName={brandName}
@@ -179,6 +198,7 @@ export default function CourseStudents() {
             listTitle="All Courses"
             emptyMessage="No courses found."
             onManageContent={(courseId) => navigate(`/admin/courses/${courseId}/content`)}
+            onViewCourse={(courseId) => navigate(`/admin/courses/${courseId}/content`)}
             onEnroll={(courseId) => navigate(`/admin/courses/${courseId}/enroll`)}
           />
         )}

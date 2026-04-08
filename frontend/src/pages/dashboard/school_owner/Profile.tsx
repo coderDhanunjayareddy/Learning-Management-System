@@ -7,7 +7,10 @@ import { getDashboardTheme } from "@/components/layout/dashboardTheme";
 import ProfilePanel from "@/features/users/components/ProfilePanel";
 import { RiHome2Line, RiFileList3Line } from "react-icons/ri";
 import { BiBookOpen } from "react-icons/bi";
-import { PiUsersBold, PiChatsCircleBold } from 'react-icons/pi';
+import { PiUsersBold } from 'react-icons/pi';
+import { getCoursePermissions } from "@/features/courses/utils/coursePermissions";
+import { getQuestionPermissions } from "@/features/question-bank/utils/questionPermissions";
+import { getExamPermissions } from "@/features/exams/utils/examPermissions";
 
 export default function SchoolOwnerProfile() {
   const navigate = useNavigate();
@@ -15,6 +18,9 @@ export default function SchoolOwnerProfile() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const theme = getDashboardTheme(false);
+  const coursePermissions = getCoursePermissions({ role: user?.role, permissions: user?.permissions });
+  const questionPermissions = getQuestionPermissions(user);
+  const examPermissions = getExamPermissions(user);
 
   const navItems = [
     {
@@ -24,31 +30,37 @@ export default function SchoolOwnerProfile() {
       active: false,
       onClick: () => navigate("/school-owner/dashboard"),
     },
-    {
-      key: "courses",
-      label: "Courses",
-      icon: <BiBookOpen />,
-      active: false,
-      onClick: () => navigate("/school-owner/courses"),
-    },
-    {
-      key: "question-bank",
-      label: "Question Bank",
-      icon: <RiFileList3Line />,
-      active: false,
-      onClick: () => navigate("/question-bank"),
-    },
+    ...(coursePermissions.canView
+      ? [{
+          key: "courses",
+          label: "Courses",
+          icon: <BiBookOpen />,
+          active: false,
+          onClick: () => navigate("/school-owner/courses"),
+        }]
+      : []),
+    ...(questionPermissions.canView
+      ? [{
+          key: "question-bank",
+          label: "Question Bank",
+          icon: <RiFileList3Line />,
+          active: false,
+          onClick: () => navigate("/question-bank"),
+        }]
+      : []),
+    ...(examPermissions.canRead
+      ? [{
+          key: "exams",
+          label: "Exams",
+          icon: <RiFileList3Line />,
+          active: false,
+          onClick: () => navigate("/exams"),
+        }]
+      : []),
     {
       key: "users",
       label: "Users",
       icon: <PiUsersBold />,
-      active: false,
-      onClick: () => {},
-    },
-    {
-      key: "community",
-      label: "Community",
-      icon: <PiChatsCircleBold />,
       active: false,
       onClick: () => {},
     },

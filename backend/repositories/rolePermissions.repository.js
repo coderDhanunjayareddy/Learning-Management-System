@@ -45,6 +45,18 @@ export const upsertRolePermission = async ({ clientId, role, permission, granted
   );
 };
 
+export const fetchRolePermissionById = async (id) => {
+  return dbQuery(
+    `
+    SELECT id, client_id, role, permission, granted
+    FROM role_permissions
+    WHERE id = $1
+    LIMIT 1
+    `,
+    [id]
+  );
+};
+
 export const deleteRolePermission = async (id) => {
   return dbQuery(`DELETE FROM role_permissions WHERE id = $1 RETURNING id`, [id]);
 };

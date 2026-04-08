@@ -7,7 +7,10 @@ import SidebarNav from "@/components/layout/SidebarNav";
 import { getDashboardTheme } from "@/components/layout/dashboardTheme";
 import { RiHome2Line, RiFileList3Line } from "react-icons/ri";
 import { BiBookOpen } from "react-icons/bi";
-import { PiUsersBold, PiChatsCircleBold } from 'react-icons/pi';
+import { PiUsersBold } from 'react-icons/pi';
+import { getCoursePermissions } from "@/features/courses/utils/coursePermissions";
+import { getQuestionPermissions } from "@/features/question-bank/utils/questionPermissions";
+import { getExamPermissions } from "@/features/exams/utils/examPermissions";
 
 const featureCards = [
   {
@@ -36,6 +39,9 @@ export default function SchoolOwnerDashboard() {
   const theme = getDashboardTheme(false);
   const userFullName = user?.full_name || "School Owner";
   const userEmail = user?.email || "owner@spectropy.com";
+  const coursePermissions = getCoursePermissions({ role: user?.role, permissions: user?.permissions });
+  const questionPermissions = getQuestionPermissions(user);
+  const examPermissions = getExamPermissions(user);
 
   const navItems = [
     {
@@ -45,38 +51,37 @@ export default function SchoolOwnerDashboard() {
       active: true,
       onClick: () => navigate("/school-owner/dashboard"),
     },
-    {
-      key: "courses",
-      label: "Courses",
-      icon: <BiBookOpen />,
-      active: false,
-      onClick: () => navigate("/school-owner/courses"),
-    },
-    {
-      key: "question-bank",
-      label: "Question Bank",
-      icon: <RiFileList3Line />,
-      active: false,
-      onClick: () => navigate("/question-bank"),
-    },
-    {
-      key: "exams",
-      label: "Exams",
-      icon: <RiFileList3Line />,
-      active: false,
-      onClick: () => navigate("/exams"),
-    },
+    ...(coursePermissions.canView
+      ? [{
+          key: "courses",
+          label: "Courses",
+          icon: <BiBookOpen />,
+          active: false,
+          onClick: () => navigate("/school-owner/courses"),
+        }]
+      : []),
+    ...(questionPermissions.canView
+      ? [{
+          key: "question-bank",
+          label: "Question Bank",
+          icon: <RiFileList3Line />,
+          active: false,
+          onClick: () => navigate("/question-bank"),
+        }]
+      : []),
+    ...(examPermissions.canRead
+      ? [{
+          key: "exams",
+          label: "Exams",
+          icon: <RiFileList3Line />,
+          active: false,
+          onClick: () => navigate("/exams"),
+        }]
+      : []),
     {
       key: "users",
       label: "Users",
       icon: <PiUsersBold />,
-      active: false,
-      onClick: () => {},
-    },
-    {
-      key: "community",
-      label: "Community",
-      icon: <PiChatsCircleBold />,
       active: false,
       onClick: () => {},
     },
@@ -132,7 +137,17 @@ export default function SchoolOwnerDashboard() {
     >
       <div className="p-6 space-y-6">
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {featureCards.map((card) => (
+          {featureCards
+            .filter((card) => {
+              if (card.title === "Question Approvals") {
+                return questionPermissions.canApprove || questionPermissions.canReject;
+              }
+              if (card.title === "Exams") {
+                return examPermissions.canRead;
+              }
+              return true;
+            })
+            .map((card) => (
             <div
               key={card.title}
               className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"

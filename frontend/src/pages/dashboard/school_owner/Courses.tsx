@@ -1,13 +1,16 @@
 ﻿import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import SidebarNav from "@/components/layout/SidebarNav";
 import { getDashboardTheme } from "@/components/layout/dashboardTheme";
 import { RiHome2Line, RiFileList3Line } from "react-icons/ri";
 import { BiBookOpen } from "react-icons/bi";
-import { PiUsersBold, PiChatsCircleBold } from "react-icons/pi";
+import { PiUsersBold } from "react-icons/pi";
 import AdminCourseManager from "@/features/courses/components/list/AdminCourseManager";
+import { getCoursePermissions } from "@/features/courses/utils/coursePermissions";
+import { getQuestionPermissions } from "@/features/question-bank/utils/questionPermissions";
+import { getExamPermissions } from "@/features/exams/utils/examPermissions";
 
 export default function SchoolOwnerCourses() {
   const navigate = useNavigate();
@@ -17,6 +20,13 @@ export default function SchoolOwnerCourses() {
   const theme = getDashboardTheme(false);
   const userFullName = user?.full_name || "School Owner";
   const userEmail = user?.email || "owner@spectropy.com";
+  const coursePermissions = getCoursePermissions({ role: user?.role, permissions: user?.permissions });
+  const questionPermissions = getQuestionPermissions(user);
+  const examPermissions = getExamPermissions(user);
+
+  if (!coursePermissions.canView) {
+    return <Navigate to="/unauthorized" replace />;
+  }
 
   const navItems = [
     {
@@ -33,24 +43,28 @@ export default function SchoolOwnerCourses() {
       active: true,
       onClick: () => navigate("/school-owner/courses"),
     },
-    {
-      key: "question-bank",
-      label: "Question Bank",
-      icon: <RiFileList3Line />,
-      active: false,
-      onClick: () => navigate("/question-bank"),
-    },
+    ...(questionPermissions.canView
+      ? [{
+          key: "question-bank",
+          label: "Question Bank",
+          icon: <RiFileList3Line />,
+          active: false,
+          onClick: () => navigate("/question-bank"),
+        }]
+      : []),
+    ...(examPermissions.canRead
+      ? [{
+          key: "exams",
+          label: "Exams",
+          icon: <RiFileList3Line />,
+          active: false,
+          onClick: () => navigate("/exams"),
+        }]
+      : []),
     {
       key: "users",
       label: "Users",
       icon: <PiUsersBold />,
-      active: false,
-      onClick: () => { },
-    },
-    {
-      key: "community",
-      label: "Community",
-      icon: <PiChatsCircleBold />,
       active: false,
       onClick: () => { },
     },
@@ -106,6 +120,7 @@ export default function SchoolOwnerCourses() {
         <AdminCourseManager
           mode="admin"
           role={user?.role}
+          permissionKeys={user?.permissions}
           theme={theme}
           brandLogo="/logo.png"
           brandName="Spectropy"
@@ -113,6 +128,7 @@ export default function SchoolOwnerCourses() {
           listTitle="All Courses"
           emptyMessage="No courses found."
           onManageContent={(courseId) => navigate(`/school-owner/courses/${courseId}/content`)}
+          onViewCourse={(courseId) => navigate(`/school-owner/courses/${courseId}/content`)}
           onEnroll={(courseId) => navigate(`/admin/courses/${courseId}/enroll`)}
         />
       </div>

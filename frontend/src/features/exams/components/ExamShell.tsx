@@ -12,7 +12,6 @@ interface ExamShellProps {
   description: string;
   children: React.ReactNode;
   headerAction?: React.ReactNode;
-  backTo?: string;
 }
 
 const DASHBOARD_BY_ROLE: Record<string, string> = {
@@ -28,7 +27,6 @@ export default function ExamShell({
   description,
   children,
   headerAction,
-  backTo,
 }: ExamShellProps) {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -38,9 +36,9 @@ export default function ExamShell({
   const theme = getDashboardTheme(false);
   const userFullName = user?.full_name || "Exam Manager";
   const userEmail = user?.email || "";
-
   const isActive = (path: string) => location.pathname === path;
-  const resolvedBackPath = backTo || DASHBOARD_BY_ROLE[String(user?.role ?? "")] || "/admin/dashboard";
+  const resolvedBackPath =
+    DASHBOARD_BY_ROLE[String(user?.role ?? "")] || "/admin/dashboard";
   const handleBack = () => {
     navigate(resolvedBackPath);
   };

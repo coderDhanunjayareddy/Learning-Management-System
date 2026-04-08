@@ -52,7 +52,7 @@ router.delete('/batches/:batchId/members/:userId', requireRole(['super_admin', '
 // Role permissions (super admin only)
 router.get('/role-permissions', requireRole(['super_admin', 'client_admin']), listRolePermissions);
 router.post('/role-permissions', requireRole(['super_admin', 'client_admin']), upsertRolePermission);
-router.delete('/role-permissions/:id', requireRole(['super_admin']), deleteRolePermission);
+router.delete('/role-permissions/:id', requireRole(['super_admin', 'client_admin']), deleteRolePermission);
 
 // User permissions (super admin, client admin)
 router.get('/user-permissions', requireRole(['super_admin', 'client_admin']), listUserPermissions);

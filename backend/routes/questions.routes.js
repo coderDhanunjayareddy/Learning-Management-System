@@ -26,7 +26,7 @@ router.use(
   attachClientContext,
   loadPermissions
 );
-
+console.log(" question.route is loading :")
 router.get('/questions', checkPermission('questions.read'), listQuestions);
 router.get('/questions/bulk-upload/template', checkPermission('questions.read'), bulkUploadTemplate);
 router.post('/questions/bulk-upload', checkPermission('questions.create'), upload.single('file'), bulkUploadQuestions);

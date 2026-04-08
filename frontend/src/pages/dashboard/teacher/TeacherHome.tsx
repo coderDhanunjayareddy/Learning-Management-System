@@ -7,7 +7,10 @@ import SidebarNav from "@/components/layout/SidebarNav";
 import { getDashboardTheme } from "@/components/layout/dashboardTheme";
 import { RiHome2Line, RiFileList3Line } from "react-icons/ri";
 import { BiBookOpen } from "react-icons/bi";
-import { PiUsersBold, PiChatsCircleBold } from 'react-icons/pi';
+import { PiUsersBold } from 'react-icons/pi';
+import { getCoursePermissions } from "@/features/courses/utils/coursePermissions";
+import { getQuestionPermissions } from "@/features/question-bank/utils/questionPermissions";
+import { getExamPermissions } from "@/features/exams/utils/examPermissions";
 
 const featureCards = [
   { title: "Question Bank", desc: "Create and draft questions by subject and chapter." },
@@ -24,6 +27,9 @@ export default function TeacherHome() {
   const theme = getDashboardTheme(false);
   const userFullName = user?.full_name || "Teacher";
   const userEmail = user?.email || "teacher@spectropy.com";
+  const coursePermissions = getCoursePermissions({ role: user?.role, permissions: user?.permissions });
+  const questionPermissions = getQuestionPermissions({ role: user?.role, permissions: user?.permissions });
+  const examPermissions = getExamPermissions({ role: user?.role, permissions: user?.permissions });
 
   const navItems = [
     {
@@ -33,31 +39,37 @@ export default function TeacherHome() {
       active: true,
       onClick: () => navigate("/teacher/dashboard"),
     },
-    {
-      key: "question-bank",
-      label: "Question Bank",
-      icon: <RiFileList3Line />,
-      active: false,
-      onClick: () => navigate("/question-bank"),
-    },
-    {
-      key: "courses",
-      label: "Courses",
-      icon: <BiBookOpen />,
-      active: false,
-      onClick: () => navigate("/teacher/courses"),
-    },
+    ...(questionPermissions.canView
+      ? [{
+          key: "question-bank",
+          label: "Question Bank",
+          icon: <RiFileList3Line />,
+          active: false,
+          onClick: () => navigate("/question-bank"),
+        }]
+      : []),
+    ...(examPermissions.canRead
+      ? [{
+          key: "exams",
+          label: "Exams",
+          icon: <RiFileList3Line />,
+          active: false,
+          onClick: () => navigate("/exams"),
+        }]
+      : []),
+    ...(coursePermissions.canView
+      ? [{
+          key: "courses",
+          label: "Courses",
+          icon: <BiBookOpen />,
+          active: false,
+          onClick: () => navigate("/teacher/courses"),
+        }]
+      : []),
     {
       key: "users",
       label: "Students",
       icon: <PiUsersBold />,
-      active: false,
-      onClick: () => { },
-    },
-    {
-      key: "community",
-      label: "Community",
-      icon: <PiChatsCircleBold />,
       active: false,
       onClick: () => { },
     },
@@ -105,19 +117,34 @@ export default function TeacherHome() {
                 Manage your classes, assessments, and learning materials.
               </p>
             </div>
-            <button
-              onClick={() => navigate("/teacher/courses")}
-              className={`px-4 py-2 text-sm font-semibold rounded-lg border ${theme.secondaryBorderClass}`}
-            >
-              Manage Courses
-            </button>
+            {coursePermissions.canView && (
+              <button
+                onClick={() => navigate("/teacher/courses")}
+                className={`px-4 py-2 text-sm font-semibold rounded-lg border ${theme.secondaryBorderClass}`}
+              >
+                Manage Courses
+              </button>
+            )}
           </div>
         </div>
       }
     >
       <div className="p-6 space-y-6">
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {featureCards.map((card) => (
+          {featureCards
+            .filter((card) => {
+              if (card.title === "Question Bank") {
+                return questionPermissions.canView;
+              }
+              if (card.title === "Exams") {
+                return examPermissions.canRead;
+              }
+              if (card.title === "Courses") {
+                return coursePermissions.canView;
+              }
+              return true;
+            })
+            .map((card) => (
             <div
               key={card.title}
               className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"

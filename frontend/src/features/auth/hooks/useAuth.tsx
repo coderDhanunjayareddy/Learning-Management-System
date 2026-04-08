@@ -33,6 +33,7 @@ interface AuthContextType {
     client_id?: number | null,
     user_id?: string | null
   ) => Promise<void>;
+  refreshUser: () => Promise<void>;
   logout: () => void;
 }
 
@@ -105,6 +106,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [syncAuthCookie]);
 
+  const refreshUser = useCallback(async () => {
+    if (!token) {
+      setUser(null);
+      localStorage.removeItem('auth_user');
+      return;
+    }
+
+    const res = await api.get('/auth/me');
+    const permissions = Array.isArray(res.data?.permissions) ? res.data.permissions : [];
+    setUser({ ...res.data.user, permissions });
+  }, [token]);
+
   useEffect(() => {
     const fetchUser = async () => {
       if (!token) {
@@ -117,9 +130,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setLoading(true);
 
       try {
-        const res = await api.get('/auth/me');
-        const permissions = Array.isArray(res.data?.permissions) ? res.data.permissions : [];
-        setUser({ ...res.data.user, permissions });
+        await refreshUser();
       } catch (error) {
         console.error('Failed to load user:', error);
         setUser((prev) => prev);
@@ -128,7 +139,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     };
     fetchUser();
-  }, [token, logout]);
+  }, [token, logout, refreshUser]);
 
   const login = useCallback(async (
     identifier: string,
@@ -190,7 +201,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, token, login, updateUser, register, logout, loading }}>
+    <AuthContext.Provider value={{ user, token, login, updateUser, register, refreshUser, logout, loading }}>
       {children}
     </AuthContext.Provider>
   );

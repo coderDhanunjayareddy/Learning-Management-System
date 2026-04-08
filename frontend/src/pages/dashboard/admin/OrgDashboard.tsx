@@ -3,6 +3,7 @@ import api from '@/lib/api';
 import type { ReactNode } from 'react';
 import { useAuth } from '@/features/auth/hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import BulkSetup from './BulkSetup';
 import spectropyLogo from '/logo.png';
 import { RiFileList3Line } from 'react-icons/ri';
@@ -39,6 +40,7 @@ interface RolePermission {
 
 interface Membership {
   id: number;
+  school_id: number;
   user_id: number;
   full_name: string;
   email: string;
@@ -51,6 +53,14 @@ interface User {
   email: string;
   role: string;
   is_active: boolean;
+  client_id?: number | null;
+}
+
+interface UserPermission {
+  id: number;
+  user_id: number;
+  permission: string;
+  granted: boolean;
 }
 
 type ClientUser = {
@@ -60,13 +70,14 @@ type ClientUser = {
 
 const permissionGroupLabels: Record<string, string> = {
   questions: 'Question Bank',
+  exams: 'Exams',
   courses: 'Courses',
   subjects: 'Subjects',
   chapters: 'Chapters',
   topics: 'Topics',
 };
 
-const permissionGroupOrder = ['Question Bank', 'Courses', 'Subjects', 'Chapters', 'Topics', 'Other'];
+const permissionGroupOrder = ['Question Bank', 'Exams', 'Courses', 'Subjects', 'Chapters', 'Topics', 'Other'];
 
 const getPermissionGroup = (permission: string) => {
   const prefix = permission.split('.')[0];
@@ -85,8 +96,13 @@ export default function OrgDashboard() {
   const [rolePermissions, setRolePermissions] = useState<RolePermission[]>([]);
   const [selectedRole, setSelectedRole] = useState('teacher');
   const [saving, setSaving] = useState<string | null>(null);
+  const [overrideSaving, setOverrideSaving] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filterMode, setFilterMode] = useState<'all' | 'granted' | 'missing'>('all');
+  const [selectedOverrideSchoolId, setSelectedOverrideSchoolId] = useState('');
+  const [selectedUserId, setSelectedUserId] = useState('');
+  const [userOverrides, setUserOverrides] = useState<UserPermission[]>([]);
+  const [overrideSchoolMembers, setOverrideSchoolMembers] = useState<Membership[]>([]);
 
   const [selectedSchoolId, setSelectedSchoolId] = useState<string>('');
   const [selectedBatchId, setSelectedBatchId] = useState<string>('');
@@ -114,6 +130,16 @@ export default function OrgDashboard() {
     setSchoolMembers(res.data);
   };
 
+  const loadOverrideSchoolMembers = async (schoolId: string) => {
+    if (!schoolId) {
+      setOverrideSchoolMembers([]);
+      return;
+    }
+
+    const res = await api.get(`/org/schools/${schoolId}/memberships`);
+    setOverrideSchoolMembers(res.data);
+  };
+
   const loadBatchMembers = async (batchId: string) => {
     const res = await api.get(`/org/batches/${batchId}/members`);
     setBatchMembers(res.data);
@@ -122,13 +148,26 @@ export default function OrgDashboard() {
   const loadRolePermissions = async () => {
     const role = user?.role;
     if (!role || (role !== 'super_admin' && role !== 'client_admin')) return;
-    const res = await api.get('/org/role-permissions?scope=client');
+    const params = new URLSearchParams();
+    params.set('scope', 'client');
+    params.set('role', selectedRole);
+    const res = await api.get(`/org/role-permissions?${params.toString()}`);
     setRolePermissions(res.data);
   };
 
   const loadUsers = async () => {
     const res = await api.get('/users');
     setUsers(res.data);
+  };
+
+  const loadUserOverrides = async (userId: string) => {
+    if (!userId) {
+      setUserOverrides([]);
+      return;
+    }
+
+    const res = await api.get(`/org/user-permissions?user_id=${userId}`);
+    setUserOverrides(res.data);
   };
 
   useEffect(() => {
@@ -139,11 +178,24 @@ export default function OrgDashboard() {
 
   useEffect(() => {
     loadRolePermissions();
-  }, [user?.role]);
+  }, [user?.role, selectedRole]);
+
+  useEffect(() => {
+    loadUserOverrides(selectedUserId);
+  }, [selectedUserId]);
 
   useEffect(() => {
     if (selectedSchoolId) loadSchoolMembers(selectedSchoolId);
   }, [selectedSchoolId]);
+
+  useEffect(() => {
+    loadOverrideSchoolMembers(selectedOverrideSchoolId);
+  }, [selectedOverrideSchoolId]);
+
+  useEffect(() => {
+    setSelectedUserId('');
+    setUserOverrides([]);
+  }, [selectedRole, selectedOverrideSchoolId]);
 
   useEffect(() => {
     if (selectedBatchId) loadBatchMembers(selectedBatchId);
@@ -183,6 +235,37 @@ export default function OrgDashboard() {
     return rolePermissions.filter((perm) => perm.role === selectedRole);
   }, [rolePermissions, selectedRole]);
 
+  const availableSchoolUsers = useMemo(() => {
+    const assignedUserIds = new Set(schoolMembers.map((member) => String(member.user_id)));
+    return users.filter((candidate) => !assignedUserIds.has(String(candidate.id)));
+  }, [users, schoolMembers]);
+
+  const availableBatchUsers = useMemo(() => {
+    const assignedUserIds = new Set(batchMembers.map((member) => String(member.user_id)));
+    return users.filter((candidate) => !assignedUserIds.has(String(candidate.id)));
+  }, [users, batchMembers]);
+
+  const availableOverrideUsers = useMemo(() => {
+    const roleFilteredUsers = users.filter((candidate) => candidate.role === selectedRole);
+
+    if (!selectedOverrideSchoolId) {
+      return roleFilteredUsers;
+    }
+
+    const schoolMemberIds = new Set(
+      overrideSchoolMembers
+        .filter((member) => member.role_scope === selectedRole)
+        .map((member) => String(member.user_id))
+    );
+
+    return roleFilteredUsers.filter((candidate) => schoolMemberIds.has(String(candidate.id)));
+  }, [
+    users,
+    selectedRole,
+    selectedOverrideSchoolId,
+    overrideSchoolMembers,
+  ]);
+
   const permissionMap = useMemo(() => {
     const map = new Map<string, RolePermission>();
     filteredPermissions.forEach((perm) => {
@@ -196,6 +279,14 @@ export default function OrgDashboard() {
     rolePermissions.forEach((perm) => keys.add(perm.permission));
     return Array.from(keys).sort();
   }, [rolePermissions]);
+
+  const userOverrideMap = useMemo(() => {
+    const map = new Map<string, UserPermission>();
+    userOverrides.forEach((override) => {
+      map.set(override.permission, override);
+    });
+    return map;
+  }, [userOverrides]);
 
   const groupedPermissions = useMemo(() => {
     const groups = new Map<string, string[]>();
@@ -246,32 +337,58 @@ export default function OrgDashboard() {
   }, [permissionKeys, permissionMap]);
 
   const handleTogglePermission = async (permission: string, nextValue: boolean) => {
-    const existing = permissionMap.get(permission);
+    const permissionsToToggle = [permission];
+
+    if (permission === 'exams.create') {
+      permissionsToToggle.push('exams.update', 'exams.publish');
+    }
 
     try {
       setSaving(permission);
+
       if (nextValue) {
-        if (existing?.granted) {
-          return;
+        for (const perm of permissionsToToggle) {
+          const existingPerm = permissionMap.get(perm);
+          if (existingPerm?.granted) {
+            continue;
+          }
+
+          const payload = {
+            role: selectedRole,
+            permission: perm,
+            granted: true,
+          };
+          await api.post('/org/role-permissions', payload);
         }
-        const payload = {
-          role: selectedRole,
-          permission,
-          granted: true,
-        };
-        await api.post('/org/role-permissions', payload);
-      } else if (existing?.id) {
-        await api.delete(`/org/role-permissions/${existing.id}`);
+        toast.success('Permission granted');
+      } else {
+        for (const perm of permissionsToToggle) {
+          const existingPerm = permissionMap.get(perm);
+          if (!existingPerm?.id) continue;
+          await api.delete(`/org/role-permissions/${existingPerm.id}`);
+        }
+        toast.success('Permission removed');
       }
 
       await loadRolePermissions();
+    } catch (error) {
+      console.error(error);
+      toast.error('Failed to update permission');
     } finally {
       setSaving(null);
     }
   };
 
   const handleGroupToggle = async (groupName: string, groupPermissions: string[], nextValue: boolean) => {
-    const pending = groupPermissions.filter((permission) => {
+    const permissionsToToggle = [...groupPermissions];
+
+    if (groupName === 'Exams') {
+      permissionsToToggle.push('exams.update', 'exams.publish');
+    }
+
+    const uniquePermissionsToToggle = Array.from(new Set(permissionsToToggle));
+
+    const pending = uniquePermissionsToToggle.filter((permission) => {
       const existing = permissionMap.get(permission);
       const enabled = Boolean(existing?.granted);
       return nextValue ? !enabled : Boolean(existing?.id);
@@ -298,8 +415,52 @@ export default function OrgDashboard() {
       }
 
       await loadRolePermissions();
+      toast.success(`Permissions ${nextValue ? 'granted' : 'cleared'}`);
+    } catch (error) {
+      console.error(error);
+      toast.error('Failed to update permissions');
     } finally {
       setSaving(null);
+    }
+  };
+
+  const handleUserOverride = async (permission: string, granted: boolean) => {
+    if (!selectedUserId) {
+      toast.error('Select a user');
+      return;
+    }
+
+    try {
+      setOverrideSaving(permission);
+      await api.post('/org/user-permissions', {
+        user_id: Number(selectedUserId),
+        permission,
+        granted,
+      });
+      await loadUserOverrides(selectedUserId);
+      toast.success(`Permission ${granted ? 'granted' : 'denied'}`);
+    } catch (error) {
+      console.error(error);
+      toast.error('Failed to update user override');
+    } finally {
+      setOverrideSaving(null);
+    }
+  };
+
+  const handleClearUserOverride = async (permission: string) => {
+    const existing = userOverrideMap.get(permission);
+    if (!existing?.id) return;
+
+    try {
+      setOverrideSaving(`clear:${permission}`);
+      await api.delete(`/org/user-permissions/${existing.id}`);
+      await loadUserOverrides(selectedUserId);
+      toast.success('Override cleared');
+    } catch (error) {
+      console.error(error);
+      toast.error('Failed to clear user override');
+    } finally {
+      setOverrideSaving(null);
     }
   };
 
@@ -471,12 +632,25 @@ export default function OrgDashboard() {
           <form onSubmit={addSchoolMember} className="rounded-2xl border border-slate-200 bg-white p-5">
             <h3 className="text-lg font-semibold">Add School Member</h3>
             <div className="mt-4 space-y-3">
-              <input
+              <select
                 value={schoolMemberForm.user_id}
                 onChange={(e) => setSchoolMemberForm({ ...schoolMemberForm, user_id: e.target.value })}
-                placeholder="User ID"
+                disabled={!selectedSchoolId || availableSchoolUsers.length === 0}
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-              />
+              >
+                <option value="">
+                  {!selectedSchoolId
+                    ? 'Select school first'
+                    : availableSchoolUsers.length === 0
+                      ? 'No available users'
+                      : 'Select user'}
+                </option>
+                {availableSchoolUsers.map((candidate) => (
+                  <option key={candidate.id} value={candidate.id}>
+                    {candidate.full_name} - {candidate.email} - {candidate.role}
+                  </option>
+                ))}
+              </select>
               <select
                 value={schoolMemberForm.role_scope}
                 onChange={(e) => setSchoolMemberForm({ ...schoolMemberForm, role_scope: e.target.value })}
@@ -485,9 +659,11 @@ export default function OrgDashboard() {
                 <option value="teacher">Teacher</option>
                 <option value="student">Student</option>
                 <option value="school_owner">School Owner</option>
-                <option value="admin">Admin</option>
               </select>
-              <button className="w-full rounded-lg bg-blue-900 px-3 py-2 text-sm font-semibold text-white">
+              <button
+                disabled={!selectedSchoolId || !schoolMemberForm.user_id}
+                className="w-full rounded-lg bg-blue-900 px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+              >
                 Add Member
               </button>
             </div>
@@ -565,13 +741,29 @@ export default function OrgDashboard() {
           <form onSubmit={addBatchMember} className="rounded-2xl border border-slate-200 bg-white p-5">
             <h3 className="text-lg font-semibold">Add Batch Member</h3>
             <div className="mt-4 space-y-3">
-              <input
+              <select
                 value={batchMemberForm.user_id}
                 onChange={(e) => setBatchMemberForm({ ...batchMemberForm, user_id: e.target.value })}
-                placeholder="User ID"
+                disabled={!selectedBatchId || availableBatchUsers.length === 0}
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-              />
-              <button className="w-full rounded-lg bg-blue-900 px-3 py-2 text-sm font-semibold text-white">
+              >
+                <option value="">
+                  {!selectedBatchId
+                    ? 'Select batch first'
+                    : availableBatchUsers.length === 0
+                      ? 'No available users'
+                      : 'Select user'}
+                </option>
+                {availableBatchUsers.map((candidate) => (
+                  <option key={candidate.id} value={candidate.id}>
+                    {candidate.full_name} - {candidate.email} - {candidate.role}
+                  </option>
+                ))}
+              </select>
+              <button
+                disabled={!selectedBatchId || !batchMemberForm.user_id}
+                className="w-full rounded-lg bg-blue-900 px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+              >
                 Add Member
               </button>
             </div>
@@ -585,7 +777,7 @@ export default function OrgDashboard() {
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
                 <h3 className="text-lg font-semibold">Role Permissions</h3>
-                <p className="text-sm text-slate-500">Manage permissions for client roles.</p>
+                <p className="text-sm text-slate-500">Manage permissions for client roles with the full client catalog.</p>
               </div>
               <div className="min-w-[220px]">
                 <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Role</label>
@@ -594,7 +786,6 @@ export default function OrgDashboard() {
                   onChange={(e) => setSelectedRole(e.target.value)}
                   className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
                 >
-                  <option value="client_admin">Client Admin</option>
                   <option value="school_owner">School Owner</option>
                   <option value="teacher">Teacher</option>
                   <option value="student">Student</option>
@@ -606,7 +797,7 @@ export default function OrgDashboard() {
               <div className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
                 <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Total</div>
                 <div className="mt-2 text-2xl font-semibold text-slate-900">{permissionStats.total}</div>
-                <div className="text-xs text-slate-500">Available permissions</div>
+                <div className="text-xs text-slate-500">Catalog permissions</div>
               </div>
               <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4">
                 <div className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">Granted</div>
@@ -664,15 +855,15 @@ export default function OrgDashboard() {
             </div>
 
             <div className="mt-6 space-y-6">
-              {filteredGroupedPermissions.length === 0 && (
-                <div className="rounded-2xl border border-slate-100 bg-slate-50 p-6 text-sm text-slate-600">
-                  No permissions match your filters.
-                </div>
-              )}
-              {filteredGroupedPermissions.map((group) => {
-                const isGroupSaving = saving === `group:${group.name}`;
-                return (
-                  <div key={group.name} className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4">
+                {filteredGroupedPermissions.length === 0 && (
+                  <div className="rounded-2xl border border-slate-100 bg-slate-50 p-6 text-sm text-slate-600">
+                    No permissions match your filters.
+                  </div>
+                )}
+                {filteredGroupedPermissions.map((group) => {
+                  const isGroupSaving = saving === `group:${group.name}`;
+                  return (
+                    <div key={group.name} className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
                         <div className="text-sm font-semibold text-slate-900">{group.name}</div>
@@ -702,43 +893,152 @@ export default function OrgDashboard() {
                     </div>
 
                     <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                      {group.permissions.map((permission) => {
-                        const existing = permissionMap.get(permission);
-                        const enabled = Boolean(existing?.granted);
-                        const isSaving = saving === permission || Boolean(saving?.startsWith('group:'));
+                      {group.permissions
+                        .filter((permission) => !['exams.update', 'exams.publish'].includes(permission))
+                        .map((permission) => {
+                          const existing = permissionMap.get(permission);
+                          const enabled = Boolean(existing?.granted);
+                          const isSaving = saving === permission || Boolean(saving?.startsWith('group:'));
 
-                        return (
-                          <div
-                            key={permission}
-                            className="flex items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-white px-4 py-3"
-                          >
-                            <div>
-                              <div className="text-sm font-semibold text-slate-900">{permission}</div>
-                              <div className="text-xs text-slate-500">
-                                {enabled ? 'Granted' : 'Not granted'}
-                              </div>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => handleTogglePermission(permission, !enabled)}
-                              disabled={isSaving}
-                              aria-pressed={enabled}
-                              className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${enabled ? 'bg-emerald-500' : 'bg-slate-200'
-                                } ${isSaving ? 'cursor-not-allowed opacity-60' : ''}`}
+                          return (
+                            <div
+                              key={permission}
+                              className="flex items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-white px-4 py-3"
                             >
-                              <span
-                                className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${enabled ? 'translate-x-5' : 'translate-x-1'
+                              <div>
+                                <div className="text-sm font-semibold text-slate-900">{permission}</div>
+                                <div className="text-xs text-slate-500">
+                                  {enabled ? 'Granted' : 'Not granted'}
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleTogglePermission(permission, !enabled)}
+                                disabled={isSaving}
+                                aria-pressed={enabled}
+                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${
+                                  enabled ? 'bg-emerald-500' : 'bg-slate-200'
+                                } ${isSaving ? 'cursor-not-allowed opacity-60' : ''}`}
+                              >
+                                <span
+                                  className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${
+                                    enabled ? 'translate-x-5' : 'translate-x-1'
                                   }`}
-                              />
-                            </button>
-                          </div>
-                        );
-                      })}
+                                />
+                              </button>
+                            </div>
+                          );
+                        })}
                     </div>
                   </div>
                 );
               })}
             </div>
+          </div>
+
+          <div className="rounded-2xl bg-white p-5 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-semibold">User Overrides</h3>
+                <p className="text-sm text-slate-500">Grant or deny permissions for a specific client user.</p>
+              </div>
+              <div className="min-w-[220px]">
+                <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">School</label>
+                <select
+                  value={selectedOverrideSchoolId}
+                  onChange={(e) => setSelectedOverrideSchoolId(e.target.value)}
+                  className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                >
+                  <option value="">All schools</option>
+                  {schools.map((school) => (
+                    <option key={`override-school:${school.id}`} value={school.id}>
+                      {school.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="min-w-[280px]">
+                <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">User</label>
+                <select
+                  value={selectedUserId}
+                  onChange={(e) => setSelectedUserId(e.target.value)}
+                  className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                >
+                  <option value="">Choose user</option>
+                  {availableOverrideUsers.map((candidate) => (
+                    <option key={candidate.id} value={candidate.id}>
+                      {candidate.full_name} ({candidate.email})
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-2 text-xs text-slate-500">
+                  Showing {selectedRole.replace('_', ' ')} users
+                  {selectedOverrideSchoolId ? ' in the selected school' : ' across this client'}.
+                </p>
+              </div>
+            </div>
+
+            {!selectedUserId && (
+              <div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 p-4 text-sm text-slate-600">
+                Select a user to manage overrides.
+              </div>
+            )}
+
+            {selectedUserId && (
+              <div className="mt-6 space-y-6">
+                {groupedPermissions.map((group) => (
+                  <div key={`override:${group.name}`} className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4">
+                    <div className="text-sm font-semibold text-slate-900">{group.name}</div>
+                    <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                      {group.permissions
+                        .filter((permission) => !['exams.update', 'exams.publish'].includes(permission))
+                        .map((permission) => {
+                          const override = userOverrideMap.get(permission);
+                          const state = override ? (override.granted ? 'Granted' : 'Denied') : 'Inherited';
+                          const isSaving =
+                            overrideSaving === permission || overrideSaving === `clear:${permission}`;
+
+                          return (
+                            <div
+                              key={`override:${permission}`}
+                              className="rounded-2xl border border-slate-100 bg-white p-4"
+                            >
+                              <div className="text-sm font-semibold text-slate-900">{permission}</div>
+                              <div className="text-xs text-slate-500">{state}</div>
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => handleUserOverride(permission, true)}
+                                  disabled={isSaving}
+                                  className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  Grant
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleUserOverride(permission, false)}
+                                  disabled={isSaving}
+                                  className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  Deny
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleClearUserOverride(permission)}
+                                  disabled={isSaving || !override}
+                                  className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  Clear
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </section>
       )}
