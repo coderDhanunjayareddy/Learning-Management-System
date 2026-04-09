@@ -56,6 +56,7 @@ import QuestionCreatePage from '@/pages/questions/QuestionCreatePage';
 import QuestionEditPage from '@/pages/questions/QuestionEditPage';
 import QuestionDeletePage from '@/pages/questions/QuestionDeletePage';
 import QuestionBulkUploadPage from '@/pages/questions/QuestionBulkUploadPage';
+import QuestionConverterPage from '@/pages/questions/QuestionConverterPage';
 import QuestionProgramsPage from '@/pages/questions/QuestionProgramsPage';
 import QuestionProgramCreatePage from '@/pages/questions/QuestionProgramCreatePage';
 import QuestionProgramEditPage from '@/pages/questions/QuestionProgramEditPage';
@@ -267,6 +268,7 @@ export default function AppRoutes() {
       >
         <Route path="/question-bank/new" element={<QuestionCreatePage />} />
         <Route path="/question-bank/:id/edit" element={<QuestionEditPage />} />
+        <Route path="/question-bank/converter" element={<QuestionConverterPage />} />
         <Route path="/question-bank/bulk-upload" element={<QuestionBulkUploadPage />} />
         <Route path="/question-bank/programs/new" element={<QuestionProgramCreatePage />} />
         <Route path="/question-bank/programs/:id/edit" element={<QuestionProgramEditPage />} />

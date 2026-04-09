@@ -49,6 +49,7 @@ const questionBankTabs = [
   { key: "chapters", label: "Chapters", to: "/question-bank/chapters" },
   { key: "topics", label: "Topics", to: "/question-bank/topics" },
   { key: "folders", label: "Folders", to: "/question-bank/folders" },
+  { key: "converter", label: "Converter", to: "/question-bank/converter" },
   { key: "bulk-upload", label: "Bulk Upload", to: "/question-bank/bulk-upload" },
 ] as const;
 

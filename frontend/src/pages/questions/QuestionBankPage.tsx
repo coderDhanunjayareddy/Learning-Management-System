@@ -17,6 +17,12 @@ export default function QuestionBankPage() {
         permissions.canCreate ? (
           <div className="flex flex-wrap gap-2">
             <button
+              onClick={() => navigate("/question-bank/converter")}
+              className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+            >
+              Converter
+            </button>
+            <button
               onClick={() => navigate("/question-bank/bulk-upload")}
               className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
             >
