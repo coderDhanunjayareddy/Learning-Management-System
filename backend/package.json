@@ -7,7 +7,8 @@
     "lint": "eslint .",
     "verify:rls": "node scripts/verify-rls-policies.mjs",
     "seed:permissions": "node scripts/seed-role-permissions.mjs",
-    "seed:curriculum": "node scripts/seed-curriculum.mjs"
+    "seed:curriculum": "node scripts/seed-curriculum.mjs",
+    "backfill:comprehension": "node scripts/backfill-comprehensive-questions.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.80.0",

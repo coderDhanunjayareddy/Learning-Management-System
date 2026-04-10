@@ -7,6 +7,7 @@ import {
   getQuestionById,
   listQuestions,
   rejectQuestion,
+  updateQuestion,
 } from '../services/questions.service.js';
 
 const makeRes = () => ({
@@ -38,8 +39,22 @@ const createMockDb = () => {
       { id: 2001, subject_id: 1001, client_id: 101, name: 'Thermodynamics' },
       { id: 2002, subject_id: 1002, client_id: 202, name: 'Thermodynamics' },
     ],
+    comprehensionPassages: [
+      {
+        id: 901,
+        client_id: 101,
+        school_id: null,
+        title: { html: '<p>Heat Transfer Passage</p>' },
+        passage_content: { html: '<p>Passage body</p>' },
+        subject_id: 1001,
+        chapter_id: 2001,
+        topic_id: null,
+        created_by: 11,
+      },
+    ],
     questions: [],
     nextQuestionId: 1,
+    nextPassageId: 1000,
   };
 
   const enrichQuestion = (question) => {
@@ -103,8 +118,13 @@ const createMockDb = () => {
           rows: [
             { column_name: 'comprehension_passage' },
             { column_name: 'comprehension_questions' },
+            { column_name: 'comprehension_passage_id' },
           ],
         };
+      }
+
+      if (normalized.includes("from information_schema.tables") && normalized.includes("table_name = 'comprehension_passages'")) {
+        return { rows: [{ '?column?': 1 }] };
       }
 
       if (normalized.includes('from subjects s left join grades g on g.id = s.grade_id where s.id = $1')) {
@@ -165,6 +185,24 @@ const createMockDb = () => {
         return { rows: [{ id: record.id }] };
       }
 
+      if (normalized.startsWith('select * from comprehension_passages where id = $1')) {
+        const passage = data.comprehensionPassages.find((item) => Number(item.id) === Number(params[0]));
+        return { rows: passage ? [{ ...passage }] : [] };
+      }
+
+      if (normalized.startsWith('select id, title, passage_content from comprehension_passages where id = any($1::int[])')) {
+        const ids = Array.isArray(params[0]) ? params[0].map((entry) => Number(entry)) : [];
+        return {
+          rows: data.comprehensionPassages
+            .filter((item) => ids.includes(Number(item.id)))
+            .map((item) => ({
+              id: item.id,
+              title: item.title,
+              passage_content: item.passage_content,
+            })),
+        };
+      }
+
       if (
         normalized.includes('select q.*, s.grade_id, g.program_id') &&
         normalized.includes('from questions q') &&
@@ -217,6 +255,42 @@ const createMockDb = () => {
         question.rejection_reason = params[2];
         question.updated_at = new Date(Date.UTC(2026, 2, 25, 11, 15, 0)).toISOString();
         return { rows: [{ ...question }] };
+      }
+
+      if (
+        normalized.startsWith('update questions set ') &&
+        normalized.includes('updated_at = now() where id = $') &&
+        !normalized.includes("status = 'approved'") &&
+        !normalized.includes("status = 'rejected'")
+      ) {
+        const questionId = Number(params[params.length - 1]);
+        const question = data.questions.find((item) => Number(item.id) === questionId);
+        if (!question) return { rows: [] };
+
+        const setMatch = sql.match(/update questions set (.+), updated_at = now\(\) where id = \$\d+/is);
+        const assignments = setMatch
+          ? setMatch[1].split(',').map((part) => part.trim()).filter(Boolean)
+          : [];
+        const jsonColumns = new Set([
+          'question_text',
+          'options',
+          'correct_answer',
+          'solution',
+          'comprehension_passage',
+          'comprehension_questions',
+        ]);
+
+        assignments.forEach((assignment, index) => {
+          const columnMatch = assignment.match(/^([a-z_]+)\s*=\s*\$\d+$/i);
+          if (!columnMatch) return;
+          const column = columnMatch[1];
+          const value = params[index];
+          question[column] =
+            jsonColumns.has(column) && typeof value === 'string' ? JSON.parse(value) : value;
+        });
+
+        question.updated_at = new Date(Date.UTC(2026, 2, 25, 12, 0, 0)).toISOString();
+        return { rows: [{ id: question.id }] };
       }
 
       throw new Error(`Unhandled mock query: ${normalized}`);
@@ -428,4 +502,112 @@ test('Question rejection clears approval fields and remains atomic', async (t) =
 
   assert.equal(approveAfterRejectRes.statusCode, 400);
   assert.equal(approveAfterRejectRes.body.error, 'Only draft questions can be approved');
+});
+
+test('Question scoring_mode persists on create and update', async (t) => {
+  const originalQuery = pool.query.bind(pool);
+  const mockDb = createMockDb();
+  pool.query = mockDb.query.bind(mockDb);
+  t.after(() => {
+    pool.query = originalQuery;
+  });
+
+  const teacherTenantA = { id: 11, role: 'teacher', client_id: 101 };
+
+  const createRes = makeRes();
+  await createQuestion(
+    {
+      user: teacherTenantA,
+      body: {
+        question_type: 'mcq_multiple',
+        question_text: { html: '<p>Select heat transfer modes</p>' },
+        options: [
+          { id: 'opt-1', text: 'Conduction' },
+          { id: 'opt-2', text: 'Convection' },
+          { id: 'opt-3', text: 'Reflection' },
+        ],
+        correct_answer: { answer_ids: ['opt-1', 'opt-2'] },
+        scoring_mode: 'partial',
+        subject_id: 1001,
+        chapter_id: 2001,
+        difficulty_level: 'medium',
+        marks_positive: 4,
+        marks_negative: 1,
+      },
+    },
+    createRes
+  );
+
+  assert.equal(createRes.statusCode, 201);
+  assert.equal(createRes.body.scoring_mode, 'partial');
+
+  const updateRes = makeRes();
+  await updateQuestion(
+    {
+      user: teacherTenantA,
+      params: { id: String(createRes.body.id) },
+      body: {
+        scoring_mode: 'mixed',
+      },
+    },
+    updateRes
+  );
+
+  assert.equal(updateRes.statusCode, 200);
+  assert.equal(updateRes.body.scoring_mode, 'mixed');
+});
+
+test('Question can link to a comprehension passage and returns passage summary', async (t) => {
+  const originalQuery = pool.query.bind(pool);
+  const mockDb = createMockDb();
+  pool.query = mockDb.query.bind(mockDb);
+  t.after(() => {
+    pool.query = originalQuery;
+  });
+
+  const teacherTenantA = { id: 11, role: 'teacher', client_id: 101 };
+
+  const createRes = makeRes();
+  await createQuestion(
+    {
+      user: teacherTenantA,
+      body: {
+        question_type: 'mcq_single',
+        question_text: { html: '<p>Which mode transfers heat through solids?</p>' },
+        options: [
+          { id: 'opt-1', text: 'Conduction' },
+          { id: 'opt-2', text: 'Diffusion' },
+        ],
+        correct_answer: { answer_ids: ['opt-1'] },
+        comprehension_passage_id: 901,
+        subject_id: 1001,
+        chapter_id: 2001,
+        difficulty_level: 'medium',
+        marks_positive: 4,
+        marks_negative: 1,
+      },
+    },
+    createRes
+  );
+
+  assert.equal(createRes.statusCode, 201);
+  assert.equal(createRes.body.comprehension_passage_id, 901);
+  assert.equal(createRes.body.comprehension.id, 901);
+  assert.equal(createRes.body.comprehension.passage_content.html, '<p>Passage body</p>');
+
+  const updateRes = makeRes();
+  await updateQuestion(
+    {
+      user: teacherTenantA,
+      params: { id: String(createRes.body.id) },
+      body: {
+        comprehension_passage_id: null,
+      },
+    },
+    updateRes
+  );
+
+  assert.equal(updateRes.statusCode, 200);
+  assert.equal(updateRes.body.comprehension_passage_id, null);
+  assert.equal(updateRes.body.comprehension, undefined);
 });

@@ -4,6 +4,10 @@ import {
   getQuestionById,
   createQuestion,
   updateQuestion,
+  listComprehensionPassages,
+  getComprehensionPassageById,
+  createComprehensionPassage,
+  updateComprehensionPassage,
   softDeleteQuestion,
   approveQuestion,
   rejectQuestion,
@@ -40,5 +44,10 @@ router.get('/question-folders', checkPermission('questions.read'), listQuestionF
 router.get('/question-folders/:id', checkPermission('questions.read'), getQuestionFolderById);
 router.post('/question-folders', checkPermission('questions.create'), createQuestionFolder);
 router.patch('/question-folders/:id', checkPermission('questions.create'), updateQuestionFolder);
+
+router.get('/comprehension-passages', checkPermission('questions.read'), listComprehensionPassages);
+router.get('/comprehension-passages/:id', checkPermission('questions.read'), getComprehensionPassageById);
+router.post('/comprehension-passages', checkPermission('questions.create'), createComprehensionPassage);
+router.put('/comprehension-passages/:id', checkPermission('questions.create'), updateComprehensionPassage);
 
 export default router;

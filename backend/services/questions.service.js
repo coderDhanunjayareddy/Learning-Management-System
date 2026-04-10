@@ -28,7 +28,6 @@ const VALID_QUESTION_TYPES = [
   'short_answer',
   'match_following',
   'fill_in_blank',
-  'comprehensive',
 ];
 const VALID_DIFFICULTY_LEVELS = ['easy', 'medium', 'hard'];
 const VALID_STATUSES = ['draft', 'approved', 'rejected', 'archived'];
@@ -1597,9 +1596,23 @@ const extractBulkRowsFromFile = async (file, defaults) => {
 };
 
 const buildQuestionInsertPayload = async ({ input, user, role, clientId }) => {
+  if (
+    input.comprehension_passage !== undefined ||
+    input.comprehensive_passage !== undefined ||
+    input.comprehension_questions !== undefined ||
+    input.comprehensive_subquestions !== undefined
+  ) {
+    throw new AppError('Legacy comprehensive payloads are no longer supported. Create a passage and link comprehension_passage_id instead.', 400);
+  }
+
   const questionType = requireString(input.question_type, 'question_type');
   if (!VALID_QUESTION_TYPES.includes(questionType)) {
     throw new AppError('Invalid question_type', 400);
+  }
+
+  const scoringModeInput = input.scoring_mode ? String(input.scoring_mode) : 'all_or_nothing';
+  if (!VALID_SCORING_MODES.includes(scoringModeInput)) {
+    throw new AppError('Invalid scoring_mode', 400);
   }
 
   const questionTextInput = input.question_text;
@@ -1617,13 +1630,8 @@ const buildQuestionInsertPayload = async ({ input, user, role, clientId }) => {
     correctAnswerRaw === undefined ||
     correctAnswerRaw === null ||
     (typeof correctAnswerRaw === 'string' && !correctAnswerRaw.trim());
-  if (questionType === 'comprehensive' && missingCorrectAnswer) {
-    correctAnswerRaw = {};
-  } else if (missingCorrectAnswer) {
+  if (missingCorrectAnswer) {
     throw new AppError('correct_answer is required', 400);
-  }
-  if (questionType === 'comprehensive' && typeof correctAnswerRaw === 'string' && isPlaceholderBulkValue(correctAnswerRaw)) {
-    correctAnswerRaw = {};
   }
 
   const resolvedProgramId = await resolveProgramReference({
@@ -1679,31 +1687,22 @@ const buildQuestionInsertPayload = async ({ input, user, role, clientId }) => {
     throw new AppError('options are required for MCQ questions', 400);
   }
 
-  const comprehensionPassage =
-    questionType === 'comprehensive'
-      ? input.comprehension_passage ?? input.comprehensive_passage ?? null
-      : null;
-  const comprehensionQuestions =
-    questionType === 'comprehensive'
-      ? Array.isArray(input.comprehension_questions)
-        ? input.comprehension_questions
-        : []
-      : null;
-  const hasComprehensionPassage =
-    comprehensionPassage !== null &&
-    comprehensionPassage !== undefined &&
-    !(
-      typeof comprehensionPassage === 'string' &&
-      comprehensionPassage.trim().length === 0
-    ) &&
-    !(
-      typeof comprehensionPassage === 'object' &&
-      comprehensionPassage &&
-      'html' in comprehensionPassage &&
-      String(comprehensionPassage.html ?? '').trim().length === 0
-    );
-  if (questionType === 'comprehensive' && !hasComprehensionPassage) {
-    throw new AppError('comprehension_passage is required for comprehensive questions', 400);
+  const schemaSupport = await getQuestionSchemaSupport();
+  let comprehensionPassageId = null;
+  if (input.comprehension_passage_id !== undefined && input.comprehension_passage_id !== null && input.comprehension_passage_id !== '') {
+    if (!schemaSupport.hasComprehensionPassageId || !schemaSupport.hasComprehensionPassageTable) {
+      throw new AppError('This database does not support linked passages yet', 400);
+    }
+    comprehensionPassageId = parseRequiredInt(input.comprehension_passage_id, 'comprehension_passage_id');
+    const { error } = await getComprehensionPassageByIdScopedInternal({
+      id: comprehensionPassageId,
+      user,
+      role,
+      clientId,
+    });
+    if (error) {
+      throw new AppError(error.body.error, error.status);
+    }
   }
 
   return {
@@ -1715,11 +1714,11 @@ const buildQuestionInsertPayload = async ({ input, user, role, clientId }) => {
     correct_answer: correctAnswerRaw,
     solution: input.solution ?? null,
     solution_video_url: input.solution_video_url ?? null,
-    comprehension_passage: comprehensionPassage,
-    comprehension_questions: comprehensionQuestions,
+    comprehension_passage_id: comprehensionPassageId,
     subject_id: subjectId,
     chapter_id: chapterId,
     topic_id: topicId,
+    scoring_mode: scoringModeInput,
     difficulty_level: difficulty,
     exam_tags: parseExamTagsInput(input.exam_tags ?? input.category ?? input.catagory),
     marks_positive: parseNumberField(input.marks_positive, 'marks_positive', 4),
@@ -1744,15 +1743,170 @@ const getQuestionSchemaSupport = async () => {
       AND table_name = 'questions'
       AND column_name = ANY($1::text[])
     `,
-    [['comprehension_passage', 'comprehension_questions']]
+    [['comprehension_passage', 'comprehension_questions', 'comprehension_passage_id']]
+  );
+
+  const tableResult = await dbQuery(
+    `
+    SELECT 1
+    FROM information_schema.tables
+    WHERE table_schema = 'public'
+      AND table_name = 'comprehension_passages'
+    LIMIT 1
+    `
   );
 
   const existingColumns = new Set(result.rows.map((row) => row.column_name));
   questionSchemaSupportCache = {
+    hasComprehensionPassageTable: tableResult.rows.length > 0,
     hasComprehensionPassage: existingColumns.has('comprehension_passage'),
     hasComprehensionQuestions: existingColumns.has('comprehension_questions'),
+    hasComprehensionPassageId: existingColumns.has('comprehension_passage_id'),
   };
   return questionSchemaSupportCache;
+};
+
+const coerceRichTextValue = (value) => {
+  if (value === undefined || value === null) return null;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed.length ? { html: trimmed } : null;
+  }
+  if (typeof value === 'object') {
+    if ('html' in value) {
+      const html = String(value.html ?? '').trim();
+      return html.length ? { ...value, html } : null;
+    }
+    return value;
+  }
+  return { html: String(value) };
+};
+
+const ensureRichTextValue = (value, fieldName) => {
+  const normalized = coerceRichTextValue(value);
+  if (
+    !normalized ||
+    (typeof normalized === 'object' && 'html' in normalized && String(normalized.html ?? '').trim().length === 0)
+  ) {
+    throw new AppError(`${fieldName} is required`, 400);
+  }
+  return normalized;
+};
+
+const normalizePassageTitle = (passage) => {
+  if (!passage) return null;
+  return coerceRichTextValue(passage.title ?? passage.prompt_text ?? null);
+};
+
+const buildComprehensionSummary = (source) => {
+  const passageId = source.comprehension_passage_id ?? source.passage_id ?? source.id ?? null;
+  const passageContent =
+    source.passage_content ?? source.comprehension_passage_content ?? source.comprehension_passage ?? null;
+  if (!passageId || !passageContent) return null;
+  return {
+    id: Number(passageId),
+    title: normalizePassageTitle(source),
+    passage_content: passageContent,
+  };
+};
+
+const attachLegacyComprehensionFallback = (question) => {
+  if (!question || question.comprehension) return question;
+  if (question.question_type !== 'comprehensive') return question;
+  if (!question.comprehension_passage) return question;
+
+  return {
+    ...question,
+    comprehension: {
+      id: Number(question.id),
+      title: coerceRichTextValue(question.question_text),
+      passage_content: question.comprehension_passage,
+    },
+  };
+};
+
+const fetchComprehensionSummaryMap = async (passageIds) => {
+  const schemaSupport = await getQuestionSchemaSupport();
+  if (!schemaSupport.hasComprehensionPassageTable) return new Map();
+
+  const normalizedIds = [...new Set(
+    (Array.isArray(passageIds) ? passageIds : [])
+      .map((id) => Number(id))
+      .filter((id) => Number.isInteger(id) && id > 0)
+  )];
+
+  if (normalizedIds.length === 0) return new Map();
+
+  const result = await dbQuery(
+    `
+    SELECT id, title, passage_content
+    FROM comprehension_passages
+    WHERE id = ANY($1::int[])
+    `,
+    [normalizedIds]
+  );
+
+  return new Map(
+    result.rows.map((row) => [
+      Number(row.id),
+      {
+        id: Number(row.id),
+        title: normalizePassageTitle(row),
+        passage_content: row.passage_content,
+      },
+    ])
+  );
+};
+
+const attachComprehensionSummaries = async (rows) => {
+  const schemaSupport = await getQuestionSchemaSupport();
+  if (!Array.isArray(rows) || rows.length === 0) return [];
+
+  const summaryMap = schemaSupport.hasComprehensionPassageId
+    ? await fetchComprehensionSummaryMap(rows.map((row) => row.comprehension_passage_id))
+    : new Map();
+
+  return rows.map((row) => {
+    const summary = row.comprehension_passage_id ? summaryMap.get(Number(row.comprehension_passage_id)) ?? null : null;
+    if (summary) {
+      return {
+        ...row,
+        comprehension: summary,
+      };
+    }
+    return attachLegacyComprehensionFallback(row);
+  });
+};
+
+const getComprehensionPassageByIdScopedInternal = async ({ id, user, role, clientId }) => {
+  const schemaSupport = await getQuestionSchemaSupport();
+  if (!schemaSupport.hasComprehensionPassageTable) {
+    throw new AppError('This database does not support comprehension passages yet', 400);
+  }
+
+  const result = await dbQuery(`SELECT * FROM comprehension_passages WHERE id = $1`, [id]);
+  if (result.rows.length === 0) {
+    return { error: { status: 404, body: { error: 'Passage not found' } } };
+  }
+
+  const passage = result.rows[0];
+  if (clientId && passage.client_id !== clientId) {
+    return { error: { status: 403, body: { error: 'Access denied' } } };
+  }
+
+  if (isSchoolOwner(role) || isTeacher(role)) {
+    const schoolIds = await fetchUserSchoolIds(user.id);
+    if (passage.school_id && !schoolIds.includes(passage.school_id)) {
+      return { error: { status: 403, body: { error: 'Access denied' } } };
+    }
+  }
+
+  return {
+    passage: {
+      ...passage,
+      title: normalizePassageTitle(passage),
+    },
+  };
 };
 
 const getQuestionByIdScoped = async ({ id, user, role, clientId }) => {
@@ -1787,6 +1941,7 @@ const insertQuestion = async (payload) => {
     'correct_answer',
     'solution',
     'solution_video_url',
+    'scoring_mode',
   ];
   const values = [
     payload.client_id,
@@ -1797,15 +1952,11 @@ const insertQuestion = async (payload) => {
     toDbJsonParam(payload.correct_answer),
     toDbJsonParam(payload.solution),
     payload.solution_video_url,
+    payload.scoring_mode,
   ];
-
-  if (schemaSupport.hasComprehensionPassage) {
-    columns.push('comprehension_passage');
-    values.push(toDbJsonParam(payload.comprehension_passage));
-  }
-  if (schemaSupport.hasComprehensionQuestions) {
-    columns.push('comprehension_questions');
-    values.push(toDbJsonParam(payload.comprehension_questions));
+  if (schemaSupport.hasComprehensionPassageId) {
+    columns.push('comprehension_passage_id');
+    values.push(payload.comprehension_passage_id);
   }
 
   columns.push(
@@ -1852,7 +2003,8 @@ const insertQuestion = async (payload) => {
     `,
     [insertedId]
   );
-  return fullResult.rows[0];
+  const [hydrated] = await attachComprehensionSummaries(fullResult.rows);
+  return hydrated;
 };
 
 export const listQuestions = async (req, res) => {
@@ -1891,8 +2043,10 @@ export const listQuestions = async (req, res) => {
       listParams
     );
 
+    const hydratedRows = await attachComprehensionSummaries(listResult.rows);
+
     res.json({
-      data: listResult.rows,
+      data: hydratedRows,
       page,
       page_size: pageSize,
       total,
@@ -1951,7 +2105,8 @@ export const getQuestionById = async (req, res) => {
       return res.status(404).json({ error: 'Question not found' });
     }
 
-    res.json(result.rows[0]);
+    const [hydrated] = await attachComprehensionSummaries(result.rows);
+    res.json(hydrated);
   } catch (err) {
     handleServiceError(res, err, 'Failed to load question');
   }
@@ -2007,6 +2162,10 @@ export const updateQuestion = async (req, res) => {
       }
     }
 
+    if (question.question_type === 'comprehensive') {
+      return res.status(400).json({ error: 'Legacy comprehensive questions cannot be edited in-place. Migrate them to linked passages first.' });
+    }
+
     if (isTeacher(role) || isSchoolOwner(role)) {
       const schoolIds = await fetchUserSchoolIds(req.user.id);
       if (question.school_id && !schoolIds.includes(question.school_id)) {
@@ -2023,27 +2182,38 @@ export const updateQuestion = async (req, res) => {
       updates.question_type = req.body.question_type;
     }
 
+    if (
+      req.body.comprehension_passage !== undefined ||
+      req.body.comprehensive_passage !== undefined ||
+      req.body.comprehension_questions !== undefined ||
+      req.body.comprehensive_subquestions !== undefined
+    ) {
+      throw new AppError('Legacy comprehensive payloads are no longer supported. Link a comprehension_passage_id instead.', 400);
+    }
+
     if (req.body.question_text !== undefined) updates.question_text = toDbJsonParam(req.body.question_text);
     if (req.body.options !== undefined) updates.options = toDbJsonParam(req.body.options ?? null);
     if (req.body.correct_answer !== undefined) updates.correct_answer = toDbJsonParam(req.body.correct_answer);
     if (req.body.solution !== undefined) updates.solution = toDbJsonParam(req.body.solution ?? null);
     if (req.body.solution_video_url !== undefined) updates.solution_video_url = req.body.solution_video_url ?? null;
-    if (req.body.comprehension_passage !== undefined) {
-      updates.comprehension_passage = toDbJsonParam(req.body.comprehension_passage ?? null);
-    } else if (req.body.comprehensive_passage !== undefined) {
-      updates.comprehension_passage = toDbJsonParam(req.body.comprehensive_passage ?? null);
-    }
-    if (req.body.comprehension_questions !== undefined) {
-      updates.comprehension_questions = toDbJsonParam(req.body.comprehension_questions ?? null);
-    } else if (req.body.comprehensive_subquestions !== undefined) {
-      updates.comprehension_questions = toDbJsonParam(req.body.comprehensive_subquestions ?? null);
-    }
     const schemaSupport = await getQuestionSchemaSupport();
-    if (!schemaSupport.hasComprehensionPassage) {
-      delete updates.comprehension_passage;
-    }
-    if (!schemaSupport.hasComprehensionQuestions) {
-      delete updates.comprehension_questions;
+    if (req.body.comprehension_passage_id !== undefined) {
+      if (!schemaSupport.hasComprehensionPassageId || !schemaSupport.hasComprehensionPassageTable) {
+        throw new AppError('This database does not support linked passages yet', 400);
+      }
+      const passageId = parseNullableInt(req.body.comprehension_passage_id, 'comprehension_passage_id');
+      if (passageId) {
+        const { error } = await getComprehensionPassageByIdScopedInternal({
+          id: passageId,
+          user: req.user,
+          role,
+          clientId,
+        });
+        if (error) {
+          return res.status(error.status).json(error.body);
+        }
+      }
+      updates.comprehension_passage_id = passageId;
     }
 
     if (
@@ -2073,6 +2243,13 @@ export const updateQuestion = async (req, res) => {
         throw new AppError('Invalid difficulty_level', 400);
       }
       updates.difficulty_level = req.body.difficulty_level;
+    }
+    //  console.log("req.body.scoring_mode: ", req.body.scoring_mode);
+    if (req.body.scoring_mode !== undefined) {
+      if (!VALID_SCORING_MODES.includes(req.body.scoring_mode)) {
+        throw new AppError('Invalid scoring_mode', 400);
+      }
+      updates.scoring_mode = req.body.scoring_mode;
     }
 
     if (req.body.exam_tags !== undefined) {
@@ -2110,9 +2287,348 @@ export const updateQuestion = async (req, res) => {
       `,
       [updateResult.rows[0].id]
     );
-    res.json(fullResult.rows[0]);
+    const [hydrated] = await attachComprehensionSummaries(fullResult.rows);
+    res.json(hydrated);
   } catch (err) {
     handleServiceError(res, err, 'Failed to update question');
+  }
+};
+
+const buildPassageWhere = async ({ user, query }) => {
+  const role = user?.role;
+  const clientId = ensureClientScope(user?.client_id ?? null, role);
+  const conditions = [];
+  const params = [];
+
+  const addParam = (value) => {
+    params.push(value);
+    return `$${params.length}`;
+  };
+
+  const schemaSupport = await getQuestionSchemaSupport();
+  if (!schemaSupport.hasComprehensionPassageTable) {
+    throw new AppError('This database does not support comprehension passages yet', 400);
+  }
+
+  if (clientId) {
+    conditions.push(`cp.client_id = ${addParam(clientId)}`);
+  }
+
+  if (isTeacher(role) || isSchoolOwner(role)) {
+    const schoolIds = await fetchUserSchoolIds(user.id);
+    if (schoolIds.length > 0) {
+      conditions.push(`(cp.school_id IS NULL OR cp.school_id = ANY(${addParam(schoolIds)}))`);
+    } else {
+      conditions.push(`cp.school_id IS NULL`);
+    }
+  }
+
+  const schoolId = parseNullableInt(query.school_id, 'school_id');
+  if (schoolId) conditions.push(`cp.school_id = ${addParam(schoolId)}`);
+
+  const programId = parseNullableInt(query.program_id, 'program_id');
+  if (programId) conditions.push(`cp.program_id = ${addParam(programId)}`);
+
+  const gradeId = parseNullableInt(query.grade_id, 'grade_id');
+  if (gradeId) conditions.push(`cp.grade_id = ${addParam(gradeId)}`);
+
+  const subjectId = parseNullableInt(query.subject_id, 'subject_id');
+  if (subjectId) conditions.push(`cp.subject_id = ${addParam(subjectId)}`);
+
+  const chapterId = parseNullableInt(query.chapter_id, 'chapter_id');
+  if (chapterId) conditions.push(`cp.chapter_id = ${addParam(chapterId)}`);
+
+  const topicId = parseNullableInt(query.topic_id, 'topic_id');
+  if (topicId) conditions.push(`cp.topic_id = ${addParam(topicId)}`);
+
+  if (query.q) {
+    const search = String(query.q).trim();
+    if (search.length > 0) {
+      conditions.push(
+        `to_tsvector('simple', coalesce(cp.title::text,'') || ' ' || coalesce(cp.passage_content::text,'')) @@ plainto_tsquery('simple', ${addParam(search)})`
+      );
+    }
+  }
+
+  return { conditions, params };
+};
+
+const normalizePassageRow = (row) => ({
+  ...row,
+  title: normalizePassageTitle(row),
+});
+
+export const listComprehensionPassages = async (req, res) => {
+  try {
+    if (!req.user?.id || !req.user?.role) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const page = Math.max(parseInt(req.query.page || '1', 10), 1);
+    const pageSize = Math.min(Math.max(parseInt(req.query.page_size || '20', 10), 1), 100);
+    const offset = (page - 1) * pageSize;
+
+    const { conditions, params } = await buildPassageWhere({ user: req.user, query: req.query });
+    const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const countResult = await dbQuery(
+      `SELECT COUNT(*) AS total FROM comprehension_passages cp ${whereClause}`,
+      params
+    );
+
+    const listParams = [...params, pageSize, offset];
+    const result = await dbQuery(
+      `
+      SELECT cp.*
+      FROM comprehension_passages cp
+      ${whereClause}
+      ORDER BY cp.updated_at DESC, cp.id DESC
+      LIMIT $${listParams.length - 1} OFFSET $${listParams.length}
+      `,
+      listParams
+    );
+
+    res.json({
+      data: result.rows.map(normalizePassageRow),
+      page,
+      page_size: pageSize,
+      total: Number(countResult.rows[0]?.total || 0),
+    });
+  } catch (err) {
+    handleServiceError(res, err, 'Failed to load comprehension passages');
+  }
+};
+
+export const getComprehensionPassageById = async (req, res) => {
+  try {
+    if (!req.user?.id || !req.user?.role) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const id = parseRequiredInt(req.params.id, 'id');
+    const role = req.user.role;
+    const clientId = ensureClientScope(req.user.client_id ?? null, role);
+    const { passage, error } = await getComprehensionPassageByIdScopedInternal({
+      id,
+      user: req.user,
+      role,
+      clientId,
+    });
+
+    if (error) {
+      return res.status(error.status).json(error.body);
+    }
+
+    res.json(passage);
+  } catch (err) {
+    handleServiceError(res, err, 'Failed to load comprehension passage');
+  }
+};
+
+export const createComprehensionPassage = async (req, res) => {
+  try {
+    if (!req.user?.id || !req.user?.role) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const role = req.user.role;
+    const clientId = ensureClientScope(req.user.client_id ?? null, role);
+    const schemaSupport = await getQuestionSchemaSupport();
+    if (!schemaSupport.hasComprehensionPassageTable) {
+      throw new AppError('This database does not support comprehension passages yet', 400);
+    }
+
+    const title = ensureRichTextValue(req.body?.title, 'title');
+    const passageContent = ensureRichTextValue(req.body?.passage_content, 'passage_content');
+    const schoolId = parseNullableInt(req.body?.school_id, 'school_id');
+    await ensureSchoolAccess({ schoolId, role, userId: req.user.id, clientId });
+
+    const programId = await resolveProgramReference({ value: req.body?.program_id ?? req.body?.program, clientId });
+    const gradeResult = await resolveGradeReference({
+      value: req.body?.grade_id ?? req.body?.grade,
+      programId,
+      clientId,
+    });
+    const subjectResult = await resolveSubjectReference({
+      value: req.body?.subject_id ?? req.body?.subject,
+      gradeId: gradeResult.id,
+      programId: gradeResult.programId ?? programId,
+      clientId,
+    });
+    const chapterResult = await resolveChapterReference({
+      value: req.body?.chapter_id ?? req.body?.chapter,
+      subjectId: subjectResult.id,
+      clientId,
+    });
+    const topicResult = await resolveTopicReference({
+      value: req.body?.topic_id ?? req.body?.topic,
+      chapterId: chapterResult.id,
+      clientId,
+    });
+
+    const resolvedProgramId = programId ?? gradeResult.programId ?? subjectResult.programId ?? null;
+    const resolvedGradeId = gradeResult.id ?? subjectResult.gradeId ?? null;
+    const resolvedSubjectId = subjectResult.id ?? null;
+    const resolvedChapterId = chapterResult.id ?? null;
+    const resolvedTopicId = topicResult.id ?? null;
+
+    await ensureCurriculumScope({
+      programId: resolvedProgramId,
+      gradeId: resolvedGradeId,
+      subjectId: resolvedSubjectId,
+      chapterId: resolvedChapterId,
+      topicId: resolvedTopicId,
+      clientId,
+    });
+
+    const result = await dbQuery(
+      `
+      INSERT INTO comprehension_passages (
+        client_id,
+        school_id,
+        title,
+        passage_content,
+        program_id,
+        grade_id,
+        subject_id,
+        chapter_id,
+        topic_id,
+        created_by
+      )
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+      RETURNING *
+      `,
+      [
+        clientId,
+        schoolId,
+        toDbJsonParam(title),
+        toDbJsonParam(passageContent),
+        resolvedProgramId,
+        resolvedGradeId,
+        resolvedSubjectId,
+        resolvedChapterId,
+        resolvedTopicId,
+        req.user.id,
+      ]
+    );
+
+    res.status(201).json(normalizePassageRow(result.rows[0]));
+  } catch (err) {
+    handleServiceError(res, err, 'Failed to create comprehension passage');
+  }
+};
+
+export const updateComprehensionPassage = async (req, res) => {
+  try {
+    if (!req.user?.id || !req.user?.role) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const id = parseRequiredInt(req.params.id, 'id');
+    const role = req.user.role;
+    const clientId = ensureClientScope(req.user.client_id ?? null, role);
+    const { passage, error } = await getComprehensionPassageByIdScopedInternal({
+      id,
+      user: req.user,
+      role,
+      clientId,
+    });
+
+    if (error) {
+      return res.status(error.status).json(error.body);
+    }
+
+    const updates = {};
+
+    if (req.body?.title !== undefined) {
+      updates.title = toDbJsonParam(ensureRichTextValue(req.body.title, 'title'));
+    }
+
+    if (req.body?.passage_content !== undefined) {
+      updates.passage_content = toDbJsonParam(ensureRichTextValue(req.body.passage_content, 'passage_content'));
+    }
+
+    if (req.body?.school_id !== undefined) {
+      const schoolId = parseNullableInt(req.body.school_id, 'school_id');
+      await ensureSchoolAccess({ schoolId, role, userId: req.user.id, clientId });
+      updates.school_id = schoolId;
+    }
+
+    if (
+      req.body?.program_id !== undefined ||
+      req.body?.grade_id !== undefined ||
+      req.body?.subject_id !== undefined ||
+      req.body?.chapter_id !== undefined ||
+      req.body?.topic_id !== undefined
+    ) {
+      const programId = req.body?.program_id !== undefined
+        ? await resolveProgramReference({ value: req.body.program_id, clientId })
+        : passage.program_id;
+      const gradeResult = await resolveGradeReference({
+        value: req.body?.grade_id !== undefined ? req.body.grade_id : passage.grade_id,
+        programId,
+        clientId,
+      });
+      const subjectResult = await resolveSubjectReference({
+        value: req.body?.subject_id !== undefined ? req.body.subject_id : passage.subject_id,
+        gradeId: gradeResult.id,
+        programId: gradeResult.programId ?? programId,
+        clientId,
+      });
+      const chapterResult = await resolveChapterReference({
+        value: req.body?.chapter_id !== undefined ? req.body.chapter_id : passage.chapter_id,
+        subjectId: subjectResult.id,
+        clientId,
+      });
+      const topicResult = await resolveTopicReference({
+        value: req.body?.topic_id !== undefined ? req.body.topic_id : passage.topic_id,
+        chapterId: chapterResult.id,
+        clientId,
+      });
+
+      const resolvedProgramId = programId ?? gradeResult.programId ?? subjectResult.programId ?? null;
+      const resolvedGradeId = gradeResult.id ?? subjectResult.gradeId ?? null;
+      const resolvedSubjectId = subjectResult.id ?? null;
+      const resolvedChapterId = chapterResult.id ?? null;
+      const resolvedTopicId = topicResult.id ?? null;
+
+      await ensureCurriculumScope({
+        programId: resolvedProgramId,
+        gradeId: resolvedGradeId,
+        subjectId: resolvedSubjectId,
+        chapterId: resolvedChapterId,
+        topicId: resolvedTopicId,
+        clientId,
+      });
+
+      updates.program_id = resolvedProgramId;
+      updates.grade_id = resolvedGradeId;
+      updates.subject_id = resolvedSubjectId;
+      updates.chapter_id = resolvedChapterId;
+      updates.topic_id = resolvedTopicId;
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ error: 'No valid fields to update' });
+    }
+
+    const setClauses = [];
+    const values = [];
+    let idx = 1;
+    Object.entries(updates).forEach(([column, value]) => {
+      setClauses.push(`${column} = $${idx++}`);
+      values.push(value);
+    });
+    values.push(id);
+
+    const result = await dbQuery(
+      `UPDATE comprehension_passages SET ${setClauses.join(', ')}, updated_at = NOW() WHERE id = $${idx} RETURNING *`,
+      values
+    );
+
+    res.json(normalizePassageRow(result.rows[0]));
+  } catch (err) {
+    handleServiceError(res, err, 'Failed to update comprehension passage');
   }
 };
 
@@ -2550,7 +3066,6 @@ const TEMPLATE_HEADERS = [
   'Subject',
   'Chapter',
   'Topic',
-  'Comprehensive Passage',
   'Category',
 ];
 
@@ -2576,7 +3091,6 @@ export const bulkUploadTemplate = async (_req, res) => {
           'Math',
           'Basics',
           'Addition',
-          '-',
           'direct question',
         ]),
       ],

@@ -74,6 +74,9 @@ import QuestionChapterEditPage from '@/pages/questions/QuestionChapterEditPage';
 import QuestionTopicsPage from '@/pages/questions/QuestionTopicsPage';
 import QuestionTopicCreatePage from '@/pages/questions/QuestionTopicCreatePage';
 import QuestionTopicEditPage from '@/pages/questions/QuestionTopicEditPage';
+import QuestionPassagesPage from '@/pages/questions/QuestionPassagesPage';
+import QuestionPassageCreatePage from '@/pages/questions/QuestionPassageCreatePage';
+import QuestionPassageEditPage from '@/pages/questions/QuestionPassageEditPage';
 import ExamListPage from '@/pages/exams/ExamListPage';
 import ExamCreatePage from '@/pages/exams/ExamCreatePage';
 import ExamBuilderPage from '@/pages/exams/ExamBuilderPage';
@@ -249,6 +252,7 @@ export default function AppRoutes() {
         <Route path="/question-bank/chapters" element={<QuestionChaptersPage />} />
         <Route path="/question-bank/topics" element={<QuestionTopicsPage />} />
         <Route path="/question-bank/folders" element={<QuestionFoldersPage />} />
+        <Route path="/question-bank/passages" element={<QuestionPassagesPage />} />
       </Route>
 
       <Route
@@ -280,6 +284,8 @@ export default function AppRoutes() {
         <Route path="/question-bank/topics/:id/edit" element={<QuestionTopicEditPage />} />
         <Route path="/question-bank/folders/new" element={<QuestionFolderCreatePage />} />
         <Route path="/question-bank/folders/:id/edit" element={<QuestionFolderEditPage />} />
+        <Route path="/question-bank/passages/new" element={<QuestionPassageCreatePage />} />
+        <Route path="/question-bank/passages/:id/edit" element={<QuestionPassageEditPage />} />
       </Route>
 
       <Route

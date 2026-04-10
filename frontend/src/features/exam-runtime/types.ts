@@ -1,4 +1,12 @@
-export type RuntimeQuestionType = "mcq_single" | "mcq_multiple" | "numerical" | "true_false" | string;
+export type RuntimeQuestionType =
+  | "mcq_single"
+  | "mcq_multiple"
+  | "numerical"
+  | "true_false"
+  | "short_answer"
+  | "match_following"
+  | "fill_in_blank"
+  | string;
 export type RuntimeAttemptStatus = "in_progress" | "submitted" | "graded" | string;
 
 export interface RuntimeOption {
@@ -31,6 +39,12 @@ export interface RuntimeFillBlankAnswer {
 
 export type RuntimeQuestionOptions = RuntimeOption[] | RuntimeMatchOptionSet;
 
+export interface RuntimeComprehensionPassage {
+  id: number;
+  title?: string | { html?: string | null } | null;
+  passage_content: string | { html?: string | null } | null;
+}
+
 export interface RuntimeSection {
   id: number;
   title: string;
@@ -50,6 +64,7 @@ export interface RuntimeQuestion {
   question_type: RuntimeQuestionType;
   question_text: string | { html?: string | null } | null;
   options: RuntimeQuestionOptions;
+  comprehension?: RuntimeComprehensionPassage | null;
   blank_ids?: string[];
   marks_positive?: number | null;
   marks_negative?: number | null;
@@ -149,6 +164,7 @@ export interface AttemptResultQuestionResponse {
   question_type: RuntimeQuestionType;
   question_text: string | { html?: string | null } | null;
   options: RuntimeQuestionOptions;
+  comprehension?: RuntimeComprehensionPassage | null;
   blank_ids?: string[];
   student_answer: unknown;
   is_attempted: boolean;

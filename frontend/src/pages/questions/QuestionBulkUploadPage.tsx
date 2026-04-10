@@ -152,15 +152,15 @@ export default function QuestionBulkUploadPage() {
                 Fill the DOCX template table exactly as provided. One row = one question.
               </p>
               <ul className="mt-3 list-disc space-y-1 pl-5 text-xs text-slate-600">
-                <li>Type: mcq_single, mcq_multiple, true_false, numerical, short_answer, match_following, fill_in_blank, comprehensive.</li>
+                <li>Type: mcq_single, mcq_multiple, true_false, numerical, short_answer, match_following, fill_in_blank.</li>
                 <li>Question: rich text content (images/tables allowed).</li>
                 <li>Options: separate with semicolons (A;B;C;D) for MCQ.</li>
                 <li>Correct Answer: use option letters (A/B/...) for MCQ, true/false for True/False, number for Numerical.</li>
                 <li>Match Pairs: format like L1=R1;L2=R2 (matches by order).</li>
                 <li>Blanks: format like blank1=ans1|ans2;blank2=ans3.</li>
-                <li>Comprehensive Passage: for comprehensive questions, keep passage text in this column.</li>
                 <li>Category: optional category/tag value (example: algebra, grammar, reading).</li>
                 <li>Program, Grade, Subject, Chapter, Topic can be provided as IDs or names inside the file.</li>
+                <li>Linked passages are managed separately. Upload answerable questions first, then attach a passage from the question form if needed.</li>
               </ul>
               <p className="mt-3 text-xs text-slate-500">If a column is not applicable, leave it empty.</p>
 
@@ -186,7 +186,6 @@ export default function QuestionBulkUploadPage() {
                         <th className="border border-slate-200 px-2 py-1">Subject</th>
                         <th className="border border-slate-200 px-2 py-1">Chapter</th>
                         <th className="border border-slate-200 px-2 py-1">Topic</th>
-                        <th className="border border-slate-200 px-2 py-1">Comprehensive Passage</th>
                         <th className="border border-slate-200 px-2 py-1">Category</th>
                       </tr>
                     </thead>
@@ -208,7 +207,6 @@ export default function QuestionBulkUploadPage() {
                         <td className="border border-slate-200 px-2 py-1">Math</td>
                         <td className="border border-slate-200 px-2 py-1">Basics</td>
                         <td className="border border-slate-200 px-2 py-1">Addition</td>
-                        <td className="border border-slate-200 px-2 py-1">-</td>
                         <td className="border border-slate-200 px-2 py-1">direct question</td>
                       </tr>
                       <tr>
@@ -228,28 +226,7 @@ export default function QuestionBulkUploadPage() {
                         <td className="border border-slate-200 px-2 py-1">Science</td>
                         <td className="border border-slate-200 px-2 py-1">Physics</td>
                         <td className="border border-slate-200 px-2 py-1">States</td>
-                        <td className="border border-slate-200 px-2 py-1">-</td>
                         <td className="border border-slate-200 px-2 py-1">similar question</td>
-                      </tr>
-                      <tr>
-                        <td className="border border-slate-200 px-2 py-1">comprehensive</td>
-                        <td className="border border-slate-200 px-2 py-1">What is the main idea of the passage?</td>
-                        <td className="border border-slate-200 px-2 py-1">-</td>
-                        <td className="border border-slate-200 px-2 py-1">-</td>
-                        <td className="border border-slate-200 px-2 py-1">-</td>
-                        <td className="border border-slate-200 px-2 py-1">-</td>
-                        <td className="border border-slate-200 px-2 py-1">-</td>
-                        <td className="border border-slate-200 px-2 py-1">medium</td>
-                        <td className="border border-slate-200 px-2 py-1">5</td>
-                        <td className="border border-slate-200 px-2 py-1">1</td>
-                        <td className="border border-slate-200 px-2 py-1">reading</td>
-                        <td className="border border-slate-200 px-2 py-1">Maestro</td>
-                        <td className="border border-slate-200 px-2 py-1">8</td>
-                        <td className="border border-slate-200 px-2 py-1">English</td>
-                        <td className="border border-slate-200 px-2 py-1">Comprehension</td>
-                        <td className="border border-slate-200 px-2 py-1">Passages</td>
-                        <td className="border border-slate-200 px-2 py-1">[Passage text here]</td>
-                        <td className="border border-slate-200 px-2 py-1">direct question</td>
                       </tr>
                     </tbody>
                   </table>

@@ -82,6 +82,14 @@ const normalizeQuestion = (item: unknown, index: number): RuntimeQuestion => {
     question_type: String(source.question_type ?? ""),
     question_text: (source.question_text as string | { html?: string | null } | null | undefined) ?? null,
     options: normalizeQuestionOptions(source.options, String(source.question_type ?? "")),
+    comprehension: source.comprehension && typeof source.comprehension === "object"
+      ? {
+          id: toNumber(asRecord(source.comprehension).id),
+          title: (asRecord(source.comprehension).title as string | { html?: string | null } | null | undefined) ?? null,
+          passage_content:
+            (asRecord(source.comprehension).passage_content as string | { html?: string | null } | null | undefined) ?? null,
+        }
+      : null,
     blank_ids: Array.isArray(source.blank_ids)
       ? source.blank_ids.map((item) => String(item))
       : undefined,
@@ -335,6 +343,14 @@ const normalizeAttemptResultResponse = (raw: unknown): AttemptResultResponse => 
       question_type: questionType,
       question_text: questionBase.question_text,
       options: questionBase.options,
+      comprehension: item.comprehension && typeof item.comprehension === "object"
+        ? {
+            id: toNumber(asRecord(item.comprehension).id),
+            title: (asRecord(item.comprehension).title as string | { html?: string | null } | null | undefined) ?? null,
+            passage_content:
+              (asRecord(item.comprehension).passage_content as string | { html?: string | null } | null | undefined) ?? null,
+          }
+        : null,
       blank_ids: questionBase.blank_ids,
       student_answer: normalizeAnswerForQuestion(questionBase, item.student_answer),
       is_attempted: toBoolean(item.is_attempted),

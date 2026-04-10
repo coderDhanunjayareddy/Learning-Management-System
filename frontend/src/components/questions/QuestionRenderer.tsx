@@ -25,12 +25,19 @@ type ComprehensiveQuestionLike = {
   marks_negative?: number;
 };
 
+type LinkedPassageLike = {
+  id?: string | number;
+  title?: RichTextLike;
+  passage_content?: RichTextLike;
+};
+
 export interface RenderableQuestion {
   question_type?: string;
   question_text?: RichTextLike;
   options?: QuestionOptionLike[] | MatchFollowingOptionsLike | null;
   correct_answer?: unknown;
   solution?: RichTextLike | null;
+  comprehension?: LinkedPassageLike | null;
   comprehension_passage?: RichTextLike | null;
   comprehension_questions?: ComprehensiveQuestionLike[] | null;
   difficulty_level?: string;
@@ -204,6 +211,8 @@ export default function QuestionRenderer({
 }: QuestionRendererProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const questionHtml = getHtml(question.question_text);
+  const linkedPassageHtml = getHtml(question.comprehension?.passage_content);
+  const linkedPassageTitleHtml = getHtml(question.comprehension?.title);
   const passageHtml = getHtml(question.comprehension_passage);
   const solutionHtml = getHtml(question.solution);
 
@@ -220,6 +229,8 @@ export default function QuestionRenderer({
   }, [
     question,
     questionHtml,
+    linkedPassageHtml,
+    linkedPassageTitleHtml,
     passageHtml,
     solutionHtml,
     question.options,
@@ -293,6 +304,19 @@ export default function QuestionRenderer({
 
   const renderComprehensive = () => {
     if (!showComprehension) return null;
+    if (question.comprehension?.passage_content) {
+      return (
+        <div className="mt-4 space-y-3 rounded-xl border border-sky-200 bg-sky-50/70 p-4 text-sm text-slate-700">
+          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
+            Linked Passage
+          </div>
+          {linkedPassageTitleHtml ? (
+            <div className="text-sm font-semibold text-slate-900" dangerouslySetInnerHTML={renderHtml(question.comprehension?.title)} />
+          ) : null}
+          <div dangerouslySetInnerHTML={renderHtml(question.comprehension?.passage_content)} />
+        </div>
+      );
+    }
     if (question.question_type !== "comprehensive" || !question.comprehension_passage) return null;
 
     return (
@@ -322,6 +346,9 @@ export default function QuestionRenderer({
 
   const optionsContent = renderOptions();
   const comprehensiveContent = renderComprehensive();
+  const questionContentClassName =
+    contentClassName ??
+    (showMeta && !comprehensiveContent ? "mt-4 text-sm text-slate-800" : "text-sm text-slate-800");
   const showEmptyOptions =
     showEmptyState &&
     !optionsContent &&
@@ -341,16 +368,16 @@ export default function QuestionRenderer({
         </div>
       )}
 
-      <div
-        className={
-          contentClassName ??
-          (showMeta ? "mt-4 text-sm text-slate-800" : "text-sm text-slate-800")
-        }
-        dangerouslySetInnerHTML={renderHtml(question.question_text)}
-      />
+      {comprehensiveContent}
+
+      <div className={comprehensiveContent ? "mt-4" : undefined}>
+        <div
+          className={questionContentClassName}
+          dangerouslySetInnerHTML={renderHtml(question.question_text)}
+        />
+      </div>
 
       {optionsContent}
-      {comprehensiveContent}
 
       {showEmptyOptions ? (
         <div className="mt-4 text-sm text-slate-500">This question does not have options.</div>

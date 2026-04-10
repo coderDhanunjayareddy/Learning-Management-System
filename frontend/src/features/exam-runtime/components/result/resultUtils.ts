@@ -3,7 +3,7 @@ import type {
   AttemptResultResponse,
 } from "@/features/exam-runtime/types";
 
-export type ReviewStatus = "correct" | "wrong" | "unattempted" | "attempted";
+export type ReviewStatus = "correct" | "partial" | "wrong" | "unattempted" | "attempted";
 
 export interface SectionBreakdownItem {
   section_id: number;
@@ -52,6 +52,14 @@ export const toQuestionSerial = (question: AttemptResultQuestionResponse, fallba
 export const getReviewStatus = (question: AttemptResultQuestionResponse): ReviewStatus => {
   if (!question.is_attempted) return "unattempted";
   if (question.is_correct === true) return "correct";
+  if (
+    question.is_correct === null &&
+    question.marks_awarded !== null &&
+    question.marks_awarded !== undefined &&
+    question.marks_awarded > 0
+  ) {
+    return "partial";
+  }
   if (question.is_correct === false) return "wrong";
   return "attempted";
 };

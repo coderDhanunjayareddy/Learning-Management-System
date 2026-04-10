@@ -1,7 +1,7 @@
 ﻿
 import { useEffect, useMemo, useState } from "react";
 import type {
-  ComprehensiveQuestion,
+  ComprehensionPassage,
   CorrectAnswer,
   CurriculumItem,
   FillBlankAnswer,
@@ -26,8 +26,10 @@ interface QuestionFormProps {
   chapters: CurriculumItem[];
   topics: CurriculumItem[];
   onClose: () => void;
-  onSave: (payload: Omit<Question, "id">, isEdit: boolean) => void;
+  onSave: (payload: Omit<Question, "id">, isEdit: boolean) => void | Promise<void>;
 }
+
+type ComprehensionMode = "new" | "existing";
 
 const makeId = () => `opt-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -44,12 +46,13 @@ const normalizeRichText = (value: unknown): RichTextValue => {
   return { html: String(value), json: null };
 };
 
-  const stripHtml = (value: RichTextValue) => value.html.replace(/<[^>]*>/g, "").trim();
-  const toNullableNumber = (value: string) => {
-    if (!value) return null;
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : null;
-  };
+const stripHtml = (value: RichTextValue) => value.html.replace(/<[^>]*>/g, "").trim();
+
+const toNullableNumber = (value: string) => {
+  if (!value) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
 
 const makeDefaultOptions = () =>
   Array.from({ length: 4 }).map(() => ({ id: makeId(), text: emptyRichText() }));
@@ -59,9 +62,8 @@ const makeDefaultMatchSide = () =>
 
 type MatchOptionWithSide = QuestionOption & { side?: "left" | "right" };
 
-const getArrayOptions = (
-  options: Question["options"] | ComprehensiveQuestion["options"] | undefined
-): QuestionOption[] => (Array.isArray(options) ? options : []);
+const getArrayOptions = (options: Question["options"] | undefined): QuestionOption[] =>
+  Array.isArray(options) ? options : [];
 
 const normalizeMatchOptions = (options: unknown): MatchFollowingOptions | null => {
   if (options && typeof options === "object" && !Array.isArray(options)) {
@@ -122,27 +124,21 @@ const normalizeCurriculum = (items: any[]): CurriculumItem[] =>
     }))
     .filter((item) => item.id !== undefined && item.id !== null);
 
-const normalizeOptionsArray = (options: any) => {
-  if (!Array.isArray(options)) return [];
-  return options.map((option, index) => ({
-    id: String(option.id ?? index),
-    text: normalizeRichText(option.text ?? option),
-    is_correct: option.is_correct ?? undefined,
-  }));
-};
-
-const normalizeComprehensionQuestions = (items: any[] | undefined) => {
-  if (!Array.isArray(items)) return [];
-  return items.map((item, index) => ({
-    id: String(item.id ?? `sub-${index + 1}`),
-    question_type: item.question_type ?? "mcq_single",
-    question_text: normalizeRichText(item.question_text),
-    options: Array.isArray(item.options) ? normalizeOptionsArray(item.options) : item.options,
-    correct_answer: item.correct_answer ?? {},
-    marks_positive: item.marks_positive ?? 1,
-    marks_negative: item.marks_negative ?? 0,
-  }));
-};
+const normalizePassages = (items: any[]): ComprehensionPassage[] =>
+  items
+    .map((item) => ({
+      id: item.id,
+      title: normalizeRichText(item.title),
+      passage_content: normalizeRichText(item.passage_content),
+      program_id: item.program_id ?? null,
+      grade_id: item.grade_id ?? null,
+      subject_id: item.subject_id ?? null,
+      chapter_id: item.chapter_id ?? null,
+      topic_id: item.topic_id ?? null,
+      created_at: item.created_at ?? undefined,
+      updated_at: item.updated_at ?? undefined,
+    }))
+    .filter((item) => item.id !== undefined && item.id !== null);
 
 export default function QuestionForm({
   open = true,
@@ -169,8 +165,12 @@ export default function QuestionForm({
   const [matchRight, setMatchRight] = useState<QuestionOption[]>(makeDefaultMatchSide());
   const [matchPairs, setMatchPairs] = useState<MatchFollowingPair[]>([]);
   const [fillBlanks, setFillBlanks] = useState<FillBlankAnswer[]>([]);
-  const [comprehensionPassage, setComprehensionPassage] = useState<RichTextValue>(emptyRichText());
-  const [comprehensionQuestions, setComprehensionQuestions] = useState<ComprehensiveQuestion[]>([]);
+  const [hasComprehension, setHasComprehension] = useState(false);
+  const [comprehensionMode, setComprehensionMode] = useState<ComprehensionMode>("new");
+  const [comprehensionPassageId, setComprehensionPassageId] = useState("");
+  const [comprehensionPassages, setComprehensionPassages] = useState<ComprehensionPassage[]>([]);
+  const [comprehensionTitle, setComprehensionTitle] = useState<RichTextValue>(emptyRichText());
+  const [comprehensionContent, setComprehensionContent] = useState<RichTextValue>(emptyRichText());
   const [solutionText, setSolutionText] = useState<RichTextValue>(emptyRichText());
   const [programId, setProgramId] = useState("");
   const [gradeId, setGradeId] = useState("");
@@ -186,6 +186,7 @@ export default function QuestionForm({
   const [dynamicSubjects, setDynamicSubjects] = useState<CurriculumItem[]>([]);
   const [dynamicChapters, setDynamicChapters] = useState<CurriculumItem[]>([]);
   const [dynamicTopics, setDynamicTopics] = useState<CurriculumItem[]>([]);
+  const [saving, setSaving] = useState(false);
 
   const availableGrades = useMemo(
     () => {
@@ -215,6 +216,14 @@ export default function QuestionForm({
     },
     [chapterId, dynamicTopics, topics]
   );
+
+  const upsertPassage = (nextPassage: ComprehensionPassage) => {
+    setComprehensionPassages((prev) => {
+      const nextKey = String(nextPassage.id);
+      const filtered = prev.filter((item) => String(item.id) !== nextKey);
+      return [nextPassage, ...filtered];
+    });
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -342,6 +351,54 @@ export default function QuestionForm({
   }, [chapterId]);
 
   useEffect(() => {
+    let isMounted = true;
+    const loadPassages = async () => {
+      try {
+        const res = await api.get("/comprehension-passages", {
+          params: { page: 1, page_size: 200 },
+        });
+        const payload = Array.isArray(res.data?.data)
+          ? res.data.data
+          : Array.isArray(res.data)
+            ? res.data
+            : [];
+        if (!isMounted) return;
+        setComprehensionPassages(normalizePassages(payload));
+      } catch {
+        if (!isMounted) return;
+        setComprehensionPassages([]);
+      }
+    };
+
+    loadPassages();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!initialQuestion?.comprehension?.id) return;
+
+    const normalizedPassage: ComprehensionPassage = {
+      id: initialQuestion.comprehension.id,
+      title: normalizeRichText(initialQuestion.comprehension.title),
+      passage_content: normalizeRichText(initialQuestion.comprehension.passage_content),
+      program_id: initialQuestion.program_id ?? null,
+      grade_id: initialQuestion.grade_id ?? null,
+      subject_id: initialQuestion.subject_id ?? null,
+      chapter_id: initialQuestion.chapter_id ?? null,
+      topic_id: initialQuestion.topic_id ?? null,
+    };
+
+    setComprehensionPassages((prev) => {
+      if (prev.some((item) => String(item.id) === String(normalizedPassage.id))) {
+        return prev;
+      }
+      return [normalizedPassage, ...prev];
+    });
+  }, [initialQuestion]);
+
+  useEffect(() => {
     if (!open) return;
     if (initialQuestion) {
       setQuestionType(initialQuestion.question_type);
@@ -419,11 +476,12 @@ export default function QuestionForm({
           setFillBlanks((correct as { blanks?: FillBlankAnswer[] }).blanks ?? []);
         }
       }
-      if (initialQuestion.question_type === "comprehensive") {
-        setComprehensionPassage(normalizeRichText(initialQuestion.comprehension_passage));
-      setComprehensionQuestions(normalizeComprehensionQuestions(initialQuestion.comprehension_questions));
-      }
       setSolutionText(normalizeRichText(initialQuestion.solution));
+      setHasComprehension(Boolean(initialQuestion.comprehension_passage_id || initialQuestion.comprehension?.id));
+      setComprehensionMode(initialQuestion.comprehension_passage_id ? "existing" : "new");
+      setComprehensionPassageId(initialQuestion.comprehension_passage_id ? String(initialQuestion.comprehension_passage_id) : "");
+      setComprehensionTitle(normalizeRichText(initialQuestion.comprehension?.title));
+      setComprehensionContent(normalizeRichText(initialQuestion.comprehension?.passage_content));
 
       setProgramId(initialQuestion.program_id ? String(initialQuestion.program_id) : "");
       setGradeId(initialQuestion.grade_id ? String(initialQuestion.grade_id) : "");
@@ -451,8 +509,11 @@ export default function QuestionForm({
     setMatchRight(makeDefaultMatchSide());
     setMatchPairs([]);
     setFillBlanks([]);
-    setComprehensionPassage(emptyRichText());
-    setComprehensionQuestions([]);
+    setHasComprehension(false);
+    setComprehensionMode("new");
+    setComprehensionPassageId("");
+    setComprehensionTitle(emptyRichText());
+    setComprehensionContent(emptyRichText());
     setSolutionText(emptyRichText());
     setProgramId("");
     setGradeId("");
@@ -465,6 +526,18 @@ export default function QuestionForm({
     setTags("");
     setScoringMode("all_or_nothing");
   }, [open, initialQuestion]);
+
+  useEffect(() => {
+    if (!hasComprehension || comprehensionMode !== "existing" || !comprehensionPassageId) return;
+
+    const selectedPassage = comprehensionPassages.find(
+      (item) => String(item.id) === String(comprehensionPassageId)
+    );
+
+    if (!selectedPassage) return;
+    setComprehensionTitle(normalizeRichText(selectedPassage.title));
+    setComprehensionContent(normalizeRichText(selectedPassage.passage_content));
+  }, [comprehensionMode, comprehensionPassageId, comprehensionPassages, hasComprehension]);
   const handleTypeChange = (nextType: QuestionType) => {
     setQuestionType(nextType);
     if (nextType === "mcq_single" || nextType === "mcq_multiple") {
@@ -545,33 +618,9 @@ export default function QuestionForm({
     setFillBlanks((prev) => prev.map((blank, idx) => (idx === index ? { ...blank, answers } : blank)));
   };
 
-  const addComprehensionQuestion = () => {
-    setComprehensionQuestions((prev) => [
-      ...prev,
-      {
-        id: makeId(),
-        question_type: "mcq_single",
-        question_text: emptyRichText(),
-        options: makeDefaultOptions(),
-        correct_answer: { answer_ids: [] },
-        marks_positive: 1,
-        marks_negative: 0,
-      },
-    ]);
-  };
-
-  const updateComprehensionQuestion = (id: string, updates: Partial<ComprehensiveQuestion>) => {
-    setComprehensionQuestions((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, ...updates } : item))
-    );
-  };
-
-  const removeComprehensionQuestion = (id: string) => {
-    setComprehensionQuestions((prev) => prev.filter((item) => item.id !== id));
-  };
-
-  const handleSave = (event: React.FormEvent) => {
+  const handleSave = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (saving) return;
     if (!subjectId) {
       alert("Subject is required.");
       return;
@@ -615,10 +664,6 @@ export default function QuestionForm({
       alert("Add at least one match pair.");
       return;
     }
-    if (questionType === "comprehensive" && (!stripHtml(comprehensionPassage) || comprehensionQuestions.length === 0)) {
-      alert("Comprehensive questions need a passage and at least one sub-question.");
-      return;
-    }
 
     const parsedTags = tags
       .split(",")
@@ -634,6 +679,21 @@ export default function QuestionForm({
     if (questionType === "fill_in_blank" && normalizedFillBlanks.length === 0) {
       alert("Add at least one blank with one or more answers.");
       return;
+    }
+
+    if (hasComprehension) {
+      if (comprehensionMode === "existing" && !comprehensionPassageId) {
+        alert("Select an existing passage or switch to Add New Passage.");
+        return;
+      }
+      if (!stripHtml(comprehensionTitle)) {
+        alert("Passage title is required.");
+        return;
+      }
+      if (!stripHtml(comprehensionContent)) {
+        alert("Passage content is required.");
+        return;
+      }
     }
 
     let finalOptions: QuestionOption[] | MatchFollowingOptions | undefined = undefined;
@@ -691,36 +751,107 @@ export default function QuestionForm({
       finalCorrectAnswer = { blanks: normalizedFillBlanks };
     }
 
-    if (questionType === "comprehensive") {
-      finalCorrectAnswer = {};
-    }
+    const scopePayload = {
+      program_id: toNullableNumber(programId),
+      grade_id: toNullableNumber(gradeId),
+      subject_id: toNullableNumber(subjectId),
+      chapter_id: toNullableNumber(chapterId),
+      topic_id: toNullableNumber(topicId),
+    };
 
-    onSave(
-      {
-        question_type: questionType,
-        question_text: questionText,
-        options: finalOptions,
-        correct_answer: finalCorrectAnswer,
-        scoring_mode: scoringMode,
-        comprehension_passage: questionType === "comprehensive" ? comprehensionPassage : null,
-        comprehension_questions: questionType === "comprehensive" ? comprehensionQuestions : undefined,
-        program_id: toNullableNumber(programId),
-        grade_id: toNullableNumber(gradeId),
-        subject_id: toNullableNumber(subjectId),
-        chapter_id: toNullableNumber(chapterId),
-        topic_id: toNullableNumber(topicId),
-        difficulty_level: difficulty,
-        marks_positive: Number(marksPositive) || 0,
-        marks_negative: Number(marksNegative) || 0,
-        exam_tags: parsedTags,
-        solution: stripHtml(solutionText) ? solutionText : null,
-        created_by: initialQuestion?.created_by,
-        created_at: initialQuestion?.created_at,
-        status: initialQuestion?.status ?? "draft",
-        review_note: initialQuestion?.review_note,
-      },
-      Boolean(initialQuestion)
-    );
+    setSaving(true);
+    try {
+      let resolvedComprehensionPassageId: number | null = null;
+
+      if (hasComprehension) {
+        const passagePayload = {
+          title: comprehensionTitle,
+          passage_content: comprehensionContent,
+          ...scopePayload,
+        };
+
+        if (comprehensionMode === "existing") {
+          const existingPassageId = toNullableNumber(comprehensionPassageId);
+          if (existingPassageId === null) {
+            alert("Select an existing passage.");
+            return;
+          }
+
+          const response = await api.put(`/comprehension-passages/${existingPassageId}`, passagePayload);
+          resolvedComprehensionPassageId = existingPassageId;
+          upsertPassage({
+            id: response.data?.id ?? existingPassageId,
+            title: normalizeRichText(response.data?.title ?? comprehensionTitle),
+            passage_content: normalizeRichText(response.data?.passage_content ?? comprehensionContent),
+            program_id: response.data?.program_id ?? scopePayload.program_id ?? null,
+            grade_id: response.data?.grade_id ?? scopePayload.grade_id ?? null,
+            subject_id: response.data?.subject_id ?? scopePayload.subject_id ?? null,
+            chapter_id: response.data?.chapter_id ?? scopePayload.chapter_id ?? null,
+            topic_id: response.data?.topic_id ?? scopePayload.topic_id ?? null,
+            created_at: response.data?.created_at ?? undefined,
+            updated_at: response.data?.updated_at ?? undefined,
+          });
+        } else {
+          const response = await api.post("/comprehension-passages", passagePayload);
+          const createdPassageId = Number(response.data?.id);
+          if (!Number.isFinite(createdPassageId)) {
+            throw new Error("Failed to create comprehension passage");
+          }
+
+          resolvedComprehensionPassageId = createdPassageId;
+          setComprehensionPassageId(String(createdPassageId));
+          setComprehensionMode("existing");
+          upsertPassage({
+            id: createdPassageId,
+            title: normalizeRichText(response.data?.title ?? comprehensionTitle),
+            passage_content: normalizeRichText(response.data?.passage_content ?? comprehensionContent),
+            program_id: response.data?.program_id ?? scopePayload.program_id ?? null,
+            grade_id: response.data?.grade_id ?? scopePayload.grade_id ?? null,
+            subject_id: response.data?.subject_id ?? scopePayload.subject_id ?? null,
+            chapter_id: response.data?.chapter_id ?? scopePayload.chapter_id ?? null,
+            topic_id: response.data?.topic_id ?? scopePayload.topic_id ?? null,
+            created_at: response.data?.created_at ?? undefined,
+            updated_at: response.data?.updated_at ?? undefined,
+          });
+        }
+      }
+
+      await onSave(
+        {
+          question_type: questionType,
+          question_text: questionText,
+          options: finalOptions,
+          correct_answer: finalCorrectAnswer,
+          scoring_mode: scoringMode,
+          comprehension_passage_id: resolvedComprehensionPassageId,
+          ...scopePayload,
+          difficulty_level: difficulty,
+          marks_positive: Number(marksPositive) || 0,
+          marks_negative: Number(marksNegative) || 0,
+          exam_tags: parsedTags,
+          solution: stripHtml(solutionText) ? solutionText : null,
+          created_by: initialQuestion?.created_by,
+          created_at: initialQuestion?.created_at,
+          status: initialQuestion?.status ?? "draft",
+          review_note: initialQuestion?.review_note,
+        },
+        Boolean(initialQuestion)
+      );
+    } catch (error) {
+      const message =
+        typeof error === "object" && error && "response" in error
+          ? (error as { response?: { data?: { error?: unknown } } }).response?.data?.error
+          : null;
+      if (typeof message === "string") {
+        alert(message);
+      } else if (error instanceof Error && error.message) {
+        alert(error.message);
+      } else {
+        alert("Failed to save the question.");
+      }
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (!open) return null;
@@ -741,7 +872,6 @@ export default function QuestionForm({
             <option value="match_following">Match the Following</option>
             <option value="fill_in_blank">Fill in the Blank</option>
             <option value="true_false">True/False</option>
-            <option value="comprehensive">Comprehensive</option>
           </select>
         </div>
         <div>
@@ -769,6 +899,126 @@ export default function QuestionForm({
           <option value="partial">Partial</option>
           <option value="mixed">Mixed</option>
         </select>
+      </div>
+
+      <div className="rounded-xl border border-sky-100 bg-sky-50/60 p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <label className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
+              Comprehensive Passage
+            </label>
+            <p className="mt-1 text-xs text-slate-500">
+              Turn this on to place a passage before the question and keep both editable here.
+            </p>
+          </div>
+          <label className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-white px-3 py-2 text-xs font-semibold text-sky-700">
+            <input
+              type="checkbox"
+              checked={hasComprehension}
+              onChange={(event) => setHasComprehension(event.target.checked)}
+            />
+            Add Comprehensive
+          </label>
+        </div>
+
+        {hasComprehension ? (
+          <div className="mt-4 space-y-4 rounded-xl border border-sky-200 bg-white p-4">
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setComprehensionMode("new");
+                  setComprehensionPassageId("");
+                  setComprehensionTitle(emptyRichText());
+                  setComprehensionContent(emptyRichText());
+                }}
+                className={`rounded-lg px-3 py-2 text-xs font-semibold ${
+                  comprehensionMode === "new"
+                    ? "bg-slate-900 text-white"
+                    : "border border-slate-200 text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                Add New Passage
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setComprehensionMode("existing");
+                  if (!comprehensionPassageId) {
+                    setComprehensionTitle(emptyRichText());
+                    setComprehensionContent(emptyRichText());
+                  }
+                }}
+                className={`rounded-lg px-3 py-2 text-xs font-semibold ${
+                  comprehensionMode === "existing"
+                    ? "bg-slate-900 text-white"
+                    : "border border-slate-200 text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                Attach Existing Passage
+              </button>
+            </div>
+
+            {comprehensionMode === "existing" ? (
+              <div>
+                <label className="text-xs font-semibold text-slate-500">Choose Existing Passage</label>
+                <select
+                  value={comprehensionPassageId}
+                  onChange={(event) => setComprehensionPassageId(event.target.value)}
+                  className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+                >
+                  <option value="">Select a saved passage</option>
+                  {comprehensionPassages.map((passage) => (
+                    <option key={passage.id} value={String(passage.id)}>
+                      {stripHtml(passage.title ?? emptyRichText()) || `Passage ${passage.id}`}
+                    </option>
+                  ))}
+                </select>
+                {!comprehensionPassages.length ? (
+                  <p className="mt-2 text-xs text-amber-700">
+                    No saved passages found yet. Switch to Add New Passage to create one here.
+                  </p>
+                ) : comprehensionPassageId ? (
+                  <p className="mt-2 text-xs text-slate-500">
+                    The selected passage is loaded below. Saving this question will also update that passage.
+                  </p>
+                ) : (
+                  <p className="mt-2 text-xs text-slate-500">
+                    Select a saved passage to load it into the editor below.
+                  </p>
+                )}
+              </div>
+            ) : (
+              <p className="text-xs text-slate-500">
+                Create a new passage here. Saving the question will create the passage and link it automatically.
+              </p>
+            )}
+
+            <div>
+              <label className="text-xs font-semibold text-slate-500">Passage Title</label>
+              <div className="mt-2">
+                <RichTextEditor
+                  value={comprehensionTitle}
+                  onChange={setComprehensionTitle}
+                  placeholder="Enter passage title"
+                  height={120}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-slate-500">Passage Content</label>
+              <div className="mt-2">
+                <RichTextEditor
+                  value={comprehensionContent}
+                  onChange={setComprehensionContent}
+                  placeholder="Enter the passage shown before the question"
+                  height={240}
+                />
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <div>
@@ -1021,255 +1271,6 @@ export default function QuestionForm({
         </div>
       )}
 
-      {questionType === "comprehensive" && (
-        <div className="space-y-4">
-          <div>
-            <label className="text-xs font-semibold text-slate-500">Passage</label>
-            <div className="mt-2">
-              <RichTextEditor
-                value={comprehensionPassage}
-                onChange={setComprehensionPassage}
-                placeholder="Enter the passage"
-                height={200}
-              />
-            </div>
-          </div>
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold text-slate-500">Sub-Questions</label>
-              <button
-                type="button"
-                onClick={addComprehensionQuestion}
-                className="rounded-lg border border-dashed border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-50"
-              >
-                Add sub-question
-              </button>
-            </div>
-            {comprehensionQuestions.map((sub) => {
-              const subOptions = Array.isArray(sub.options) ? sub.options : [];
-              const subCorrect = (sub.correct_answer ?? {}) as any;
-              const updateSubOptionText = (id: string, value: string) => {
-                const next = subOptions.map((opt) =>
-                  opt.id === id ? { ...opt, text: { html: value, json: null } } : opt
-                );
-                updateComprehensionQuestion(sub.id, { options: next });
-              };
-              const toggleSubCorrect = (id: string) => {
-                if (sub.question_type === "mcq_single") {
-                  updateComprehensionQuestion(sub.id, { correct_answer: { answer_ids: [id] } });
-                  return;
-                }
-                const current = Array.isArray(subCorrect.answer_ids) ? subCorrect.answer_ids : [];
-                const next = current.includes(id)
-                  ? current.filter((entry: string) => entry !== id)
-                  : [...current, id];
-                updateComprehensionQuestion(sub.id, { correct_answer: { answer_ids: next } });
-              };
-              return (
-                <div key={sub.id} className="rounded-lg border border-slate-200 p-3">
-                  <div className="flex items-center justify-between">
-                    <select
-                      value={sub.question_type}
-                      onChange={(event) => {
-                        const nextType = event.target.value as ComprehensiveQuestion["question_type"];
-                        const withOptions =
-                          nextType === "mcq_single" || nextType === "mcq_multiple"
-                            ? subOptions.length
-                              ? subOptions
-                              : makeDefaultOptions()
-                            : sub.options;
-                        updateComprehensionQuestion(sub.id, {
-                          question_type: nextType,
-                          options: withOptions,
-                          correct_answer:
-                            nextType === "true_false"
-                              ? { answer: true }
-                              : nextType === "numerical"
-                              ? { value: 0, tolerance: 0 }
-                              : nextType === "short_answer"
-                              ? { answers: [], case_sensitive: false }
-                              : nextType === "mcq_single" || nextType === "mcq_multiple"
-                              ? { answer_ids: [] }
-                              : sub.correct_answer,
-                        });
-                      }}
-                      className="rounded-lg border border-slate-200 px-2 py-1 text-xs"
-                    >
-                      <option value="mcq_single">MCQ Single</option>
-                      <option value="mcq_multiple">MCQ Multiple</option>
-                      <option value="short_answer">Short Answer</option>
-                      <option value="numerical">Numeric Response</option>
-                      <option value="match_following">Match the Following</option>
-                      <option value="fill_in_blank">Fill in the Blank</option>
-                      <option value="true_false">True/False</option>
-                    </select>
-                    <button
-                      type="button"
-                      onClick={() => removeComprehensionQuestion(sub.id)}
-                      className="rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-500"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                  <div className="mt-3">
-                    <RichTextEditor
-                      value={sub.question_text}
-                      onChange={(value) => updateComprehensionQuestion(sub.id, { question_text: value })}
-                      placeholder="Sub-question text"
-                      height={140}
-                    />
-                  </div>
-
-                  {(sub.question_type === "mcq_single" || sub.question_type === "mcq_multiple") && (
-                    <div className="mt-3 space-y-2">
-                      <label className="text-xs font-semibold text-slate-500">Options</label>
-                      {subOptions.map((opt, idx) => (
-                        <div key={opt.id} className="flex items-center gap-2">
-                          <input
-                            type={sub.question_type === "mcq_single" ? "radio" : "checkbox"}
-                            checked={Array.isArray(subCorrect.answer_ids) && subCorrect.answer_ids.includes(opt.id)}
-                            onChange={() => toggleSubCorrect(opt.id)}
-                          />
-                          <input
-                            type="text"
-                            value={opt.text?.html ?? ""}
-                            onChange={(event) => updateSubOptionText(opt.id, event.target.value)}
-                            className="w-full rounded-lg border border-slate-200 px-2 py-1 text-xs"
-                            placeholder={`Option ${idx + 1}`}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {sub.question_type === "true_false" && (
-                    <div className="mt-3">
-                      <label className="text-xs font-semibold text-slate-500">Correct Answer</label>
-                      <select
-                        value={String(subCorrect.answer ?? true)}
-                        onChange={(event) =>
-                          updateComprehensionQuestion(sub.id, { correct_answer: { answer: event.target.value === "true" } })
-                        }
-                        className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1 text-xs"
-                      >
-                        <option value="true">True</option>
-                        <option value="false">False</option>
-                      </select>
-                    </div>
-                  )}
-
-                  {sub.question_type === "numerical" && (
-                    <div className="mt-3 grid gap-3 md:grid-cols-2">
-                      <div>
-                        <label className="text-xs font-semibold text-slate-500">Value</label>
-                        <input
-                          type="number"
-                          value={subCorrect.value ?? 0}
-                          onChange={(event) =>
-                            updateComprehensionQuestion(sub.id, {
-                              correct_answer: {
-                                value: Number(event.target.value) || 0,
-                                tolerance: Number(subCorrect.tolerance ?? 0),
-                              },
-                            })
-                          }
-                          className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1 text-xs"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs font-semibold text-slate-500">Tolerance</label>
-                        <input
-                          type="number"
-                          value={subCorrect.tolerance ?? 0}
-                          onChange={(event) =>
-                            updateComprehensionQuestion(sub.id, {
-                              correct_answer: {
-                                value: Number(subCorrect.value ?? 0),
-                                tolerance: Number(event.target.value) || 0,
-                              },
-                            })
-                          }
-                          className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1 text-xs"
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {sub.question_type === "short_answer" && (
-                    <div className="mt-3">
-                      <label className="text-xs font-semibold text-slate-500">Accepted Answers</label>
-                      <input
-                        type="text"
-                        value={(subCorrect.answers ?? []).join(", ")}
-                        onChange={(event) =>
-                          updateComprehensionQuestion(sub.id, {
-                            correct_answer: {
-                              answers: event.target.value
-                                .split(",")
-                                .map((ans: string) => ans.trim())
-                                .filter(Boolean),
-                              case_sensitive: Boolean(subCorrect.case_sensitive),
-                            },
-                          })
-                        }
-                        className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1 text-xs"
-                        placeholder="comma separated"
-                      />
-                    </div>
-                  )}
-
-                  {(sub.question_type === "match_following" || sub.question_type === "fill_in_blank") && (
-                    <div className="mt-3">
-                      <label className="text-xs font-semibold text-slate-500">Correct Answer</label>
-                      <input
-                        type="text"
-                        value={subCorrect.raw ?? ""}
-                        onChange={(event) =>
-                          updateComprehensionQuestion(sub.id, {
-                            correct_answer: { raw: event.target.value },
-                          })
-                        }
-                        className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1 text-xs"
-                        placeholder={
-                          sub.question_type === "match_following"
-                            ? "left=right; left=right"
-                            : "blank1=ans1|ans2; blank2=ans3"
-                        }
-                      />
-                    </div>
-                  )}
-
-                  <div className="mt-3 grid gap-3 md:grid-cols-2">
-                    <div>
-                      <label className="text-xs font-semibold text-slate-500">Marks (+)</label>
-                      <input
-                        type="number"
-                        value={sub.marks_positive ?? 1}
-                        onChange={(event) =>
-                          updateComprehensionQuestion(sub.id, { marks_positive: Number(event.target.value) })
-                        }
-                        className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1 text-xs"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs font-semibold text-slate-500">Negative (-)</label>
-                      <input
-                        type="number"
-                        value={sub.marks_negative ?? 0}
-                        onChange={(event) =>
-                          updateComprehensionQuestion(sub.id, { marks_negative: Number(event.target.value) })
-                        }
-                        className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1 text-xs"
-                      />
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
       <div className="grid gap-4 md:grid-cols-5">
         <div>
           <label className="text-xs font-semibold text-slate-500">Program</label>
@@ -1411,9 +1412,10 @@ export default function QuestionForm({
         </button>
         <button
           type="submit"
+          disabled={saving}
           className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
         >
-          {initialQuestion ? "Save Changes" : "Create Question"}
+          {saving ? "Saving..." : initialQuestion ? "Save Changes" : "Create Question"}
         </button>
       </div>
     </form>

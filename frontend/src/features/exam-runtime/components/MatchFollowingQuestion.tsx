@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import MathHtml from "@/features/exam-runtime/components/MathHtml";
 import {
   buildMatchAnswer,
   getOptionHtml,
@@ -197,7 +198,7 @@ export default function MatchFollowingQuestion({
                     <div className="flex items-start gap-2">
                       <span className="mt-0.5 text-xs font-semibold text-slate-500">{index + 1}.</span>
                       <span className="min-w-0 text-sm leading-relaxed text-slate-900 md:text-base">
-                        <span dangerouslySetInnerHTML={{ __html: getOptionHtml(leftOption.text) }} />
+                        <MathHtml html={getOptionHtml(leftOption.text)} />
                       </span>
                     </div>
                   </button>
@@ -260,7 +261,7 @@ export default function MatchFollowingQuestion({
                     <div className="flex items-start gap-2">
                       <span className="mt-0.5 text-xs font-semibold text-slate-500">{index + 1}.</span>
                       <span className="min-w-0 text-sm leading-relaxed text-slate-900 md:text-base">
-                        <span dangerouslySetInnerHTML={{ __html: getOptionHtml(rightOption.text) }} />
+                        <MathHtml html={getOptionHtml(rightOption.text)} />
                       </span>
                     </div>
                     {isLinked ? (

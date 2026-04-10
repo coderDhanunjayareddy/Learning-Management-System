@@ -351,6 +351,9 @@ export const addQuestionToSection = async (req, res) => {
     if (String(question.status).toLowerCase() !== 'approved') {
       throw new AppError('Only approved questions can be added', 400);
     }
+    if (String(question.question_type).toLowerCase() === 'comprehensive') {
+      throw new AppError('Legacy comprehensive parent records cannot be added to exams. Add linked child questions instead.', 400);
+    }
 
     if (question.client_id && Number(question.client_id) !== Number(exam.client_id)) {
       throw new AppError('Question does not belong to the same client scope as the exam', 403);

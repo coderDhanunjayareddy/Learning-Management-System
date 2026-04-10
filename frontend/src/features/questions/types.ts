@@ -54,6 +54,12 @@ export interface ComprehensiveQuestion {
   marks_negative?: number;
 }
 
+export interface ComprehensionPassage {
+  id: number;
+  title: RichTextValue | null;
+  passage_content: RichTextValue;
+}
+
 export interface Question {
   id: number;
   client_id: number | null;
@@ -65,6 +71,8 @@ export interface Question {
   solution?: unknown;
   solution_video_url?: string | null;
   scoring_mode?: ScoringMode;
+  comprehension_passage_id?: number | null;
+  comprehension?: ComprehensionPassage | null;
   comprehension_passage?: RichTextValue | null;
   comprehension_questions?: ComprehensiveQuestion[];
   subject_id: number;

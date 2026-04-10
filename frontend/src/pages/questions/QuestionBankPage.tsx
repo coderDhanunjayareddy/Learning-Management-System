@@ -23,6 +23,12 @@ export default function QuestionBankPage() {
               Bulk Upload
             </button>
             <button
+              onClick={() => navigate("/question-bank/passages")}
+              className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+            >
+              Manage Passages
+            </button>
+            <button
               onClick={() => navigate("/question-bank/new")}
               className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
             >

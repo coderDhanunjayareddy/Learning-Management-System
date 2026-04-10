@@ -101,6 +101,8 @@ const normalizeQuestions = (items: any[]): Question[] =>
     solution: resolveQuestionText(item.solution),
     solution_video_url: item.solution_video_url ?? null,
     scoring_mode: item.scoring_mode ?? "all_or_nothing",
+    comprehension_passage_id: item.comprehension_passage_id ?? null,
+    comprehension: item.comprehension ?? null,
     comprehension_passage: resolveQuestionText(item.comprehension_passage),
     comprehension_questions: item.comprehension_questions ?? [],
     program_id: item.program_id ?? null,

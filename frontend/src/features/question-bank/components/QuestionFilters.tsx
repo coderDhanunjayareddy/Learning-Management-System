@@ -205,7 +205,6 @@ export default function QuestionFilters({
               <option value="match_following">Match the Following</option>
               <option value="fill_in_blank">Fill in the Blank</option>
               <option value="true_false">True/False</option>
-              <option value="comprehensive">Comprehensive</option>
             </select>
           </div>
         </div>
@@ -243,7 +242,6 @@ export default function QuestionFilters({
               <option value="match_following">Match the Following</option>
               <option value="fill_in_blank">Fill in the Blank</option>
               <option value="true_false">True/False</option>
-              <option value="comprehensive">Comprehensive</option>
             </select>
           </div>
         </>

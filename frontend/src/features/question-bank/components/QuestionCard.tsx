@@ -69,6 +69,11 @@ function QuestionCard({
               <span className="rounded-full bg-slate-100 px-2 py-0.5">
                 {question.difficulty_level.toUpperCase()}
               </span>
+              {question.comprehension_passage_id ? (
+                <span className="rounded-full bg-sky-100 px-2 py-0.5 text-sky-700">
+                  Linked Passage
+                </span>
+              ) : null}
             </div>
             <div className="mt-1 text-xs text-slate-400">
               {question.created_at ? new Date(question.created_at).toLocaleDateString() : "Draft"}

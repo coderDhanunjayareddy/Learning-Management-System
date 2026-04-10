@@ -31,6 +31,8 @@ const normalizeQuestion = (item: any): Question => ({
   solution: normalizeQuestionText(item.solution),
   solution_video_url: item.solution_video_url ?? null,
   scoring_mode: item.scoring_mode ?? "all_or_nothing",
+  comprehension_passage_id: item.comprehension_passage_id ?? null,
+  comprehension: item.comprehension ?? null,
   comprehension_passage: normalizeQuestionText(item.comprehension_passage),
   comprehension_questions: item.comprehension_questions ?? [],
   program_id: item.program_id ?? null,
@@ -136,6 +138,11 @@ export default function QuestionEditPage() {
       {loading ? (
         <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-500">
           Loading question...
+        </div>
+      ) : question?.question_type === "comprehensive" ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-10 text-center text-sm text-amber-800">
+          Legacy comprehensive parent records can no longer be edited in-place.
+          Create or edit a linked passage from the passage library, then work with the migrated child questions.
         </div>
       ) : question ? (
         <QuestionForm

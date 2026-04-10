@@ -113,6 +113,18 @@ const normalizeCorrectBlankAnswers = (value: unknown) => {
     .filter((item) => item.id);
 };
 
+const normalizeShortAnswerCorrectAnswers = (value: unknown) => {
+  const source = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const answers = Array.isArray(source.answers)
+    ? source.answers.map((item) => String(item).trim()).filter(Boolean)
+    : [];
+
+  return {
+    answers,
+    caseSensitive: Boolean(source.case_sensitive),
+  };
+};
+
 const renderMatchAnalysis = (question: AttemptResultQuestionResponse, showCorrectAnswer: boolean) => {
   if (!isMatchOptions(question.options)) {
     return (
@@ -241,6 +253,34 @@ const renderFillBlankAnalysis = (question: AttemptResultQuestionResponse, showCo
   );
 };
 
+const renderShortAnswerAnalysis = (
+  question: AttemptResultQuestionResponse,
+  showCorrectAnswer: boolean
+) => {
+  const studentAnswer = formatAnswerText(question.student_answer);
+  const { answers, caseSensitive } = normalizeShortAnswerCorrectAnswers(question.correct_answer);
+
+  return (
+    <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+      <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+        <p className="text-xs text-slate-500">Student Answer</p>
+        <p className="mt-1 font-medium text-slate-800">{studentAnswer}</p>
+      </div>
+      {showCorrectAnswer ? (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
+          <p className="text-xs text-emerald-700">Accepted Answers</p>
+          <p className="mt-1 font-medium text-emerald-800">
+            {answers.length ? answers.join(", ") : "Unavailable"}
+          </p>
+          <p className="mt-2 text-xs text-emerald-700">
+            Matching: {caseSensitive ? "Case-sensitive" : "Case-insensitive"}
+          </p>
+        </div>
+      ) : null}
+    </div>
+  );
+};
+
 export default function AnswerAnalysisBlock({
   question,
   showCorrectAnswer,
@@ -263,6 +303,8 @@ export default function AnswerAnalysisBlock({
         renderMatchAnalysis(question, showCorrectAnswer)
       ) : question.question_type === "fill_in_blank" ? (
         renderFillBlankAnalysis(question, showCorrectAnswer)
+      ) : question.question_type === "short_answer" ? (
+        renderShortAnswerAnalysis(question, showCorrectAnswer)
       ) : hasOptionView ? (
         <div className="mt-3 space-y-2">
           {options.map((option, index) => {
@@ -337,4 +379,3 @@ export default function AnswerAnalysisBlock({
     </div>
   );
 }
-

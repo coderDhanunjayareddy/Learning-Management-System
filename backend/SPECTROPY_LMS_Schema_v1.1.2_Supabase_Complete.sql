@@ -459,6 +459,36 @@ CREATE TABLE topics (
 CREATE INDEX idx_topics_chapter ON topics(chapter_id);
 
 -- =====================================
+-- 1.13A COMPREHENSION_PASSAGES
+-- Purpose: Shared passage content linked to normal answerable questions
+CREATE TABLE comprehension_passages (
+  id SERIAL PRIMARY KEY,
+  client_id INTEGER REFERENCES clients(id) ON DELETE CASCADE,
+  school_id INTEGER REFERENCES schools(id) ON DELETE CASCADE,
+  title JSONB NOT NULL,
+  passage_content JSONB NOT NULL,
+  program_id INTEGER REFERENCES programs(id) ON DELETE SET NULL,
+  grade_id INTEGER REFERENCES grades(id) ON DELETE SET NULL,
+  subject_id INTEGER REFERENCES subjects(id) ON DELETE SET NULL,
+  chapter_id INTEGER REFERENCES chapters(id) ON DELETE SET NULL,
+  topic_id INTEGER REFERENCES topics(id) ON DELETE SET NULL,
+  legacy_question_id INTEGER UNIQUE,
+  created_by INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_comprehension_passages_client ON comprehension_passages(client_id);
+CREATE INDEX idx_comprehension_passages_school ON comprehension_passages(school_id);
+CREATE INDEX idx_comprehension_passages_subject ON comprehension_passages(subject_id);
+CREATE INDEX idx_comprehension_passages_chapter ON comprehension_passages(chapter_id);
+
+CREATE TRIGGER trg_comprehension_passages_updated
+BEFORE UPDATE ON comprehension_passages
+FOR EACH ROW
+EXECUTE FUNCTION update_timestamp();
+
+-- =====================================
 -- 1.14 QUESTIONS
 -- Purpose: Question bank
 CREATE TABLE questions (
@@ -490,6 +520,7 @@ CREATE TABLE questions (
     subject_id INTEGER NOT NULL REFERENCES subjects(id),
   chapter_id INTEGER NOT NULL REFERENCES chapters(id),
   topic_id INTEGER REFERENCES topics(id),
+  comprehension_passage_id INTEGER REFERENCES comprehension_passages(id) ON DELETE SET NULL,
   difficulty_level VARCHAR(20) NOT NULL DEFAULT 'medium' CHECK (
     difficulty_level IN ('easy', 'medium', 'hard')
   ),
@@ -511,6 +542,7 @@ CREATE INDEX idx_questions_client ON questions(client_id);
 CREATE INDEX idx_questions_school ON questions(school_id);
 CREATE INDEX idx_questions_subject ON questions(subject_id);
 CREATE INDEX idx_questions_chapter ON questions(chapter_id);
+CREATE INDEX idx_questions_comprehension_passage_id ON questions(comprehension_passage_id);
 CREATE INDEX idx_questions_status ON questions(status);
 CREATE INDEX idx_questions_type ON questions(question_type);
 CREATE INDEX idx_questions_exam_tags ON questions USING GIN(exam_tags);

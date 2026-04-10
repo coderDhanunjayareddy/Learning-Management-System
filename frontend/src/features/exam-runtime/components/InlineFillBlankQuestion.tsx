@@ -1,6 +1,6 @@
 import { createElement, useEffect, useMemo, useRef } from "react";
 import type { ReactNode } from "react";
-import { ensureMathJax } from "@/components/ui/mathjax";
+import { typesetMathJax } from "@/components/ui/mathjax";
 import { sanitizeHtml } from "@/utils/htmlSanitizer";
 
 interface InlineFillBlankQuestionProps {
@@ -43,13 +43,8 @@ export default function InlineFillBlankQuestion({
   useEffect(() => {
     let mounted = true;
     const typeset = async () => {
-      await ensureMathJax();
-      if (!mounted || !window.MathJax || !containerRef.current) return;
-      if (window.MathJax.typesetPromise) {
-        await window.MathJax.typesetPromise([containerRef.current]);
-      } else if (window.MathJax.typeset) {
-        window.MathJax.typeset([containerRef.current]);
-      }
+      if (!mounted || !containerRef.current) return;
+      await typesetMathJax([containerRef.current]);
     };
 
     void typeset();

@@ -67,7 +67,7 @@ export default function QuestionCard({ question, onView, onEdit, onDelete }: Pro
         showMeta={false}
         showAnswer={false}
         showOptions={false}
-        showComprehension={false}
+        showComprehension={true}
         showEmptyState={false}
         contentClassName="mt-3 line-clamp-3 text-sm text-gray-800"
       />

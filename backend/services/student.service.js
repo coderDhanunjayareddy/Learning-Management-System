@@ -452,11 +452,15 @@ const getAttemptQuestionsAndSections = async (examId) => {
         q.question_text,
         q.options,
         q.correct_answer,
+        cp.id AS comprehension_id,
+        cp.title AS comprehension_title,
+        cp.passage_content AS comprehension_passage_content,
         q.marks_positive,
         q.marks_negative
       FROM exam_sections es
       JOIN exam_questions eq ON eq.section_id = es.id
       JOIN questions q ON q.id = eq.question_id
+      LEFT JOIN comprehension_passages cp ON cp.id = q.comprehension_passage_id
       WHERE es.exam_id = $1
       ORDER BY es.order_index, eq.order_index, eq.id
     `,
@@ -492,6 +496,13 @@ const getAttemptQuestionsAndSections = async (examId) => {
       question_type: row.question_type,
       question_text: row.question_text,
       options: sanitizeQuestionOptions(row.options),
+      comprehension: row.comprehension_id
+        ? {
+            id: Number(row.comprehension_id),
+            title: row.comprehension_title,
+            passage_content: row.comprehension_passage_content,
+          }
+        : null,
       blank_ids: extractBlankIdsFromQuestion(row.correct_answer, row.question_text),
       marks_positive: row.marks_positive,
       marks_negative: row.marks_negative,
@@ -571,6 +582,9 @@ const fetchAttemptQuestionResults = async ({ attemptId }) => {
         q.correct_answer,
         q.solution,
         q.solution_video_url,
+        cp.id AS comprehension_id,
+        cp.title AS comprehension_title,
+        cp.passage_content AS comprehension_passage_content,
         COALESCE(eq.marks_override, es.marks_per_question, q.marks_positive, 0) AS max_marks,
         COALESCE(q.marks_negative, 0) AS negative_marks,
         es.title AS section_title,
@@ -578,6 +592,7 @@ const fetchAttemptQuestionResults = async ({ attemptId }) => {
         eq.order_index AS question_order
       FROM exam_responses er
       JOIN questions q ON q.id = er.question_id
+      LEFT JOIN comprehension_passages cp ON cp.id = q.comprehension_passage_id
       JOIN exam_sections es ON es.id = er.section_id
       JOIN exam_questions eq ON eq.section_id = er.section_id AND eq.question_id = er.question_id
       WHERE er.attempt_id = $1
@@ -621,6 +636,13 @@ const buildAttemptResultPayload = async ({ attempt, allowUnreleased = false, stu
         question_type: item.question_type,
         question_text: item.question_text,
         options: sanitizeQuestionOptions(item.options),
+        comprehension: item.comprehension_id
+          ? {
+              id: Number(item.comprehension_id),
+              title: item.comprehension_title,
+              passage_content: item.comprehension_passage_content,
+            }
+          : null,
         blank_ids: extractBlankIdsFromQuestion(item.correct_answer, item.question_text),
         student_answer: item.student_answer,
         is_attempted: item.is_attempted,
@@ -1375,7 +1397,20 @@ const gradeMCQSingle = (studentAnswer, correctAnswer) => {
 };
 
 // Grade multiple MCQ - exact full set match
-const gradeMCQMultiple = (studentAnswer, correctAnswer) => {
+const normalizeScoringMode = (value) => {
+  const raw = String(value ?? '').trim().toLowerCase();
+  if (raw === 'partial') return 'partial';
+  if (raw === 'mixed') return 'mixed';
+  return 'all_or_nothing';
+};
+
+const roundToTwo = (value) => Math.round(Number(value || 0) * 100) / 100;
+
+const gradeMCQMultiple = (
+  studentAnswer,
+  correctAnswer,
+  { scoringMode = 'all_or_nothing', posMarks = 0 } = {}
+) => {
   const studentArray = extractMultipleValues(studentAnswer)
     .map((item) => normalizeToken(item))
     .filter((item) => item.length > 0);
@@ -1397,9 +1432,34 @@ const gradeMCQMultiple = (studentAnswer, correctAnswer) => {
   const isExactMatch = studentNorm.length === correctNorm.length &&
     studentNorm.every((val, idx) => val === correctNorm[idx]);
 
+  const normalizedScoringMode = normalizeScoringMode(scoringMode);
+
+  if (normalizedScoringMode === 'partial' && !isExactMatch) {
+    const correctSet = new Set(correctNorm);
+    const selectedCorrect = studentNorm.filter((item) => correctSet.has(item));
+    const selectedWrong = studentNorm.filter((item) => !correctSet.has(item));
+
+    if (selectedWrong.length > 0 || selectedCorrect.length === 0) {
+      return {
+        isCorrect: false,
+        isUnattempted: false,
+        outcome: 'wrong',
+      };
+    }
+
+    const awardedMarks = roundToTwo((posMarks * selectedCorrect.length) / correctNorm.length);
+    return {
+      isCorrect: null,
+      isUnattempted: false,
+      outcome: awardedMarks > 0 ? 'partial' : 'wrong',
+      marksAwarded: awardedMarks,
+    };
+  }
+
   return {
     isCorrect: isExactMatch,
     isUnattempted: false,
+    outcome: isExactMatch ? 'correct' : 'wrong',
   };
 };
 
@@ -1538,6 +1598,23 @@ const extractFillBlankValues = (value) => {
 };
 
 const normalizeAnswerString = (value) => String(value ?? "").trim().toLowerCase();
+const normalizeCaseSensitiveAnswerString = (value) => String(value ?? "").trim();
+
+const extractShortAnswerConfig = (correctAnswer) => {
+  if (!isObject(correctAnswer)) {
+    return {
+      answers: [],
+      caseSensitive: false,
+    };
+  }
+
+  return {
+    answers: Array.isArray(correctAnswer.answers)
+      ? correctAnswer.answers.map((answer) => normalizeCaseSensitiveAnswerString(answer)).filter(Boolean)
+      : [],
+    caseSensitive: Boolean(correctAnswer.case_sensitive),
+  };
+};
 
 const gradeMatchFollowing = (studentAnswer, correctAnswer) => {
   const studentPairs = extractMatchPairs(studentAnswer);
@@ -1602,6 +1679,30 @@ const gradeFillInBlank = (studentAnswer, correctAnswer) => {
   };
 };
 
+const gradeShortAnswer = (studentAnswer, correctAnswer) => {
+  const studentValue = normalizeCaseSensitiveAnswerString(extractSingleValue(studentAnswer));
+  if (!studentValue) {
+    return { isCorrect: false, isUnattempted: true };
+  }
+
+  const { answers, caseSensitive } = extractShortAnswerConfig(correctAnswer);
+  if (answers.length === 0) {
+    return { isCorrect: false, isUnattempted: false };
+  }
+
+  const normalizedStudentValue = caseSensitive
+    ? studentValue
+    : normalizeAnswerString(studentValue);
+  const isCorrect = answers.some((answer) =>
+    (caseSensitive ? answer : normalizeAnswerString(answer)) === normalizedStudentValue
+  );
+
+  return {
+    isCorrect,
+    isUnattempted: false,
+  };
+};
+
 // ============================================
 // Task 4: Grading Orchestrator + Totals
 // ============================================
@@ -1616,6 +1717,7 @@ const gradeAttempt = async (client, attemptId) => {
        er.student_answer,
        q.question_type,
        q.correct_answer,
+       q.scoring_mode,
        q.marks_positive,
        q.marks_negative,
        eq.marks_override,
@@ -1643,6 +1745,7 @@ const gradeAttempt = async (client, attemptId) => {
       question_type: questionType,
       student_answer: studentAnswer,
       correct_answer: correctAnswer,
+      scoring_mode: scoringMode,
       marks_positive: markPositive,
       marks_negative: markNegative,
       marks_override: marksOverride,
@@ -1668,6 +1771,7 @@ const gradeAttempt = async (client, attemptId) => {
     let isCorrect = false;
     let isUnattempted = false;
     let marksAwarded = 0;
+    let outcome = 'wrong';
 
     // Grade based on question type
     switch (questionType) {
@@ -1675,42 +1779,62 @@ const gradeAttempt = async (client, attemptId) => {
         const result = gradeMCQSingle(studentAnswer, correctAnswer);
         isCorrect = result.isCorrect;
         isUnattempted = result.isUnattempted;
+        outcome = isUnattempted ? 'unattempted' : (isCorrect ? 'correct' : 'wrong');
         break;
       }
       case 'mcq_multiple': {
-        const result = gradeMCQMultiple(studentAnswer, correctAnswer);
+        const result = gradeMCQMultiple(studentAnswer, correctAnswer, {
+          scoringMode,
+          posMarks,
+        });
         isCorrect = result.isCorrect;
         isUnattempted = result.isUnattempted;
+        outcome = result.outcome ?? (isUnattempted ? 'unattempted' : (isCorrect ? 'correct' : 'wrong'));
+        if (result.marksAwarded !== undefined) {
+          marksAwarded = result.marksAwarded;
+        }
         break;
       }
       case 'numerical': {
         const result = gradeNumerical(studentAnswer, correctAnswer);
         isCorrect = result.isCorrect;
         isUnattempted = result.isUnattempted;
+        outcome = isUnattempted ? 'unattempted' : (isCorrect ? 'correct' : 'wrong');
         break;
       }
       case 'true_false': {
         const result = gradeTrueFalse(studentAnswer, correctAnswer);
         isCorrect = result.isCorrect;
         isUnattempted = result.isUnattempted;
+        outcome = isUnattempted ? 'unattempted' : (isCorrect ? 'correct' : 'wrong');
         break;
       }
       case 'integer': {
         const result = gradeInteger(studentAnswer, correctAnswer);
         isCorrect = result.isCorrect;
         isUnattempted = result.isUnattempted;
+        outcome = isUnattempted ? 'unattempted' : (isCorrect ? 'correct' : 'wrong');
         break;
       }
       case 'match_following': {
         const result = gradeMatchFollowing(studentAnswer, correctAnswer);
         isCorrect = result.isCorrect;
         isUnattempted = result.isUnattempted;
+        outcome = isUnattempted ? 'unattempted' : (isCorrect ? 'correct' : 'wrong');
         break;
       }
       case 'fill_in_blank': {
         const result = gradeFillInBlank(studentAnswer, correctAnswer);
         isCorrect = result.isCorrect;
         isUnattempted = result.isUnattempted;
+        outcome = isUnattempted ? 'unattempted' : (isCorrect ? 'correct' : 'wrong');
+        break;
+      }
+      case 'short_answer': {
+        const result = gradeShortAnswer(studentAnswer, correctAnswer);
+        isCorrect = result.isCorrect;
+        isUnattempted = result.isUnattempted;
+        outcome = isUnattempted ? 'unattempted' : (isCorrect ? 'correct' : 'wrong');
         break;
       }
       default:
@@ -1719,7 +1843,9 @@ const gradeAttempt = async (client, attemptId) => {
     }
 
     // Calculate marks awarded
-    if (isUnattempted) {
+    if (outcome === 'partial') {
+      totalScore += marksAwarded;
+    } else if (isUnattempted) {
       marksAwarded = 0;
       totalUnattempted++;
     } else if (isCorrect) {
@@ -1729,9 +1855,12 @@ const gradeAttempt = async (client, attemptId) => {
       // Negative marking only on wrong (not unattempted)
       marksAwarded = -negMarks;
       totalWrong++;
+      outcome = 'wrong';
     }
 
-    totalScore += marksAwarded;
+    if (outcome !== 'partial') {
+      totalScore += marksAwarded;
+    }
 
     // Update response with grading results
     await client.query(

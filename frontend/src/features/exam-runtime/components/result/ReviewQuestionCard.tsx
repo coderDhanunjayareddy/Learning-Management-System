@@ -14,6 +14,7 @@ interface ReviewQuestionCardProps {
 
 const statusClasses: Record<ReturnType<typeof getReviewStatus>, string> = {
   correct: "bg-emerald-100 text-emerald-700",
+  partial: "bg-sky-100 text-sky-700",
   wrong: "bg-rose-100 text-rose-700",
   unattempted: "bg-amber-100 text-amber-700",
   attempted: "bg-blue-100 text-blue-700",
@@ -21,6 +22,7 @@ const statusClasses: Record<ReturnType<typeof getReviewStatus>, string> = {
 
 const statusLabels: Record<ReturnType<typeof getReviewStatus>, string> = {
   correct: "Correct",
+  partial: "Partial",
   wrong: "Wrong",
   unattempted: "Unattempted",
   attempted: "Attempted",
@@ -67,6 +69,7 @@ export default function ReviewQuestionCard({
             question_type: question.question_type,
             question_text: question.question_text,
             options: question.options,
+            comprehension: question.comprehension,
             correct_answer: question.correct_answer,
           }}
           showMeta={false}

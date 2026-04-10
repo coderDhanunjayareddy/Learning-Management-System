@@ -68,6 +68,19 @@ export interface ComprehensiveQuestion {
   marks_negative?: number;
 }
 
+export interface ComprehensionPassage {
+  id: string | number;
+  title: RichTextValue | null;
+  passage_content: RichTextValue;
+  program_id?: string | number | null;
+  grade_id?: string | number | null;
+  subject_id?: string | number | null;
+  chapter_id?: string | number | null;
+  topic_id?: string | number | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface Question {
   id: string | number;
   question_type: QuestionType;
@@ -77,6 +90,8 @@ export interface Question {
   solution?: RichTextValue | null;
   solution_video_url?: string | null;
   scoring_mode?: ScoringMode;
+  comprehension_passage_id?: string | number | null;
+  comprehension?: ComprehensionPassage | null;
   comprehension_passage?: RichTextValue | null;
   comprehension_questions?: ComprehensiveQuestion[];
   program_id?: string | number | null;
