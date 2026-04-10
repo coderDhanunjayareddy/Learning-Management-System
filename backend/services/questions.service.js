@@ -551,6 +551,38 @@ const normalizeBulkDefaults = (source) => {
     defaults.school_id = source.school_id;
   }
 
+  if (source?.difficulty_level !== undefined && source.difficulty_level !== '') {
+    defaults.difficulty_level = source.difficulty_level;
+  } else if (source?.difficulty !== undefined && source.difficulty !== '') {
+    defaults.difficulty_level = source.difficulty;
+  }
+
+  if (source?.marks_positive !== undefined && source.marks_positive !== '') {
+    defaults.marks_positive = source.marks_positive;
+  }
+
+  if (source?.marks_negative !== undefined && source.marks_negative !== '') {
+    defaults.marks_negative = source.marks_negative;
+  }
+
+  if (source?.exam_tags !== undefined && source.exam_tags !== '') {
+    defaults.exam_tags = source.exam_tags;
+  } else if (source?.tags !== undefined && source.tags !== '') {
+    defaults.exam_tags = source.tags;
+  }
+
+  if (source?.category !== undefined && source.category !== '') {
+    defaults.category = source.category;
+  }
+
+  if (source?.status !== undefined && source.status !== '') {
+    defaults.status = source.status;
+  }
+
+  if (source?.solution_video_url !== undefined && source.solution_video_url !== '') {
+    defaults.solution_video_url = source.solution_video_url;
+  }
+
   return defaults;
 };
 
@@ -591,6 +623,48 @@ const applyBulkDefaults = (row, defaults) => {
     defaults.school_id !== undefined
   ) {
     merged.school_id = defaults.school_id;
+  }
+  if (
+    (merged.difficulty_level === undefined || merged.difficulty_level === null || merged.difficulty_level === '') &&
+    defaults.difficulty_level !== undefined
+  ) {
+    merged.difficulty_level = defaults.difficulty_level;
+  }
+  if (
+    (merged.marks_positive === undefined || merged.marks_positive === null || merged.marks_positive === '') &&
+    defaults.marks_positive !== undefined
+  ) {
+    merged.marks_positive = defaults.marks_positive;
+  }
+  if (
+    (merged.marks_negative === undefined || merged.marks_negative === null || merged.marks_negative === '') &&
+    defaults.marks_negative !== undefined
+  ) {
+    merged.marks_negative = defaults.marks_negative;
+  }
+  if (
+    (merged.exam_tags === undefined || merged.exam_tags === null || merged.exam_tags === '') &&
+    defaults.exam_tags !== undefined
+  ) {
+    merged.exam_tags = defaults.exam_tags;
+  }
+  if (
+    (merged.category === undefined || merged.category === null || merged.category === '') &&
+    defaults.category !== undefined
+  ) {
+    merged.category = defaults.category;
+  }
+  if (
+    (merged.status === undefined || merged.status === null || merged.status === '') &&
+    defaults.status !== undefined
+  ) {
+    merged.status = defaults.status;
+  }
+  if (
+    (merged.solution_video_url === undefined || merged.solution_video_url === null || merged.solution_video_url === '') &&
+    defaults.solution_video_url !== undefined
+  ) {
+    merged.solution_video_url = defaults.solution_video_url;
   }
   return merged;
 };
@@ -981,7 +1055,11 @@ const extractDocxTableRows = async (buffer, defaults) => {
 };
 
 const mapAnswerTokenToOptionId = (token, options) => {
-  const normalized = String(token || '').trim().toUpperCase();
+  const raw = String(token || '').trim();
+  if (!raw) return null;
+
+  const labelledPrefixMatch = raw.match(/^\(?\s*([A-H])\s*\)?(?:[\).:-])?(?:\s+.*)?$/i);
+  const normalized = (labelledPrefixMatch?.[1] || raw).trim().toUpperCase();
   if (!normalized) return null;
 
   if (/^\d+$/.test(normalized)) {
@@ -998,6 +1076,26 @@ const mapAnswerTokenToOptionId = (token, options) => {
     (option) => String(option.text || '').trim().toLowerCase() === String(token).trim().toLowerCase()
   );
   return byText?.id ?? null;
+};
+
+const extractOptionLabelsFromAnswer = (value) => {
+  const raw = String(value || '').trim();
+  if (!raw) return [];
+
+  const parenthesized = raw.match(/\(([a-h](?:\s*,\s*[a-h])*)\)/i);
+  if (parenthesized?.[1]) {
+    return parenthesized[1]
+      .split(',')
+      .map((entry) => entry.trim().toUpperCase())
+      .filter((entry) => /^[A-H]$/.test(entry));
+  }
+
+  const prefix = raw.match(/^\(?\s*([a-h])\s*\)?(?:[\).:-])?(?:\s+.*)?$/i);
+  if (prefix?.[1]) {
+    return [prefix[1].toUpperCase()];
+  }
+
+  return [];
 };
 
 const isBlankValue = (value) =>
@@ -1353,8 +1451,25 @@ const finalizeDocxQuestion = (question, defaults, rowNumber) => {
     text: option.text,
   }));
 
-  const questionType = normalizeBulkQuestionType(question.question_type || 'mcq_single');
   const answerRaw = question.correct_answer;
+  const answerLabels = extractOptionLabelsFromAnswer(answerRaw);
+  let inferredQuestionType = normalizeBulkQuestionType(question.question_type || '');
+  if (!inferredQuestionType) {
+    const plainAnswer = String(answerRaw || '').trim();
+    if (question.comprehension_passage) {
+      inferredQuestionType = 'comprehensive';
+    } else if (options.length > 0) {
+      inferredQuestionType = answerLabels.length > 1 ? 'mcq_multiple' : 'mcq_single';
+    } else if (/^(true|false)$/i.test(plainAnswer)) {
+      inferredQuestionType = 'true_false';
+    } else if (/^-?\d+(?:\.\d+)?$/.test(plainAnswer)) {
+      inferredQuestionType = 'numerical';
+    } else {
+      inferredQuestionType = 'short_answer';
+    }
+  }
+
+  const questionType = inferredQuestionType || 'mcq_single';
   let correctAnswer = answerRaw;
   if (questionType === 'true_false') {
     const answerValue = String(answerRaw || '').trim().toLowerCase();
@@ -1387,6 +1502,7 @@ const finalizeDocxQuestion = (question, defaults, rowNumber) => {
       topic_id: question.topic_id,
       difficulty_level: question.difficulty_level || 'medium',
       exam_tags: question.exam_tags || [],
+      category: question.category ?? null,
       marks_positive: question.marks_positive ?? 4,
       marks_negative: question.marks_negative ?? 0,
       solution: question.solution ?? null,
@@ -1432,6 +1548,7 @@ const extractDocxRows = (buffer, defaults) => {
   const rows = [];
   let globalMeta = {};
   let current = null;
+  let pendingPassage = null;
 
   const pushCurrent = () => {
     if (!current) return;
@@ -1503,10 +1620,14 @@ const extractDocxRows = (buffer, defaults) => {
       pushCurrent();
       current = {
         ...globalMeta,
-        question_type: 'mcq_single',
+        question_type: '',
         question_text: questionMatch[1] ? `<p>${escapeHtml(questionMatch[1])}</p>` : '',
         options: [],
       };
+      if (pendingPassage) {
+        current.question_type = 'comprehensive';
+        current.comprehension_passage = pendingPassage;
+      }
       if (!current.question_text && paragraphHtml) {
         current.question_text = `<p>${paragraphHtml}</p>`;
       }
@@ -1537,10 +1658,23 @@ const extractDocxRows = (buffer, defaults) => {
       return;
     }
 
-    const optionMatch = plainText.match(/^([A-H])[\).:-]\s*(.*)$/i);
+    const passageMatch = plainText.match(/^(passage|comprehension_passage|comprehensive passage)\s*[:.-]\s*(.*)$/i);
+    if (passageMatch && !current) {
+      pendingPassage = `<p>${escapeHtml(passageMatch[2] || '')}</p>`;
+      return;
+    }
+
+    if (pendingPassage && !current && !metaMatch) {
+      pendingPassage = `${pendingPassage}<p>${paragraphHtml || escapeHtml(plainText)}</p>`;
+      return;
+    }
+
+    const optionMatch = plainText.match(/^(?:\(?([A-H])\)|([A-H]))[\).:-]?\s*(.*)$/i);
     if (optionMatch) {
-      const optionHtml = paragraphHtml.replace(/^[A-H][\).:-]\s*/i, '').trim();
-      const optionText = optionHtml || escapeHtml(optionMatch[2] || '').trim();
+      const optionHtml = paragraphHtml
+        .replace(/^(?:\(?[A-H]\)|[A-H])[\).:-]?\s*/i, '')
+        .trim();
+      const optionText = optionHtml || escapeHtml(optionMatch[3] || '').trim();
       if (!optionText) return;
       current.options.push({
         id: `opt-${current.options.length + 1}`,
@@ -1550,10 +1684,25 @@ const extractDocxRows = (buffer, defaults) => {
     }
 
     const answerMatch = plainText.match(
-      /^(answer|ans|correct_answer|correct answer|correct option)\s*[:.-]\s*(.+)$/i
+      /^(answer|ans|correct_answer|correct answer|correct option|key)\s*[:.-]\s*(.+)$/i
     );
     if (answerMatch) {
       current.correct_answer = answerMatch[2].trim();
+      return;
+    }
+
+    const solutionLabelMatch = plainText.match(/^solution\s*:?\s*(.*)$/i);
+    if (solutionLabelMatch) {
+      current._collecting_solution = true;
+      const immediateSolution = solutionLabelMatch[1]?.trim();
+      if (immediateSolution) {
+        current.solution = `${current.solution || ''}<p>${escapeHtml(immediateSolution)}</p>`;
+      }
+      return;
+    }
+
+    if (current._collecting_solution) {
+      current.solution = `${current.solution || ''}<p>${paragraphHtml || escapeHtml(plainText)}</p>`;
       return;
     }
 
@@ -3122,6 +3271,109 @@ export const bulkUploadTemplate = async (_req, res) => {
   }
 };
 
+const CONVERTER_TEMPLATE_HEADERS = [
+  'Sno',
+  'Type',
+  'Question',
+  'Options',
+  'Correct Answer',
+  'Solution',
+  'Difficulty',
+  'Marks+',
+  'Marks-',
+  'Tags',
+  'Program',
+  'Grade',
+  'Subject',
+  'Chapter',
+  'Topic',
+  'Comprehensive Passage',
+  'Category',
+];
+
+const decodeStoredRichText = (value) => toPlainBulkText(value ?? '');
+
+const mapOptionIdToLabel = (optionId, options = []) => {
+  const index = options.findIndex((option) => String(option.id) === String(optionId));
+  if (index < 0) return String(optionId || '');
+  return String.fromCharCode(65 + index);
+};
+
+const buildConverterOutputRow = (row, index) => {
+  const options = Array.isArray(row.options) ? row.options : [];
+  let correctAnswer = '';
+
+  if (row.question_type === 'mcq_single') {
+    correctAnswer = mapOptionIdToLabel(row.correct_answer, options);
+  } else if (row.question_type === 'mcq_multiple') {
+    const answers = Array.isArray(row.correct_answer) ? row.correct_answer : [];
+    correctAnswer = answers.map((answer) => mapOptionIdToLabel(answer, options)).join(';');
+  } else if (row.question_type === 'true_false') {
+    correctAnswer = row.correct_answer === true ? 'true' : 'false';
+  } else {
+    correctAnswer = Array.isArray(row.correct_answer)
+      ? row.correct_answer.join(';')
+      : String(row.correct_answer ?? '');
+  }
+
+  return [
+    String(index + 1),
+    row.question_type || '',
+    decodeStoredRichText(row.question_text),
+    options.map((option) => decodeStoredRichText(option.text)).join(';'),
+    correctAnswer,
+    decodeStoredRichText(row.solution),
+    row.difficulty_level || '',
+    row.marks_positive ?? '',
+    row.marks_negative ?? '',
+    Array.isArray(row.exam_tags) ? row.exam_tags.join(',') : String(row.exam_tags ?? ''),
+    row.program_id ?? '',
+    row.grade_id ?? '',
+    row.subject_id ?? '',
+    row.chapter_id ?? '',
+    row.topic_id ?? '',
+    decodeStoredRichText(row.comprehension_passage),
+    String(row.category ?? ''),
+  ];
+};
+
+const convertManualDocxRows = async ({ file, defaults }) => {
+  const rows = await extractBulkRowsFromFile(file, defaults);
+  if (rows.length === 0) {
+    throw new AppError('No valid question rows found in the uploaded file', 400);
+  }
+
+  const rowErrors = rows.filter((row) => row && typeof row === 'object' && row._bulk_error);
+  if (rowErrors.length > 0) {
+    const firstError = rowErrors[0];
+    throw new AppError(String(firstError._bulk_error || 'Failed to parse uploaded file'), 400);
+  }
+
+  return rows;
+};
+
+const buildConverterTemplateBuffer = async (rows) => {
+  const table = new Table({
+    rows: [buildTemplateRow(CONVERTER_TEMPLATE_HEADERS), ...rows.map((row, index) => buildTemplateRow(buildConverterOutputRow(row, index)))],
+  });
+
+  const doc = new Document({
+    sections: [
+      {
+        children: [
+          new Paragraph({
+            children: [new TextRun({ text: 'Question Bank Converter Output', bold: true })],
+          }),
+          new Paragraph(''),
+          table,
+        ],
+      },
+    ],
+  });
+
+  return Packer.toBuffer(doc);
+};
+
 let hasQuestionsFolderIdColumn = null;
 
 const checkQuestionsFolderIdColumn = async () => {
@@ -3256,5 +3508,111 @@ export const bulkUploadQuestions = async (req, res) => {
     });
   } catch (err) {
     handleServiceError(res, err, 'Failed to bulk upload questions');
+  }
+};
+
+export const downloadConvertedQuestions = async (req, res) => {
+  try {
+    if (!req.user?.id || !req.user?.role) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    if (!req.file?.buffer) {
+      return res.status(400).json({ error: 'File is required for conversion.' });
+    }
+
+    const defaults = normalizeBulkDefaults(req.body || {});
+    const rows = await convertManualDocxRows({
+      file: req.file,
+      defaults,
+    });
+
+    const buffer = await buildConverterTemplateBuffer(rows);
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    );
+    res.setHeader('Content-Disposition', 'attachment; filename="question-bank-converter-output.docx"');
+    return res.send(buffer);
+  } catch (err) {
+    handleServiceError(res, err, 'Failed to generate converted question file');
+  }
+};
+
+export const insertConvertedQuestions = async (req, res) => {
+  try {
+    if (!req.user?.id || !req.user?.role) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    if (!req.file?.buffer) {
+      return res.status(400).json({ error: 'File is required for conversion.' });
+    }
+
+    const role = req.user.role;
+    const clientId = ensureClientScope(req.user.client_id ?? null, role);
+    const defaults = normalizeBulkDefaults(req.body || {});
+    const folderId = parseNullableInt(req.body?.folder_id, 'folder_id');
+
+    let selectedFolderId = null;
+    let canAssignFolder = false;
+    if (folderId) {
+      selectedFolderId = await ensureBulkFolderAccess({
+        folderId,
+        user: req.user,
+        role,
+        clientId,
+      });
+      canAssignFolder = await checkQuestionsFolderIdColumn();
+      if (!canAssignFolder) {
+        throw new AppError('This database does not support folder assignment on questions yet', 400);
+      }
+    }
+
+    const rows = await convertManualDocxRows({
+      file: req.file,
+      defaults,
+    });
+
+    const inserted = [];
+    const errors = [];
+
+    for (let index = 0; index < rows.length; index += 1) {
+      const row = rows[index];
+      const rowNumber = index + 2;
+
+      try {
+        const payload = await buildQuestionInsertPayload({
+          input: row,
+          user: req.user,
+          role,
+          clientId,
+        });
+        const created = await insertQuestion(payload);
+
+        if (selectedFolderId && canAssignFolder) {
+          await dbQuery(`UPDATE questions SET folder_id = $1 WHERE id = $2`, [selectedFolderId, created.id]);
+        }
+
+        inserted.push(created);
+      } catch (err) {
+        const message = err instanceof AppError ? err.message : 'Failed to insert question';
+        errors.push({
+          row: rowNumber,
+          message: `Row ${rowNumber}: ${message}`,
+        });
+      }
+    }
+
+    return res.json({
+      success: errors.length === 0,
+      inserted: inserted.length,
+      failed: errors.length,
+      totalDetected: rows.length,
+      errors,
+      data: inserted,
+    });
+  } catch (err) {
+    handleServiceError(res, err, 'Failed to convert and insert questions');
   }
 };

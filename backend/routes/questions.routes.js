@@ -13,6 +13,8 @@ import {
   rejectQuestion,
   bulkUploadQuestions,
   bulkUploadTemplate,
+  downloadConvertedQuestions,
+  insertConvertedQuestions,
   listQuestionFolders,
   getQuestionFolderById,
   createQuestionFolder,
@@ -33,6 +35,8 @@ router.use(
 router.get('/questions', checkPermission('questions.read'), listQuestions);
 router.get('/questions/bulk-upload/template', checkPermission('questions.read'), bulkUploadTemplate);
 router.post('/questions/bulk-upload', checkPermission('questions.create'), upload.single('file'), bulkUploadQuestions);
+router.post('/questions/converter/download', checkPermission('questions.create'), upload.single('file'), downloadConvertedQuestions);
+router.post('/questions/converter/insert', checkPermission('questions.create'), upload.single('file'), insertConvertedQuestions);
 router.get('/questions/:id', checkPermission('questions.read'), getQuestionById);
 router.post('/questions', checkPermission('questions.create'), createQuestion);
 router.put('/questions/:id', checkPermission('questions.create'), updateQuestion);
