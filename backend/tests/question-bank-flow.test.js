@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import pool from '../config/db.js';
 import {
   approveQuestion,
+  bulkUploadQuestions,
   createQuestion,
   getQuestionById,
   listQuestions,
@@ -25,6 +26,12 @@ const makeRes = () => ({
 
 const parseInsertColumns = (sql) => {
   const match = sql.match(/insert into questions \((.+?)\)\s+values/is);
+  if (!match) return [];
+  return match[1].split(',').map((column) => column.trim());
+};
+
+const parsePassageInsertColumns = (sql) => {
+  const match = sql.match(/insert into comprehension_passages \((.+?)\)\s+values/is);
   if (!match) return [];
   return match[1].split(',').map((column) => column.trim());
 };
@@ -109,6 +116,7 @@ const createMockDb = () => {
   };
 
   return {
+    comprehensionPassages: data.comprehensionPassages,
     async query(text, params = []) {
       const sql = String(text);
       const normalized = sql.replace(/\s+/g, ' ').trim().toLowerCase();
@@ -183,6 +191,19 @@ const createMockDb = () => {
         record.updated_at = record.created_at;
         data.questions.push(record);
         return { rows: [{ id: record.id }] };
+      }
+
+      if (normalized.startsWith('insert into comprehension_passages (')) {
+        const columns = parsePassageInsertColumns(sql);
+        const jsonColumns = new Set(['title', 'passage_content']);
+        const record = { id: data.nextPassageId++ };
+        columns.forEach((column, index) => {
+          const value = params[index];
+          record[column] =
+            jsonColumns.has(column) && typeof value === 'string' ? JSON.parse(value) : value;
+        });
+        data.comprehensionPassages.push(record);
+        return { rows: [{ ...record }] };
       }
 
       if (normalized.startsWith('select * from comprehension_passages where id = $1')) {
@@ -610,4 +631,44 @@ test('Question can link to a comprehension passage and returns passage summary',
   assert.equal(updateRes.statusCode, 200);
   assert.equal(updateRes.body.comprehension_passage_id, null);
   assert.equal(updateRes.body.comprehension, undefined);
+});
+
+test('Bulk upload can create one linked passage and reuse it across multiple child questions', async (t) => {
+  const originalQuery = pool.query.bind(pool);
+  const mockDb = createMockDb();
+  pool.query = mockDb.query.bind(mockDb);
+  t.after(() => {
+    pool.query = originalQuery;
+  });
+
+  const teacherTenantA = { id: 11, role: 'teacher', client_id: 101 };
+
+  const bulkReq = {
+    user: teacherTenantA,
+    body: {},
+    file: {
+      originalname: 'linked-passage.csv',
+      buffer: Buffer.from(
+        [
+          'Type,Question,Options,Correct Answer,Solution,Program,Grade,Subject,Chapter,Topic,Has Comprehension,Passage Key,Passage Title,Passage Content,Passage Action',
+          'mcq_single,What is the main idea?,Forest life;Ocean life;Desert life;Mountain life,A,The passage focuses on forest life.,401,501,1001,2001,,yes,P1,Rainforest Reading,"<p>Rainforests support rich biodiversity.</p>",create',
+          'mcq_single,Which habitat is described?,Forest;Ocean;Desert;Tundra,A,The habitat is forest.,401,501,1001,2001,,yes,P1,Rainforest Reading,"<p>Rainforests support rich biodiversity.</p>",create',
+        ].join('\n'),
+        'utf8'
+      ),
+    },
+  };
+  const bulkRes = makeRes();
+
+  await bulkUploadQuestions(bulkReq, bulkRes);
+
+  assert.equal(bulkRes.statusCode, 200);
+  assert.equal(bulkRes.body.inserted, 2);
+  assert.equal(bulkRes.body.errors.length, 0);
+  assert.equal(mockDb.comprehensionPassages.length, 2);
+  const createdPassages = mockDb.comprehensionPassages.filter((item) => Number(item.id) !== 901);
+  assert.equal(createdPassages.length, 1);
+  const linkedPassageId = createdPassages[0].id;
+  assert.equal(bulkRes.body.data[0].comprehension_passage_id, linkedPassageId);
+  assert.equal(bulkRes.body.data[1].comprehension_passage_id, linkedPassageId);
 });

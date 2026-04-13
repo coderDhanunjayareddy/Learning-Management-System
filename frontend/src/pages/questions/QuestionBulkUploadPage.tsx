@@ -103,7 +103,7 @@ export default function QuestionBulkUploadPage() {
   return (
     <QuestionBankLayout
       title="Bulk Upload"
-      description="Upload DOCX template files to add questions in bulk."
+      description="Upload DOCX template files to add questions in bulk, including rich text and images."
       actions={
         <button
           onClick={() => navigate("/question-bank")}
@@ -118,7 +118,7 @@ export default function QuestionBulkUploadPage() {
           <div className="lg:col-span-2">
             <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
               <p className="text-sm font-medium text-slate-700">Drop your file here</p>
-              <p className="mt-1 text-xs text-slate-500">Supported: .docx (table template)</p>
+              <p className="mt-1 text-xs text-slate-500">Supported: .docx (table template, rich text and images supported)</p>
               <label className="mt-4 inline-flex cursor-pointer items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50">
                 Select File
                 <input
@@ -152,15 +152,16 @@ export default function QuestionBulkUploadPage() {
                 Fill the DOCX template table exactly as provided. One row = one question.
               </p>
               <ul className="mt-3 list-disc space-y-1 pl-5 text-xs text-slate-600">
-                <li>Type: mcq_single, mcq_multiple, true_false, numerical, short_answer, match_following, fill_in_blank.</li>
-                <li>Question: rich text content (images/tables allowed).</li>
+                <li>Type: mcq_single, mcq_multiple, true_false, numerical, short_answer.</li>
+                <li>Question: rich text content is supported, including embedded DOCX images and tables.</li>
                 <li>Options: separate with semicolons (A;B;C;D) for MCQ.</li>
-                <li>Correct Answer: use option letters (A/B/...) for MCQ, true/false for True/False, number for Numerical.</li>
-                <li>Match Pairs: format like L1=R1;L2=R2 (matches by order).</li>
-                <li>Blanks: format like blank1=ans1|ans2;blank2=ans3.</li>
+                <li>Correct Answer: use option letters (A/B/...) for MCQ, true/false for True/False, number for Numerical, and plain text for Short Answer.</li>
+                <li>Solution and passage fields can also contain formatted DOCX content with images.</li>
+                <li>For linked comprehension sets, keep normal child question types and set Has Comprehension = yes.</li>
+                <li>Use the same Passage Key across all child questions that should share one passage.</li>
+                <li>For passage-based questions, provide Passage Title and Passage Content; all rows with the same Passage Key will share that passage.</li>
                 <li>Category: optional category/tag value (example: algebra, grammar, reading).</li>
                 <li>Program, Grade, Subject, Chapter, Topic can be provided as IDs or names inside the file.</li>
-                <li>Linked passages are managed separately. Upload answerable questions first, then attach a passage from the question form if needed.</li>
               </ul>
               <p className="mt-3 text-xs text-slate-500">If a column is not applicable, leave it empty.</p>
 
@@ -170,12 +171,11 @@ export default function QuestionBulkUploadPage() {
                   <table className="min-w-full border-collapse text-left text-xs">
                     <thead className="bg-slate-50 text-slate-600">
                       <tr>
+                        <th className="border border-slate-200 px-2 py-1">Sno</th>
                         <th className="border border-slate-200 px-2 py-1">Type</th>
                         <th className="border border-slate-200 px-2 py-1">Question</th>
                         <th className="border border-slate-200 px-2 py-1">Options</th>
                         <th className="border border-slate-200 px-2 py-1">Correct Answer</th>
-                        <th className="border border-slate-200 px-2 py-1">Match Pairs</th>
-                        <th className="border border-slate-200 px-2 py-1">Blanks</th>
                         <th className="border border-slate-200 px-2 py-1">Solution</th>
                         <th className="border border-slate-200 px-2 py-1">Difficulty</th>
                         <th className="border border-slate-200 px-2 py-1">Marks+</th>
@@ -186,17 +186,20 @@ export default function QuestionBulkUploadPage() {
                         <th className="border border-slate-200 px-2 py-1">Subject</th>
                         <th className="border border-slate-200 px-2 py-1">Chapter</th>
                         <th className="border border-slate-200 px-2 py-1">Topic</th>
+                        <th className="border border-slate-200 px-2 py-1">Has Comprehension</th>
+                        <th className="border border-slate-200 px-2 py-1">Passage Key</th>
+                        <th className="border border-slate-200 px-2 py-1">Passage Title</th>
+                        <th className="border border-slate-200 px-2 py-1">Passage Content</th>
                         <th className="border border-slate-200 px-2 py-1">Category</th>
                       </tr>
                     </thead>
                     <tbody className="text-slate-700">
                       <tr>
+                        <td className="border border-slate-200 px-2 py-1">1</td>
                         <td className="border border-slate-200 px-2 py-1">mcq_single</td>
                         <td className="border border-slate-200 px-2 py-1">What is 2 + 2?</td>
                         <td className="border border-slate-200 px-2 py-1">2;3;4;5</td>
                         <td className="border border-slate-200 px-2 py-1">C</td>
-                        <td className="border border-slate-200 px-2 py-1">-</td>
-                        <td className="border border-slate-200 px-2 py-1">-</td>
                         <td className="border border-slate-200 px-2 py-1">2 + 2 = 4.</td>
                         <td className="border border-slate-200 px-2 py-1">easy</td>
                         <td className="border border-slate-200 px-2 py-1">4</td>
@@ -207,16 +210,19 @@ export default function QuestionBulkUploadPage() {
                         <td className="border border-slate-200 px-2 py-1">Math</td>
                         <td className="border border-slate-200 px-2 py-1">Basics</td>
                         <td className="border border-slate-200 px-2 py-1">Addition</td>
+                        <td className="border border-slate-200 px-2 py-1">no</td>
+                        <td className="border border-slate-200 px-2 py-1">-</td>
+                        <td className="border border-slate-200 px-2 py-1">-</td>
+                        <td className="border border-slate-200 px-2 py-1">-</td>
                         <td className="border border-slate-200 px-2 py-1">direct question</td>
                       </tr>
                       <tr>
-                        <td className="border border-slate-200 px-2 py-1">fill_in_blank</td>
-                        <td className="border border-slate-200 px-2 py-1">{"Water freezes at {{blank1}}�C."}</td>
+                        <td className="border border-slate-200 px-2 py-1">2</td>
+                        <td className="border border-slate-200 px-2 py-1">short_answer</td>
+                        <td className="border border-slate-200 px-2 py-1">Water freezes at what temperature in degrees C?</td>
                         <td className="border border-slate-200 px-2 py-1">-</td>
-                        <td className="border border-slate-200 px-2 py-1">-</td>
-                        <td className="border border-slate-200 px-2 py-1">-</td>
-                        <td className="border border-slate-200 px-2 py-1">{"blank1=0|zero"}</td>
-                        <td className="border border-slate-200 px-2 py-1">At standard pressure, water freezes at 0�C.</td>
+                        <td className="border border-slate-200 px-2 py-1">0;zero</td>
+                        <td className="border border-slate-200 px-2 py-1">At standard pressure, water freezes at 0 degrees C.</td>
                         <td className="border border-slate-200 px-2 py-1">easy</td>
                         <td className="border border-slate-200 px-2 py-1">2</td>
                         <td className="border border-slate-200 px-2 py-1">0</td>
@@ -226,7 +232,33 @@ export default function QuestionBulkUploadPage() {
                         <td className="border border-slate-200 px-2 py-1">Science</td>
                         <td className="border border-slate-200 px-2 py-1">Physics</td>
                         <td className="border border-slate-200 px-2 py-1">States</td>
+                        <td className="border border-slate-200 px-2 py-1">no</td>
+                        <td className="border border-slate-200 px-2 py-1">-</td>
+                        <td className="border border-slate-200 px-2 py-1">-</td>
+                        <td className="border border-slate-200 px-2 py-1">-</td>
                         <td className="border border-slate-200 px-2 py-1">similar question</td>
+                      </tr>
+                      <tr>
+                        <td className="border border-slate-200 px-2 py-1">3</td>
+                        <td className="border border-slate-200 px-2 py-1">mcq_single</td>
+                        <td className="border border-slate-200 px-2 py-1">What is the main idea of the passage?</td>
+                        <td className="border border-slate-200 px-2 py-1">Forest life;Ocean life;Desert life;Mountain life</td>
+                        <td className="border border-slate-200 px-2 py-1">A</td>
+                        <td className="border border-slate-200 px-2 py-1">The passage focuses on forest life.</td>
+                        <td className="border border-slate-200 px-2 py-1">medium</td>
+                        <td className="border border-slate-200 px-2 py-1">4</td>
+                        <td className="border border-slate-200 px-2 py-1">1</td>
+                        <td className="border border-slate-200 px-2 py-1">reading,passage</td>
+                        <td className="border border-slate-200 px-2 py-1">Maestro</td>
+                        <td className="border border-slate-200 px-2 py-1">8</td>
+                        <td className="border border-slate-200 px-2 py-1">English</td>
+                        <td className="border border-slate-200 px-2 py-1">Comprehension</td>
+                        <td className="border border-slate-200 px-2 py-1">Reading</td>
+                        <td className="border border-slate-200 px-2 py-1">yes</td>
+                        <td className="border border-slate-200 px-2 py-1">P1</td>
+                        <td className="border border-slate-200 px-2 py-1">Rainforest Reading</td>
+                        <td className="border border-slate-200 px-2 py-1">Rainforests support rich biodiversity and help regulate climate.</td>
+                        <td className="border border-slate-200 px-2 py-1">passage based</td>
                       </tr>
                     </tbody>
                   </table>

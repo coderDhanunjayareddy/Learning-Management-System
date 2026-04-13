@@ -138,6 +138,30 @@ const createInlineMathExtension = (
   },
 });
 
+const ResizableImage = Image.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      width: {
+        default: null,
+        parseHTML: (element) => element.getAttribute("width"),
+        renderHTML: (attributes) => {
+          if (!attributes.width) return {};
+          return { width: attributes.width };
+        },
+      },
+      height: {
+        default: null,
+        parseHTML: (element) => element.getAttribute("height"),
+        renderHTML: (attributes) => {
+          if (!attributes.height) return {};
+          return { height: attributes.height };
+        },
+      },
+    };
+  },
+});
+
 export default function RichTextEditor({
   value,
   onChange,
@@ -185,7 +209,7 @@ export default function RichTextEditor({
       TextAlign.configure({
         types: ["heading", "paragraph"],
       }),
-      Image.configure({
+      ResizableImage.configure({
         inline: false,
         allowBase64: true,
       }),
@@ -269,6 +293,36 @@ export default function RichTextEditor({
       reader.readAsDataURL(file);
     };
     input.click();
+  };
+
+  const handleResizeImage = () => {
+    if (!editor || !editor.isActive("image")) return;
+    const currentAttributes = editor.getAttributes("image") as {
+      width?: string | number | null;
+      height?: string | number | null;
+    };
+    const nextWidth = window.prompt(
+      "Enter image width in px or % (leave blank to reset)",
+      currentAttributes.width ? String(currentAttributes.width) : ""
+    );
+    if (nextWidth === null) return;
+    const trimmedWidth = nextWidth.trim();
+
+    const nextHeight = window.prompt(
+      "Enter image height in px (leave blank for auto)",
+      currentAttributes.height ? String(currentAttributes.height) : ""
+    );
+    if (nextHeight === null) return;
+    const trimmedHeight = nextHeight.trim();
+
+    editor
+      .chain()
+      .focus()
+      .updateAttributes("image", {
+        width: trimmedWidth || null,
+        height: trimmedHeight || null,
+      })
+      .run();
   };
 
   const handleAddTable = () => {
@@ -508,6 +562,14 @@ export default function RichTextEditor({
             className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 hover:border-slate-300 hover:bg-slate-100"
           >
             Image
+          </button>
+          <button
+            type="button"
+            onClick={handleResizeImage}
+            disabled={!editor?.isActive("image")}
+            className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 hover:border-slate-300 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Resize Image
           </button>
           <button
             type="button"

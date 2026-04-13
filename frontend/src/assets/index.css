@@ -51,6 +51,11 @@
 .ProseMirror img {
   max-width: 100%;
   height: auto;
+  display: block;
+}
+
+.ProseMirror img:not([width]) {
+  max-width: min(100%, 320px);
 }
 
 .ProseMirror p.is-editor-empty:first-child::before {
@@ -81,4 +86,8 @@
   max-width: 100%;
   height: auto;
   display: block;
+}
+
+.question-render img:not([width]) {
+  max-width: min(100%, 320px);
 }

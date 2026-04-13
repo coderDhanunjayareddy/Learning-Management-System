@@ -12,6 +12,13 @@ type InsertSummary = {
   errors: Array<{ row?: number; message?: string }>;
 };
 
+const CATEGORY_OPTIONS = [
+  "direct question",
+  "similar questions",
+  "previous year question",
+  "reference question",
+] as const;
+
 const normalizeCurriculum = (items: any[]): CurriculumItem[] =>
   items
     .map((item) => ({
@@ -55,7 +62,7 @@ export default function QuestionConverterPage() {
   const [chapterId, setChapterId] = useState("");
   const [topicId, setTopicId] = useState("");
   const [tags, setTags] = useState("");
-  const [category, setCategory] = useState("");
+  const [category, setCategory] = useState<(typeof CATEGORY_OPTIONS)[number]>("direct question");
   const [difficulty, setDifficulty] = useState("medium");
   const [marksPositive, setMarksPositive] = useState("4");
   const [marksNegative, setMarksNegative] = useState("0");
@@ -334,7 +341,7 @@ export default function QuestionConverterPage() {
               className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
             />
             <p className="mt-3 text-xs text-slate-500">
-              Supported source format: `.docx`. The converter will parse numbered questions, options, `Key:` lines, and `Solution:` blocks on the backend.
+              Supported source format: `.docx`. The converter will parse numbered questions, equations, images, options, `Key:` lines, and `Solution:` blocks on the backend.
             </p>
             {sourceFile ? (
               <p className="mt-2 text-xs font-semibold text-slate-700">Selected: {sourceFile.name}</p>
@@ -465,13 +472,17 @@ export default function QuestionConverterPage() {
             </div>
             <div>
               <label className="text-xs font-semibold text-slate-500">Category</label>
-              <input
-                type="text"
+              <select
                 value={category}
-                onChange={(event) => setCategory(event.target.value)}
+                onChange={(event) => setCategory(event.target.value as (typeof CATEGORY_OPTIONS)[number])}
                 className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
-                placeholder="direct question"
-              />
+              >
+                {CATEGORY_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="text-xs font-semibold text-slate-500">Folder</label>

@@ -31,6 +31,7 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const JSON_BODY_LIMIT = process.env.JSON_BODY_LIMIT || '50mb';
 
 // ✅ MUST come BEFORE any other helmet middleware
 
@@ -115,7 +116,8 @@ app.use(
     allowedHeaders: ['Authorization', 'Content-Type', 'X-Refresh-Token'],
   })
 );
-app.use(express.json());
+app.use(express.json({ limit: JSON_BODY_LIMIT }));
+app.use(express.urlencoded({ extended: true, limit: JSON_BODY_LIMIT }));
 
 app.get('/health', async (req, res) => {
   const startedAt = Date.now();

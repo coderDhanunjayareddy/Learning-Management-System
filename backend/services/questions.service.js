@@ -419,6 +419,10 @@ const parseCsvContent = (csvText) => {
 };
 
 const BULK_CSV_HEADER_ALIASES = {
+  sno: 'sno',
+  serial_no: 'sno',
+  serialno: 'sno',
+  'serial no': 'sno',
   question: 'question_text',
   questiontext: 'question_text',
   'question text': 'question_text',
@@ -441,6 +445,18 @@ const BULK_CSV_HEADER_ALIASES = {
   'chapter id': 'chapter_id',
   topic: 'topic_id',
   'topic id': 'topic_id',
+  has_comprehension: 'has_comprehension',
+  'has comprehension': 'has_comprehension',
+  passage_key: 'passage_key',
+  'passage key': 'passage_key',
+  passage_title: 'passage_title',
+  'passage title': 'passage_title',
+  passage_content: 'passage_content',
+  'passage content': 'passage_content',
+  use_existing_passage_id: 'use_existing_passage_id',
+  'use existing passage id': 'use_existing_passage_id',
+  passage_action: 'passage_action',
+  'passage action': 'passage_action',
   school: 'school_id',
   'school id': 'school_id',
   difficulty: 'difficulty_level',
@@ -748,6 +764,9 @@ const normalizeCsvRowInput = (rawRow, defaults) => {
 };
 
 const BULK_DOCX_TABLE_HEADER_ALIASES = {
+  sno: 'sno',
+  serial_no: 'sno',
+  serialno: 'sno',
   type: 'question_type',
   question_type: 'question_type',
   question: 'question_text',
@@ -780,6 +799,12 @@ const BULK_DOCX_TABLE_HEADER_ALIASES = {
   chapter_id: 'chapter_id',
   topic: 'topic',
   topic_id: 'topic_id',
+  has_comprehension: 'has_comprehension',
+  passage_key: 'passage_key',
+  passage_title: 'passage_title',
+  passage_content: 'passage_content',
+  use_existing_passage_id: 'use_existing_passage_id',
+  passage_action: 'passage_action',
   school_id: 'school_id',
   status: 'status',
   comprehensive_passage: 'comprehension_passage',
@@ -823,10 +848,74 @@ const isPlaceholderBulkValue = (value) => {
   return BULK_PLACEHOLDER_VALUES.has(normalized);
 };
 
+const parseBulkBoolean = (value) => {
+  const normalized = toPlainBulkText(value).toLowerCase();
+  if (!normalized) return false;
+  return ['true', '1', 'yes', 'y'].includes(normalized);
+};
+
+const normalizeBulkPassageAction = (value) => {
+  const normalized = toPlainBulkText(value).toLowerCase();
+  if (!normalized) return 'auto';
+  if (['create', 'reuse', 'auto'].includes(normalized)) return normalized;
+  return 'auto';
+};
+
 const normalizeDocxCellHtml = (value) =>
   String(value ?? '')
     .replace(/\u00a0/g, ' ')
     .trim();
+
+const appendRichHtmlBlock = (existing, block) => {
+  const normalizedBlock = normalizeDocxCellHtml(block);
+  if (!normalizedBlock) return existing || '';
+  return `${existing || ''}<p>${normalizedBlock}</p>`;
+};
+
+const stripLeadingRichLabel = (html, pattern) =>
+  normalizeDocxCellHtml(String(html || '').replace(pattern, ''));
+
+const extractParagraphContent = (paragraphXml, relationshipMap, zip) => {
+  const inlineTokens = [];
+  const inlineRegex = /<w:t[^>]*>([\s\S]*?)<\/w:t>|(<m:oMath[\s\S]*?<\/m:oMath>)/g;
+  let match;
+
+  while ((match = inlineRegex.exec(paragraphXml)) !== null) {
+    if (match[1] !== undefined) {
+      inlineTokens.push(escapeHtml(decodeXmlEntities(match[1])));
+      continue;
+    }
+
+    if (match[2]) {
+      const mathText = decodeXmlEntities(
+        Array.from(match[2].matchAll(/<m:t[^>]*>([\s\S]*?)<\/m:t>/g))
+          .map((entry) => entry[1])
+          .join('')
+      );
+      if (mathText) {
+        inlineTokens.push(`<span class="math-equation">${escapeHtml(mathText)}</span>`);
+      }
+    }
+  }
+
+  const imageMatches = paragraphXml.matchAll(/r:embed="([^"]+)"/g);
+  for (const imageMatch of imageMatches) {
+    const relId = imageMatch[1];
+    const target = relationshipMap[relId];
+    if (!target) continue;
+    const normalizedTarget = target.replace(/^\/+/, '');
+    const imageEntry = zip.getEntry(`word/${normalizedTarget}`);
+    if (!imageEntry) continue;
+    const base64 = imageEntry.getData().toString('base64');
+    const filename = normalizedTarget.split('/').pop() || 'image';
+    const mimeType = getImageMimeType(filename);
+    inlineTokens.push(`<img src="data:${mimeType};base64,${base64}" alt="${escapeHtml(filename)}" />`);
+  }
+
+  const paragraphHtml = normalizeDocxCellHtml(inlineTokens.join(''));
+  const detectionText = toPlainBulkText(paragraphHtml);
+  return { paragraphHtml, detectionText };
+};
 
 const toRichHtmlValue = (value) => {
   const html = normalizeDocxCellHtml(value);
@@ -955,6 +1044,7 @@ const normalizeDocxTableRowInput = (rawRow, defaults, rowNumber) => {
 
   const prepared = applyBulkDefaults(
     {
+      sno: toPlainBulkText(rawRow.sno) || null,
       question_type: questionType,
       question_text: baseQuestionHtml,
       options: options || null,
@@ -964,6 +1054,15 @@ const normalizeDocxTableRowInput = (rawRow, defaults, rowNumber) => {
       subject_id: toPlainBulkText(rawRow.subject_id ?? rawRow.subject) || null,
       chapter_id: toPlainBulkText(rawRow.chapter_id ?? rawRow.chapter) || null,
       topic_id: toPlainBulkText(rawRow.topic_id ?? rawRow.topic) || null,
+      has_comprehension:
+        parseBulkBoolean(rawRow.has_comprehension) ||
+        !isPlaceholderBulkValue(rawRow.passage_key) ||
+        !isPlaceholderBulkValue(rawRow.passage_title) ||
+        !isPlaceholderBulkValue(rawRow.passage_content) ||
+        !isPlaceholderBulkValue(rawRow.comprehension_passage),
+      passage_key: toPlainBulkText(rawRow.passage_key) || null,
+      passage_title: toRichHtmlValue(rawRow.passage_title),
+      passage_content: toRichHtmlValue(rawRow.passage_content ?? rawRow.comprehension_passage),
       difficulty_level: toPlainBulkText(rawRow.difficulty_level) || 'medium',
       exam_tags:
         toPlainBulkText(rawRow.exam_tags || rawRow.tags || rawRow.category || rawRow.catagory) || '',
@@ -1101,12 +1200,16 @@ const extractOptionLabelsFromAnswer = (value) => {
 const isBlankValue = (value) =>
   value === undefined || value === null || (typeof value === 'string' && value.trim().length === 0);
 
+const normalizeBulkLookupText = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+
+const normalizeBulkLookupTextLower = (value) => normalizeBulkLookupText(value).toLowerCase();
+
 const parseBulkEntityReference = (value) => {
   if (isBlankValue(value)) {
     return { provided: false, id: null, text: null };
   }
 
-  const normalized = String(value).trim();
+  const normalized = normalizeBulkLookupText(value);
   if (/^\d+$/.test(normalized)) {
     return { provided: true, id: Number.parseInt(normalized, 10), text: null };
   }
@@ -1116,7 +1219,7 @@ const parseBulkEntityReference = (value) => {
 
 const parseGradeNumberToken = (value) => {
   if (isBlankValue(value)) return null;
-  const match = String(value).trim().match(/(\d+)/);
+  const match = normalizeBulkLookupText(value).match(/(\d+)/);
   if (!match) return null;
   return Number.parseInt(match[1], 10);
 };
@@ -1141,11 +1244,15 @@ const resolveProgramReference = async ({ value, clientId }) => {
     return byId.rows[0].id;
   }
 
-  const nameParams = [parsed.text];
+  const normalizedLookup = normalizeBulkLookupTextLower(parsed.text);
+  const nameParams = [normalizedLookup];
   let nameSql = `
     SELECT id
     FROM programs
-    WHERE (LOWER(name) = LOWER($1) OR LOWER(code) = LOWER($1))
+    WHERE (
+      LOWER(REGEXP_REPLACE(TRIM(name), '\\s+', ' ', 'g')) = $1
+      OR LOWER(REGEXP_REPLACE(TRIM(COALESCE(code, '')), '\\s+', ' ', 'g')) = $1
+    )
   `;
   if (clientId) {
     nameParams.push(clientId);
@@ -1168,6 +1275,40 @@ const resolveGradeReference = async ({ value, programId, clientId }) => {
   const parsed = parseBulkEntityReference(value);
   if (!parsed.provided) {
     return { id: null, programId: programId ?? null };
+  }
+
+  const resolveByGradeNumber = async (gradeNumber) => {
+    const nameParams = [gradeNumber];
+    let nameSql = `
+      SELECT g.id, g.program_id
+      FROM grades g
+      JOIN programs p ON p.id = g.program_id
+      WHERE g.grade_number = $1
+    `;
+    if (programId) {
+      nameParams.push(programId);
+      nameSql += ` AND g.program_id = $${nameParams.length}`;
+    }
+    if (clientId) {
+      nameParams.push(clientId);
+      nameSql += ` AND p.client_id = $${nameParams.length}`;
+    }
+    nameSql += ` ORDER BY g.id LIMIT 2`;
+    return dbQuery(nameSql, nameParams);
+  };
+
+  const parsedGradeNumber = parseGradeNumberToken(parsed.text ?? value);
+  if (parsedGradeNumber !== null) {
+    const byNumber = await resolveByGradeNumber(parsedGradeNumber);
+    if (byNumber.rows.length === 1) {
+      return { id: byNumber.rows[0].id, programId: byNumber.rows[0].program_id };
+    }
+    if (byNumber.rows.length > 1) {
+      throw new AppError(
+        `Multiple grades match "${value}". Provide program/program_id or exact grade_id`,
+        400
+      );
+    }
   }
 
   if (parsed.id !== null) {
@@ -1193,29 +1334,11 @@ const resolveGradeReference = async ({ value, programId, clientId }) => {
     return { id: grade.id, programId: grade.program_id };
   }
 
-  const parsedGradeNumber = parseGradeNumberToken(parsed.text);
   if (parsedGradeNumber === null) {
     throw new AppError(`Grade "${value}" must be a grade number (for example: 6 or Grade 6)`, 400);
   }
 
-  const nameParams = [parsedGradeNumber];
-  let nameSql = `
-    SELECT g.id, g.program_id
-    FROM grades g
-    JOIN programs p ON p.id = g.program_id
-    WHERE g.grade_number = $1
-  `;
-  if (programId) {
-    nameParams.push(programId);
-    nameSql += ` AND g.program_id = $${nameParams.length}`;
-  }
-  if (clientId) {
-    nameParams.push(clientId);
-    nameSql += ` AND p.client_id = $${nameParams.length}`;
-  }
-  nameSql += ` ORDER BY g.id LIMIT 2`;
-
-  const byName = await dbQuery(nameSql, nameParams);
+  const byName = await resolveByGradeNumber(parsedGradeNumber);
   if (byName.rows.length === 0) {
     throw new AppError(`Grade not found for value "${value}"`, 404);
   }
@@ -1264,12 +1387,16 @@ const resolveSubjectReference = async ({ value, gradeId, programId, clientId, re
     return { id: subject.id, gradeId: subject.grade_id ?? gradeId ?? null, programId: subject.program_id ?? programId ?? null };
   }
 
-  const nameParams = [parsed.text];
+  const normalizedLookup = normalizeBulkLookupTextLower(parsed.text);
+  const nameParams = [normalizedLookup];
   let nameSql = `
     SELECT s.id, s.grade_id, g.program_id
     FROM subjects s
     LEFT JOIN grades g ON g.id = s.grade_id
-    WHERE (LOWER(s.name) = LOWER($1) OR LOWER(s.code) = LOWER($1))
+    WHERE (
+      LOWER(REGEXP_REPLACE(TRIM(s.name), '\\s+', ' ', 'g')) = $1
+      OR LOWER(REGEXP_REPLACE(TRIM(COALESCE(s.code, '')), '\\s+', ' ', 'g')) = $1
+    )
   `;
   if (gradeId) {
     nameParams.push(gradeId);
@@ -1336,13 +1463,14 @@ const resolveChapterReference = async ({ value, subjectId, clientId, required = 
   }
 
   const parsedChapterNumber = parseGradeNumberToken(parsed.text);
-  const nameParams = [subjectId, parsed.text];
+  const normalizedLookup = normalizeBulkLookupTextLower(parsed.text);
+  const nameParams = [subjectId, normalizedLookup];
   let nameSql = `
     SELECT c.id, c.subject_id
     FROM chapters c
     JOIN subjects s ON s.id = c.subject_id
     WHERE c.subject_id = $1
-      AND LOWER(c.name) = LOWER($2)
+      AND LOWER(REGEXP_REPLACE(TRIM(c.name), '\\s+', ' ', 'g')) = $2
   `;
   if (parsedChapterNumber !== null) {
     nameParams.push(parsedChapterNumber);
@@ -1351,7 +1479,10 @@ const resolveChapterReference = async ({ value, subjectId, clientId, required = 
       FROM chapters c
       JOIN subjects s ON s.id = c.subject_id
       WHERE c.subject_id = $1
-        AND (LOWER(c.name) = LOWER($2) OR c.chapter_number = $3)
+        AND (
+          LOWER(REGEXP_REPLACE(TRIM(c.name), '\\s+', ' ', 'g')) = $2
+          OR c.chapter_number = $3
+        )
     `;
   }
   if (clientId) {
@@ -1405,14 +1536,15 @@ const resolveTopicReference = async ({ value, chapterId, clientId }) => {
   }
 
   const parsedTopicNumber = parseGradeNumberToken(parsed.text);
-  const nameParams = [chapterId, parsed.text];
+  const normalizedLookup = normalizeBulkLookupTextLower(parsed.text);
+  const nameParams = [chapterId, normalizedLookup];
   let nameSql = `
     SELECT t.id, t.chapter_id
     FROM topics t
     JOIN chapters c ON c.id = t.chapter_id
     JOIN subjects s ON s.id = c.subject_id
     WHERE t.chapter_id = $1
-      AND LOWER(t.name) = LOWER($2)
+      AND LOWER(REGEXP_REPLACE(TRIM(t.name), '\\s+', ' ', 'g')) = $2
   `;
   if (parsedTopicNumber !== null) {
     nameParams.push(parsedTopicNumber);
@@ -1422,7 +1554,10 @@ const resolveTopicReference = async ({ value, chapterId, clientId }) => {
       JOIN chapters c ON c.id = t.chapter_id
       JOIN subjects s ON s.id = c.subject_id
       WHERE t.chapter_id = $1
-        AND (LOWER(t.name) = LOWER($2) OR t.topic_number = $3)
+        AND (
+          LOWER(REGEXP_REPLACE(TRIM(t.name), '\\s+', ' ', 'g')) = $2
+          OR t.topic_number = $3
+        )
     `;
   }
   if (clientId) {
@@ -1456,9 +1591,7 @@ const finalizeDocxQuestion = (question, defaults, rowNumber) => {
   let inferredQuestionType = normalizeBulkQuestionType(question.question_type || '');
   if (!inferredQuestionType) {
     const plainAnswer = String(answerRaw || '').trim();
-    if (question.comprehension_passage) {
-      inferredQuestionType = 'comprehensive';
-    } else if (options.length > 0) {
+    if (options.length > 0) {
       inferredQuestionType = answerLabels.length > 1 ? 'mcq_multiple' : 'mcq_single';
     } else if (/^(true|false)$/i.test(plainAnswer)) {
       inferredQuestionType = 'true_false';
@@ -1500,15 +1633,20 @@ const finalizeDocxQuestion = (question, defaults, rowNumber) => {
       subject_id: question.subject_id,
       chapter_id: question.chapter_id,
       topic_id: question.topic_id,
-      difficulty_level: question.difficulty_level || 'medium',
+      difficulty_level: question.difficulty_level ?? null,
       exam_tags: question.exam_tags || [],
       category: question.category ?? null,
-      marks_positive: question.marks_positive ?? 4,
-      marks_negative: question.marks_negative ?? 0,
+      marks_positive: question.marks_positive ?? null,
+      marks_negative: question.marks_negative ?? null,
       solution: question.solution ?? null,
       solution_video_url: question.solution_video_url ?? null,
       school_id: question.school_id ?? null,
       status: question.status ?? undefined,
+      has_comprehension: Boolean(question.has_comprehension || question.comprehension_passage),
+      passage_key: question.passage_key ?? null,
+      passage_title: question.passage_title ?? null,
+      passage_content: question.passage_content ?? question.comprehension_passage ?? null,
+      comprehension_passage: question.comprehension_passage ?? null,
     },
     defaults
   );
@@ -1558,44 +1696,10 @@ const extractDocxRows = (buffer, defaults) => {
   };
 
   paragraphMatches.forEach((paragraphXml) => {
-    const plainText = decodeXmlEntities(
-      Array.from(paragraphXml.matchAll(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g))
-        .map((match) => match[1])
-        .join('')
-    ).trim();
+    const { paragraphHtml, detectionText } = extractParagraphContent(paragraphXml, relationshipMap, zip);
+    if (!detectionText && !paragraphHtml) return;
 
-    const htmlParts = [];
-    if (plainText) {
-      htmlParts.push(escapeHtml(plainText));
-    }
-
-    const equationText = decodeXmlEntities(
-      Array.from(paragraphXml.matchAll(/<m:t[^>]*>([\s\S]*?)<\/m:t>/g))
-        .map((match) => match[1])
-        .join('')
-    ).trim();
-    if (paragraphXml.includes('<m:oMath')) {
-      htmlParts.push(`<span class="math-equation">${escapeHtml(equationText || '[Equation]')}</span>`);
-    }
-
-    const imageMatches = paragraphXml.matchAll(/r:embed="([^"]+)"/g);
-    for (const imageMatch of imageMatches) {
-      const relId = imageMatch[1];
-      const target = relationshipMap[relId];
-      if (!target) continue;
-      const normalizedTarget = target.replace(/^\/+/, '');
-      const imageEntry = zip.getEntry(`word/${normalizedTarget}`);
-      if (!imageEntry) continue;
-      const base64 = imageEntry.getData().toString('base64');
-      const filename = normalizedTarget.split('/').pop() || 'image';
-      const mimeType = getImageMimeType(filename);
-      htmlParts.push(`<img src="data:${mimeType};base64,${base64}" alt="${escapeHtml(filename)}" />`);
-    }
-
-    const paragraphHtml = htmlParts.join(' ').trim();
-    if (!plainText && !paragraphHtml) return;
-
-    const metaMatch = plainText.match(
+    const metaMatch = detectionText.match(
       /^(program_id|grade_id|subject_id|chapter_id|topic_id|difficulty_level|marks_positive|marks_negative|exam_tags|status|school_id)\s*:\s*(.+)$/i
     );
     if (!current && metaMatch) {
@@ -1612,24 +1716,59 @@ const extractDocxRows = (buffer, defaults) => {
       return;
     }
 
+    if (!current) {
+      const standalonePassageMatch = detectionText.match(
+        /^(passage|comprehension_passage|comprehensive passage)\s*[:.-]\s*(.*)$/i
+      );
+      if (standalonePassageMatch) {
+        const strippedStandalonePassage = stripLeadingRichLabel(
+          paragraphHtml || escapeHtml(detectionText),
+          /^(passage|comprehension_passage|comprehensive passage)\s*[:.-]\s*/i
+        );
+        pendingPassage = appendRichHtmlBlock(pendingPassage, strippedStandalonePassage);
+        return;
+      }
+
+      if (pendingPassage) {
+        const passageContinuationQuestion =
+          detectionText.match(/^question(?:\s+\d+)?\s*[:.-]\s*(.*)$/i) ||
+          detectionText.match(/^q(?:\s+\d+)?\s*[:.-]\s*(.*)$/i) ||
+          detectionText.match(/^\d+\s*[\).:-]\s*(.*)$/i);
+        if (!passageContinuationQuestion) {
+          pendingPassage = appendRichHtmlBlock(pendingPassage, paragraphHtml || escapeHtml(detectionText));
+          return;
+        }
+      }
+    }
+
     const questionMatch =
-      plainText.match(/^question(?:\s+\d+)?\s*[:.-]\s*(.*)$/i) ||
-      plainText.match(/^q(?:\s+\d+)?\s*[:.-]\s*(.*)$/i) ||
-      plainText.match(/^\d+\s*[\).:-]\s*(.+)$/i);
+      detectionText.match(/^question(?:\s+\d+)?\s*[:.-]\s*(.*)$/i) ||
+      detectionText.match(/^q(?:\s+\d+)?\s*[:.-]\s*(.*)$/i) ||
+      detectionText.match(/^\d+\s*[\).:-]\s*(.*)$/i);
     if (questionMatch) {
       pushCurrent();
+      const strippedQuestionHtml = stripLeadingRichLabel(
+        paragraphHtml || escapeHtml(detectionText),
+        /^(?:question(?:\s+\d+)?|q(?:\s+\d+)?|\d+)\s*[:\).-]\s*/i
+      );
       current = {
         ...globalMeta,
         question_type: '',
-        question_text: questionMatch[1] ? `<p>${escapeHtml(questionMatch[1])}</p>` : '',
+        question_text: '',
         options: [],
       };
       if (pendingPassage) {
-        current.question_type = 'comprehensive';
+        current.has_comprehension = true;
         current.comprehension_passage = pendingPassage;
+        current.passage_content = pendingPassage;
+        pendingPassage = null;
       }
-      if (!current.question_text && paragraphHtml) {
-        current.question_text = `<p>${paragraphHtml}</p>`;
+      if (strippedQuestionHtml) {
+        current.question_text = appendRichHtmlBlock(current.question_text, strippedQuestionHtml);
+      } else if (questionMatch[1]) {
+        current.question_text = appendRichHtmlBlock(current.question_text, escapeHtml(questionMatch[1]));
+      } else if (paragraphHtml) {
+        current.question_text = appendRichHtmlBlock(current.question_text, paragraphHtml);
       }
       return;
     }
@@ -1638,7 +1777,7 @@ const extractDocxRows = (buffer, defaults) => {
       return;
     }
 
-    const typeMatch = plainText.match(/^type\s*:\s*(.+)$/i);
+    const typeMatch = detectionText.match(/^type\s*:\s*(.+)$/i);
     if (typeMatch) {
       current.question_type = typeMatch[1].trim();
       return;
@@ -1658,22 +1797,52 @@ const extractDocxRows = (buffer, defaults) => {
       return;
     }
 
-    const passageMatch = plainText.match(/^(passage|comprehension_passage|comprehensive passage)\s*[:.-]\s*(.*)$/i);
-    if (passageMatch && !current) {
-      pendingPassage = `<p>${escapeHtml(passageMatch[2] || '')}</p>`;
+    const inlinePassageMatch = detectionText.match(
+      /^(passage|comprehension_passage|comprehensive passage)\s*[:.-]\s*(.*)$/i
+    );
+    if (inlinePassageMatch) {
+      const strippedPassageHtml = stripLeadingRichLabel(
+        paragraphHtml || escapeHtml(detectionText),
+        /^(passage|comprehension_passage|comprehensive passage)\s*[:.-]\s*/i
+      );
+      current.comprehension_passage = appendRichHtmlBlock(current.comprehension_passage, strippedPassageHtml);
+      current.passage_content = current.comprehension_passage;
+      current.has_comprehension = true;
       return;
     }
 
-    if (pendingPassage && !current && !metaMatch) {
-      pendingPassage = `${pendingPassage}<p>${paragraphHtml || escapeHtml(plainText)}</p>`;
+    const answerMatch = detectionText.match(
+      /^(answer|ans|correct_answer|correct answer|correct option|key)\s*[:.-]\s*(.+)$/i
+    );
+    if (answerMatch) {
+      current.correct_answer = answerMatch[2].trim();
       return;
     }
 
-    const optionMatch = plainText.match(/^(?:\(?([A-H])\)|([A-H]))[\).:-]?\s*(.*)$/i);
+    const solutionLabelMatch = detectionText.match(/^solution\s*:?\s*(.*)$/i);
+    if (solutionLabelMatch) {
+      current._collecting_solution = true;
+      const strippedSolutionHtml = stripLeadingRichLabel(
+        paragraphHtml || escapeHtml(detectionText),
+        /^solution\s*:?\s*/i
+      );
+      if (strippedSolutionHtml) {
+        current.solution = appendRichHtmlBlock(current.solution, strippedSolutionHtml);
+      }
+      return;
+    }
+
+    if (current._collecting_solution) {
+      current.solution = appendRichHtmlBlock(current.solution, paragraphHtml || escapeHtml(detectionText));
+      return;
+    }
+
+    const optionMatch = detectionText.match(/^(?:\(?([A-H])\)|([A-H]))[\).:-]?\s*(.*)$/i);
     if (optionMatch) {
-      const optionHtml = paragraphHtml
-        .replace(/^(?:\(?[A-H]\)|[A-H])[\).:-]?\s*/i, '')
-        .trim();
+      const optionHtml = stripLeadingRichLabel(
+        paragraphHtml || escapeHtml(detectionText),
+        /^(?:\(?[A-H]\)|[A-H])[\).:-]?\s*/i
+      );
       const optionText = optionHtml || escapeHtml(optionMatch[3] || '').trim();
       if (!optionText) return;
       current.options.push({
@@ -1683,30 +1852,7 @@ const extractDocxRows = (buffer, defaults) => {
       return;
     }
 
-    const answerMatch = plainText.match(
-      /^(answer|ans|correct_answer|correct answer|correct option|key)\s*[:.-]\s*(.+)$/i
-    );
-    if (answerMatch) {
-      current.correct_answer = answerMatch[2].trim();
-      return;
-    }
-
-    const solutionLabelMatch = plainText.match(/^solution\s*:?\s*(.*)$/i);
-    if (solutionLabelMatch) {
-      current._collecting_solution = true;
-      const immediateSolution = solutionLabelMatch[1]?.trim();
-      if (immediateSolution) {
-        current.solution = `${current.solution || ''}<p>${escapeHtml(immediateSolution)}</p>`;
-      }
-      return;
-    }
-
-    if (current._collecting_solution) {
-      current.solution = `${current.solution || ''}<p>${paragraphHtml || escapeHtml(plainText)}</p>`;
-      return;
-    }
-
-    current.question_text = `${current.question_text || ''}<p>${paragraphHtml || escapeHtml(plainText)}</p>`;
+    current.question_text = appendRichHtmlBlock(current.question_text, paragraphHtml || escapeHtml(detectionText));
   });
 
   pushCurrent();
@@ -2507,6 +2653,94 @@ const normalizePassageRow = (row) => ({
   title: normalizePassageTitle(row),
 });
 
+const createComprehensionPassageRecord = async ({
+  input,
+  user,
+  role,
+  clientId,
+}) => {
+  const schemaSupport = await getQuestionSchemaSupport();
+  if (!schemaSupport.hasComprehensionPassageTable) {
+    throw new AppError('This database does not support comprehension passages yet', 400);
+  }
+
+  const title = ensureRichTextValue(input?.title, 'title');
+  const passageContent = ensureRichTextValue(input?.passage_content, 'passage_content');
+  const schoolId = parseNullableInt(input?.school_id, 'school_id');
+  await ensureSchoolAccess({ schoolId, role, userId: user.id, clientId });
+
+  const programId = await resolveProgramReference({ value: input?.program_id ?? input?.program, clientId });
+  const gradeResult = await resolveGradeReference({
+    value: input?.grade_id ?? input?.grade,
+    programId,
+    clientId,
+  });
+  const subjectResult = await resolveSubjectReference({
+    value: input?.subject_id ?? input?.subject,
+    gradeId: gradeResult.id,
+    programId: gradeResult.programId ?? programId,
+    clientId,
+  });
+  const chapterResult = await resolveChapterReference({
+    value: input?.chapter_id ?? input?.chapter,
+    subjectId: subjectResult.id,
+    clientId,
+  });
+  const topicResult = await resolveTopicReference({
+    value: input?.topic_id ?? input?.topic,
+    chapterId: chapterResult.id,
+    clientId,
+  });
+
+  const resolvedProgramId = programId ?? gradeResult.programId ?? subjectResult.programId ?? null;
+  const resolvedGradeId = gradeResult.id ?? subjectResult.gradeId ?? null;
+  const resolvedSubjectId = subjectResult.id ?? null;
+  const resolvedChapterId = chapterResult.id ?? null;
+  const resolvedTopicId = topicResult.id ?? null;
+
+  await ensureCurriculumScope({
+    programId: resolvedProgramId,
+    gradeId: resolvedGradeId,
+    subjectId: resolvedSubjectId,
+    chapterId: resolvedChapterId,
+    topicId: resolvedTopicId,
+    clientId,
+  });
+
+  const result = await dbQuery(
+    `
+    INSERT INTO comprehension_passages (
+      client_id,
+      school_id,
+      title,
+      passage_content,
+      program_id,
+      grade_id,
+      subject_id,
+      chapter_id,
+      topic_id,
+      created_by
+    )
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+    RETURNING *
+    `,
+    [
+      clientId,
+      schoolId,
+      toDbJsonParam(title),
+      toDbJsonParam(passageContent),
+      resolvedProgramId,
+      resolvedGradeId,
+      resolvedSubjectId,
+      resolvedChapterId,
+      resolvedTopicId,
+      user.id,
+    ]
+  );
+
+  return normalizePassageRow(result.rows[0]);
+};
+
 export const listComprehensionPassages = async (req, res) => {
   try {
     if (!req.user?.id || !req.user?.role) {
@@ -2582,86 +2816,14 @@ export const createComprehensionPassage = async (req, res) => {
 
     const role = req.user.role;
     const clientId = ensureClientScope(req.user.client_id ?? null, role);
-    const schemaSupport = await getQuestionSchemaSupport();
-    if (!schemaSupport.hasComprehensionPassageTable) {
-      throw new AppError('This database does not support comprehension passages yet', 400);
-    }
-
-    const title = ensureRichTextValue(req.body?.title, 'title');
-    const passageContent = ensureRichTextValue(req.body?.passage_content, 'passage_content');
-    const schoolId = parseNullableInt(req.body?.school_id, 'school_id');
-    await ensureSchoolAccess({ schoolId, role, userId: req.user.id, clientId });
-
-    const programId = await resolveProgramReference({ value: req.body?.program_id ?? req.body?.program, clientId });
-    const gradeResult = await resolveGradeReference({
-      value: req.body?.grade_id ?? req.body?.grade,
-      programId,
-      clientId,
-    });
-    const subjectResult = await resolveSubjectReference({
-      value: req.body?.subject_id ?? req.body?.subject,
-      gradeId: gradeResult.id,
-      programId: gradeResult.programId ?? programId,
-      clientId,
-    });
-    const chapterResult = await resolveChapterReference({
-      value: req.body?.chapter_id ?? req.body?.chapter,
-      subjectId: subjectResult.id,
-      clientId,
-    });
-    const topicResult = await resolveTopicReference({
-      value: req.body?.topic_id ?? req.body?.topic,
-      chapterId: chapterResult.id,
+    const passage = await createComprehensionPassageRecord({
+      input: req.body,
+      user: req.user,
+      role,
       clientId,
     });
 
-    const resolvedProgramId = programId ?? gradeResult.programId ?? subjectResult.programId ?? null;
-    const resolvedGradeId = gradeResult.id ?? subjectResult.gradeId ?? null;
-    const resolvedSubjectId = subjectResult.id ?? null;
-    const resolvedChapterId = chapterResult.id ?? null;
-    const resolvedTopicId = topicResult.id ?? null;
-
-    await ensureCurriculumScope({
-      programId: resolvedProgramId,
-      gradeId: resolvedGradeId,
-      subjectId: resolvedSubjectId,
-      chapterId: resolvedChapterId,
-      topicId: resolvedTopicId,
-      clientId,
-    });
-
-    const result = await dbQuery(
-      `
-      INSERT INTO comprehension_passages (
-        client_id,
-        school_id,
-        title,
-        passage_content,
-        program_id,
-        grade_id,
-        subject_id,
-        chapter_id,
-        topic_id,
-        created_by
-      )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-      RETURNING *
-      `,
-      [
-        clientId,
-        schoolId,
-        toDbJsonParam(title),
-        toDbJsonParam(passageContent),
-        resolvedProgramId,
-        resolvedGradeId,
-        resolvedSubjectId,
-        resolvedChapterId,
-        resolvedTopicId,
-        req.user.id,
-      ]
-    );
-
-    res.status(201).json(normalizePassageRow(result.rows[0]));
+    res.status(201).json(passage);
   } catch (err) {
     handleServiceError(res, err, 'Failed to create comprehension passage');
   }
@@ -3199,12 +3361,11 @@ const buildTemplateRow = (cells) =>
   });
 
 const TEMPLATE_HEADERS = [
+  'Sno',
   'Type',
   'Question',
   'Options',
   'Correct Answer',
-  'Match Pairs',
-  'Blanks',
   'Solution',
   'Difficulty',
   'Marks+',
@@ -3215,6 +3376,10 @@ const TEMPLATE_HEADERS = [
   'Subject',
   'Chapter',
   'Topic',
+  'Has Comprehension',
+  'Passage Key',
+  'Passage Title',
+  'Passage Content',
   'Category',
 ];
 
@@ -3224,12 +3389,11 @@ export const bulkUploadTemplate = async (_req, res) => {
       rows: [
         buildTemplateRow(TEMPLATE_HEADERS),
         buildTemplateRow([
+          '1',
           'mcq_single',
           'What is 2 + 2?',
           '2;3;4;5',
           'C',
-          '-',
-          '-',
           '2 + 2 = 4.',
           'easy',
           '4',
@@ -3240,7 +3404,33 @@ export const bulkUploadTemplate = async (_req, res) => {
           'Math',
           'Basics',
           'Addition',
+          'no',
+          '',
+          '',
+          '',
           'direct question',
+        ]),
+        buildTemplateRow([
+          '2',
+          'mcq_single',
+          'What is the main idea of the passage?',
+          'Rainforests are shrinking;Rainforests support many species;Rainforests are cold deserts;Rainforests have no rainfall',
+          'B',
+          'The passage explains biodiversity in rainforests.',
+          'medium',
+          '4',
+          '1',
+          'reading,passage',
+          'Catalyst',
+          '8',
+          'English',
+          'Comprehension',
+          'Rainforests',
+          'yes',
+          'P1',
+          'Rainforest Reading',
+          'Rainforests support rich biodiversity and help regulate climate across the planet.',
+          'passage based',
         ]),
       ],
     });
@@ -3271,25 +3461,7 @@ export const bulkUploadTemplate = async (_req, res) => {
   }
 };
 
-const CONVERTER_TEMPLATE_HEADERS = [
-  'Sno',
-  'Type',
-  'Question',
-  'Options',
-  'Correct Answer',
-  'Solution',
-  'Difficulty',
-  'Marks+',
-  'Marks-',
-  'Tags',
-  'Program',
-  'Grade',
-  'Subject',
-  'Chapter',
-  'Topic',
-  'Comprehensive Passage',
-  'Category',
-];
+const CONVERTER_TEMPLATE_HEADERS = TEMPLATE_HEADERS;
 
 const decodeStoredRichText = (value) => toPlainBulkText(value ?? '');
 
@@ -3299,7 +3471,7 @@ const mapOptionIdToLabel = (optionId, options = []) => {
   return String.fromCharCode(65 + index);
 };
 
-const buildConverterOutputRow = (row, index) => {
+const buildConverterOutputRow = (row, _index) => {
   const options = Array.isArray(row.options) ? row.options : [];
   let correctAnswer = '';
 
@@ -3316,12 +3488,19 @@ const buildConverterOutputRow = (row, index) => {
       : String(row.correct_answer ?? '');
   }
 
+  const hasComprehension = Boolean(
+    row.has_comprehension ||
+      row.comprehension_passage ||
+      row.passage_content ||
+      row.passage_title
+  );
+
   return [
-    String(index + 1),
+    row.sno ?? '',
     row.question_type || '',
     decodeStoredRichText(row.question_text),
     options.map((option) => decodeStoredRichText(option.text)).join(';'),
-    correctAnswer,
+    row.question_type === 'match_following' || row.question_type === 'fill_in_blank' ? '' : correctAnswer,
     decodeStoredRichText(row.solution),
     row.difficulty_level || '',
     row.marks_positive ?? '',
@@ -3332,7 +3511,10 @@ const buildConverterOutputRow = (row, index) => {
     row.subject_id ?? '',
     row.chapter_id ?? '',
     row.topic_id ?? '',
-    decodeStoredRichText(row.comprehension_passage),
+    hasComprehension ? 'yes' : 'no',
+    row.passage_key ?? '',
+    decodeStoredRichText(row.passage_title),
+    decodeStoredRichText(row.passage_content ?? row.comprehension_passage),
     String(row.category ?? ''),
   ];
 };
@@ -3372,6 +3554,71 @@ const buildConverterTemplateBuffer = async (rows) => {
   });
 
   return Packer.toBuffer(doc);
+};
+
+const buildBulkPassageCacheKey = (row) => {
+  const explicitKey = toPlainBulkText(row.passage_key);
+  if (explicitKey) return `key:${explicitKey.toLowerCase()}`;
+
+  const title = toPlainBulkText(row.passage_title);
+  const content = toPlainBulkText(row.passage_content ?? row.comprehension_passage);
+  const subject = toPlainBulkText(row.subject_id ?? row.subject);
+  const chapter = toPlainBulkText(row.chapter_id ?? row.chapter);
+  const topic = toPlainBulkText(row.topic_id ?? row.topic);
+  return `derived:${title}|${content}|${subject}|${chapter}|${topic}`;
+};
+
+const resolveBulkComprehensionPassageId = async ({
+  row,
+  user,
+  role,
+  clientId,
+  cache,
+}) => {
+  const shouldLinkPassage =
+    Boolean(row.has_comprehension) ||
+    !isPlaceholderBulkValue(row.passage_key) ||
+    !isPlaceholderBulkValue(row.passage_title) ||
+    !isPlaceholderBulkValue(row.passage_content) ||
+    !isPlaceholderBulkValue(row.comprehension_passage);
+
+  if (!shouldLinkPassage) return null;
+
+  const schemaSupport = await getQuestionSchemaSupport();
+  if (!schemaSupport.hasComprehensionPassageId || !schemaSupport.hasComprehensionPassageTable) {
+    throw new AppError('This database does not support linked passages yet', 400);
+  }
+
+  const cacheKey = buildBulkPassageCacheKey(row);
+
+  if (cache.has(cacheKey)) {
+    return cache.get(cacheKey);
+  }
+
+  const title = row.passage_title ?? null;
+  const passageContent = row.passage_content ?? row.comprehension_passage ?? null;
+  if (!title || !passageContent) {
+    throw new AppError('passage_title and passage_content are required for linked comprehension rows', 400);
+  }
+
+  const passage = await createComprehensionPassageRecord({
+    input: {
+      title,
+      passage_content: passageContent,
+      program_id: row.program_id ?? row.program,
+      grade_id: row.grade_id ?? row.grade,
+      subject_id: row.subject_id ?? row.subject,
+      chapter_id: row.chapter_id ?? row.chapter,
+      topic_id: row.topic_id ?? row.topic,
+      school_id: row.school_id ?? null,
+    },
+    user,
+    role,
+    clientId,
+  });
+
+  cache.set(cacheKey, Number(passage.id));
+  return Number(passage.id);
 };
 
 let hasQuestionsFolderIdColumn = null;
@@ -3463,6 +3710,7 @@ export const bulkUploadQuestions = async (req, res) => {
 
     const inserted = [];
     const errors = [];
+    const passageCache = new Map();
 
     for (let index = 0; index < rows.length; index += 1) {
       const row = rows[index];
@@ -3478,8 +3726,30 @@ export const bulkUploadQuestions = async (req, res) => {
       }
 
       try {
+        const comprehensionPassageId = await resolveBulkComprehensionPassageId({
+          row,
+          user: req.user,
+          role,
+          clientId,
+          cache: passageCache,
+        });
+        const sanitizedRow = {
+          ...row,
+          comprehension_passage_id: comprehensionPassageId ?? undefined,
+        };
+        delete sanitizedRow.comprehension_passage;
+        delete sanitizedRow.comprehensive_passage;
+        delete sanitizedRow.comprehension_questions;
+        delete sanitizedRow.comprehensive_subquestions;
+        delete sanitizedRow.has_comprehension;
+        delete sanitizedRow.passage_key;
+        delete sanitizedRow.passage_title;
+        delete sanitizedRow.passage_content;
+        delete sanitizedRow.use_existing_passage_id;
+        delete sanitizedRow.passage_action;
+
         const payload = await buildQuestionInsertPayload({
-          input: row,
+          input: sanitizedRow,
           user: req.user,
           role,
           clientId,

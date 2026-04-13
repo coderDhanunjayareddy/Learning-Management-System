@@ -17,10 +17,18 @@ const BLOCKED_TAGS = new Set([
 
 const URL_ATTRS = new Set(["href", "src", "xlink:href", "formaction"]);
 const SAFE_URL_PATTERN = /^(https?:|mailto:|tel:|\/|#)/i;
+const SAFE_DATA_IMAGE_PATTERN = /^data:image\/[a-z0-9.+-]+;base64,[a-z0-9+/=\s]+$/i;
 
-const sanitizeUrl = (value: string) => {
+const sanitizeUrl = (value: string, attributeName?: string, tagName?: string) => {
   const normalized = value.trim().replace(/[\u0000-\u001F\u007F\s]+/g, "");
   if (!normalized) return "";
+  if (
+    attributeName === "src" &&
+    tagName === "img" &&
+    SAFE_DATA_IMAGE_PATTERN.test(normalized)
+  ) {
+    return value.trim();
+  }
   return SAFE_URL_PATTERN.test(normalized) ? value.trim() : "";
 };
 
@@ -53,7 +61,7 @@ export const sanitizeHtml = (html: string) => {
         }
 
         if (URL_ATTRS.has(name)) {
-          const safeValue = sanitizeUrl(value);
+          const safeValue = sanitizeUrl(value, name, tagName);
           if (!safeValue) {
             element.removeAttribute(attribute.name);
             return;
