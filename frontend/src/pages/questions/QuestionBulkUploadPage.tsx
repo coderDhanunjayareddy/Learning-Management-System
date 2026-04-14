@@ -11,6 +11,49 @@ const normalizeFolder = (item: Record<string, unknown>): QuestionFolder => ({
   questionCount: Number(item.questionCount ?? item.question_count ?? 0),
 });
 
+const splitAnswerTokens = (answer: string) =>
+  new Set(
+    String(answer ?? "")
+      .split(/[;,|]/)
+      .map((token) => token.trim().toUpperCase())
+      .filter(Boolean)
+  );
+
+const renderMappedOptions = (rawOptions: string, rawAnswer: string) => {
+  if (!rawOptions || rawOptions.trim() === "-") return "-";
+
+  const options = rawOptions
+    .split(";")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  if (options.length === 0) return "-";
+
+  const answerTokens = splitAnswerTokens(rawAnswer);
+
+  return (
+    <div className="space-y-1">
+      {options.map((entry, index) => {
+        const label = String.fromCharCode(65 + index);
+        const displayEntry = entry.replace(/^[A-Ha-h0-9]+[\)\].:-]\s*/i, "");
+        const isCorrect = answerTokens.has(label) || answerTokens.has(String(index + 1));
+        return (
+          <div
+            key={`${label}-${index}`}
+            className={`flex items-start gap-2 rounded px-1.5 py-1 ${
+              isCorrect ? "bg-emerald-50 text-emerald-700" : "bg-slate-50 text-slate-700"
+            }`}
+          >
+            <span className={`inline-flex min-w-4 justify-center font-semibold ${isCorrect ? "text-emerald-700" : "text-slate-500"}`}>
+              {label}
+            </span>
+            <span dangerouslySetInnerHTML={{ __html: displayEntry }} />
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
 export default function QuestionBulkUploadPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -156,6 +199,7 @@ export default function QuestionBulkUploadPage() {
                 <li>Question: rich text content is supported, including embedded DOCX images and tables.</li>
                 <li>Options: separate with semicolons (A;B;C;D) for MCQ.</li>
                 <li>Correct Answer: use option letters (A/B/...) for MCQ, true/false for True/False, number for Numerical, and plain text for Short Answer.</li>
+                <li>Question and option content can be text, image, or text+image. Image-only question/options are accepted.</li>
                 <li>Solution and passage fields can also contain formatted DOCX content with images.</li>
                 <li>For linked comprehension sets, keep normal child question types and set Has Comprehension = yes.</li>
                 <li>Use the same Passage Key across all child questions that should share one passage.</li>
@@ -198,7 +242,9 @@ export default function QuestionBulkUploadPage() {
                         <td className="border border-slate-200 px-2 py-1">1</td>
                         <td className="border border-slate-200 px-2 py-1">mcq_single</td>
                         <td className="border border-slate-200 px-2 py-1">What is 2 + 2?</td>
-                        <td className="border border-slate-200 px-2 py-1">2;3;4;5</td>
+                        <td className="border border-slate-200 px-2 py-1">
+                          {renderMappedOptions("A) 2;B) 3;C) 4;D) 5", "C")}
+                        </td>
                         <td className="border border-slate-200 px-2 py-1">C</td>
                         <td className="border border-slate-200 px-2 py-1">2 + 2 = 4.</td>
                         <td className="border border-slate-200 px-2 py-1">easy</td>
@@ -242,7 +288,9 @@ export default function QuestionBulkUploadPage() {
                         <td className="border border-slate-200 px-2 py-1">3</td>
                         <td className="border border-slate-200 px-2 py-1">mcq_single</td>
                         <td className="border border-slate-200 px-2 py-1">What is the main idea of the passage?</td>
-                        <td className="border border-slate-200 px-2 py-1">Forest life;Ocean life;Desert life;Mountain life</td>
+                        <td className="border border-slate-200 px-2 py-1">
+                          {renderMappedOptions("A) Forest life;B) Ocean life;C) Desert life;D) Mountain life", "A")}
+                        </td>
                         <td className="border border-slate-200 px-2 py-1">A</td>
                         <td className="border border-slate-200 px-2 py-1">The passage focuses on forest life.</td>
                         <td className="border border-slate-200 px-2 py-1">medium</td>
@@ -259,6 +307,33 @@ export default function QuestionBulkUploadPage() {
                         <td className="border border-slate-200 px-2 py-1">Rainforest Reading</td>
                         <td className="border border-slate-200 px-2 py-1">Rainforests support rich biodiversity and help regulate climate.</td>
                         <td className="border border-slate-200 px-2 py-1">passage based</td>
+                      </tr>
+                      <tr>
+                        <td className="border border-slate-200 px-2 py-1">4</td>
+                        <td className="border border-slate-200 px-2 py-1">mcq_single</td>
+                        <td className="border border-slate-200 px-2 py-1">{'<img src="QUESTION_IMAGE_DATA_OR_URL" alt="question-image" />'}</td>
+                        <td className="border border-slate-200 px-2 py-1">
+                          {renderMappedOptions(
+                            '<img src="OPTION_A_IMAGE_DATA_OR_URL" alt="A" />; <img src="OPTION_B_IMAGE_DATA_OR_URL" alt="B" />; <img src="OPTION_C_IMAGE_DATA_OR_URL" alt="C" />; <img src="OPTION_D_IMAGE_DATA_OR_URL" alt="D" />',
+                            "A"
+                          )}
+                        </td>
+                        <td className="border border-slate-200 px-2 py-1">A</td>
+                        <td className="border border-slate-200 px-2 py-1">Image-only question and options are valid.</td>
+                        <td className="border border-slate-200 px-2 py-1">medium</td>
+                        <td className="border border-slate-200 px-2 py-1">4</td>
+                        <td className="border border-slate-200 px-2 py-1">1</td>
+                        <td className="border border-slate-200 px-2 py-1">image,visual</td>
+                        <td className="border border-slate-200 px-2 py-1">Maestro</td>
+                        <td className="border border-slate-200 px-2 py-1">8</td>
+                        <td className="border border-slate-200 px-2 py-1">Science</td>
+                        <td className="border border-slate-200 px-2 py-1">Visual Questions</td>
+                        <td className="border border-slate-200 px-2 py-1">Identification</td>
+                        <td className="border border-slate-200 px-2 py-1">no</td>
+                        <td className="border border-slate-200 px-2 py-1">-</td>
+                        <td className="border border-slate-200 px-2 py-1">-</td>
+                        <td className="border border-slate-200 px-2 py-1">-</td>
+                        <td className="border border-slate-200 px-2 py-1">image only</td>
                       </tr>
                     </tbody>
                   </table>

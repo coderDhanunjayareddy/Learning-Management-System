@@ -61,9 +61,7 @@ export default function QuestionConverterPage() {
   const [subjectId, setSubjectId] = useState("");
   const [chapterId, setChapterId] = useState("");
   const [topicId, setTopicId] = useState("");
-  const [tags, setTags] = useState("");
   const [category, setCategory] = useState<(typeof CATEGORY_OPTIONS)[number]>("direct question");
-  const [difficulty, setDifficulty] = useState("medium");
   const [marksPositive, setMarksPositive] = useState("4");
   const [marksNegative, setMarksNegative] = useState("0");
   const [folderId, setFolderId] = useState("");
@@ -242,10 +240,8 @@ export default function QuestionConverterPage() {
     formData.append("subject_id", subjectId);
     formData.append("chapter_id", chapterId);
     formData.append("topic_id", topicId);
-    formData.append("difficulty_level", difficulty);
     formData.append("marks_positive", marksPositive);
     formData.append("marks_negative", marksNegative);
-    if (tags.trim()) formData.append("tags", tags.trim());
     if (category.trim()) formData.append("category", category.trim());
     if (folderId) formData.append("folder_id", folderId);
     return formData;
@@ -461,16 +457,6 @@ export default function QuestionConverterPage() {
 
           <div className="mt-4 grid gap-4 md:grid-cols-3">
             <div>
-              <label className="text-xs font-semibold text-slate-500">Tags</label>
-              <input
-                type="text"
-                value={tags}
-                onChange={(event) => setTags(event.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
-                placeholder="math, exponents, powers"
-              />
-            </div>
-            <div>
               <label className="text-xs font-semibold text-slate-500">Category</label>
               <select
                 value={category}
@@ -501,19 +487,7 @@ export default function QuestionConverterPage() {
             </div>
           </div>
 
-          <div className="mt-4 grid gap-4 md:grid-cols-3">
-            <div>
-              <label className="text-xs font-semibold text-slate-500">Difficulty</label>
-              <select
-                value={difficulty}
-                onChange={(event) => setDifficulty(event.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
-              >
-                <option value="easy">Easy</option>
-                <option value="medium">Medium</option>
-                <option value="hard">Hard</option>
-              </select>
-            </div>
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
             <div>
               <label className="text-xs font-semibold text-slate-500">Marks+</label>
               <input

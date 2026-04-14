@@ -172,6 +172,43 @@ const resolveCorrectFromOptions = (
   return null;
 };
 
+const resolveCorrectOptionIndexes = (
+  options: QuestionOptionLike[] | undefined,
+  answer: unknown
+) => {
+  const indexes = new Set<number>();
+  if (!options || options.length === 0) return indexes;
+
+  const addIndex = (value: unknown) => {
+    if (value === null || value === undefined) return;
+    const index = resolveOptionIndex(options, String(value));
+    if (index !== undefined) indexes.add(index);
+  };
+
+  if (typeof answer === "string") {
+    answer
+      .split(/[;,|]/)
+      .map((token) => token.trim())
+      .filter(Boolean)
+      .forEach((token) => addIndex(token));
+  } else if (Array.isArray(answer)) {
+    answer.forEach((item) => addIndex(item));
+  } else if (typeof answer === "object" && answer) {
+    const typed = answer as Record<string, unknown>;
+    if (Array.isArray(typed.answer_ids)) typed.answer_ids.forEach((item) => addIndex(item));
+    if (Array.isArray(typed.answers)) typed.answers.forEach((item) => addIndex(item));
+    if (typed.answer !== undefined) addIndex(typed.answer);
+  }
+
+  if (indexes.size === 0) {
+    options.forEach((option, index) => {
+      if (option.is_correct) indexes.add(index);
+    });
+  }
+
+  return indexes;
+};
+
 const formatCorrectAnswer = (question: RenderableQuestion) => {
   const answer = question.correct_answer;
   if (answer === null || answer === undefined) return "";
@@ -248,6 +285,7 @@ export default function QuestionRenderer({
   const renderOptions = () => {
     if (!showOptions) return null;
     if (Array.isArray(question.options) && question.options.length) {
+      const correctIndexes = resolveCorrectOptionIndexes(question.options, question.correct_answer);
       return (
         <div className="mt-4 space-y-2 text-sm text-slate-700">
           {question.options.map((option, index) => (
@@ -258,7 +296,7 @@ export default function QuestionRenderer({
               <div className="flex items-start gap-3">
                 <span
                   className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
-                    showAnswer && option.is_correct
+                    showAnswer && correctIndexes.has(index)
                       ? "bg-emerald-100 text-emerald-700"
                       : "bg-slate-100 text-slate-600"
                   }`}

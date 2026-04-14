@@ -48,6 +48,13 @@ const normalizeRichText = (value: unknown): RichTextValue => {
 
 const stripHtml = (value: RichTextValue) => value.html.replace(/<[^>]*>/g, "").trim();
 
+const hasRichContent = (value: RichTextValue) => {
+  const html = String(value?.html ?? "");
+  if (!html.trim()) return false;
+  if (/<img\b/i.test(html)) return true;
+  return stripHtml(value).length > 0;
+};
+
 const toNullableNumber = (value: string) => {
   if (!value) return null;
   const parsed = Number(value);
@@ -630,16 +637,16 @@ export default function QuestionForm({
       return;
     }
 
-    if (!stripHtml(questionText)) {
-      alert("Question text is required.");
+    if (!hasRichContent(questionText)) {
+      alert("Question must contain text or an image.");
       return;
     }
 
     if (
       (questionType === "mcq_single" || questionType === "mcq_multiple") &&
-      options.some((option) => !stripHtml(option.text))
+      options.some((option) => !hasRichContent(option.text))
     ) {
-      alert("All options must have text.");
+      alert("All options must contain text or an image.");
       return;
     }
     if (questionType === "mcq_single" && !correctAnswer) {
@@ -829,7 +836,7 @@ export default function QuestionForm({
           marks_positive: Number(marksPositive) || 0,
           marks_negative: Number(marksNegative) || 0,
           exam_tags: parsedTags,
-          solution: stripHtml(solutionText) ? solutionText : null,
+          solution: hasRichContent(solutionText) ? solutionText : null,
           created_by: initialQuestion?.created_by,
           created_at: initialQuestion?.created_at,
           status: initialQuestion?.status ?? "draft",
