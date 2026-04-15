@@ -905,6 +905,26 @@ const appendRichHtmlBlock = (existing, block) => {
 const stripLeadingRichLabel = (html, pattern) =>
   normalizeDocxCellHtml(String(html || '').replace(pattern, ''));
 
+const forceUppercaseStemStatementsToNewLine = (html) => {
+  const source = normalizeDocxCellHtml(html);
+  if (!source) return source;
+
+  // Keep statement-style markers in question stem on separate lines:
+  // "... (A) ... (B) ... (C) ... (D) ..." => each starts on a new line.
+  const withBreaks = source
+    // If first statement marker is glued to question end, force a break before it.
+    // Example: "...?(A)..." -> "...?<br/>(A)..."
+    .replace(/([?])(?=\(A\)\s*)/g, '$1<br/>')
+    .replace(/([?])(?=A[\).]\s*)/g, '$1<br/>')
+    // If marker already has spaces, still normalize to explicit line break.
+    .replace(/\s+(?=\([A-D]\)\s*)/g, '<br/>')
+    .replace(/\s+(?=[A-D][\).]\s*)/g, '<br/>')
+    // Avoid duplicate breaks introduced by multiple passes.
+    .replace(/(?:<br\s*\/?>\s*){2,}/gi, '<br/>');
+
+  return normalizeDocxCellHtml(withBreaks);
+};
+
 const isConverterEquationDebugEnabled = () => {
   const value = String(
     process.env.QUESTION_CONVERTER_EQUATION_DEBUG ??
@@ -1861,6 +1881,8 @@ const finalizeDocxQuestion = (question, defaults, rowNumber) => {
     return null;
   }
 
+  const normalizedQuestionText = forceUppercaseStemStatementsToNewLine(question.question_text);
+
   const options = (question.options || []).map((option, index) => ({
     id: option.id || `opt-${index + 1}`,
     text: option.text,
@@ -1906,7 +1928,7 @@ const finalizeDocxQuestion = (question, defaults, rowNumber) => {
   const prepared = applyBulkDefaults(
     {
       question_type: questionType,
-      question_text: question.question_text,
+      question_text: normalizedQuestionText,
       options: options.length > 0 ? options : null,
       correct_answer: correctAnswer,
       program_id: question.program_id,
@@ -2139,11 +2161,11 @@ const extractDocxRows = (buffer, defaults) => {
       return;
     }
 
-    const optionMatch = detectionText.match(/^(?:\(?([A-H])\)|([A-H]))[\).:-]?\s*(.*)$/i);
+    const optionMatch = detectionText.match(/^(?:\(?([a-d])\)|([a-d]))[\).:-]?\s*(.*)$/);
     if (optionMatch) {
       const optionHtml = stripLeadingRichLabel(
         paragraphHtml || escapeHtml(detectionText),
-        /^(?:\(?[A-H]\)|[A-H])[\).:-]?\s*/i
+        /^(?:\(?[a-d]\)|[a-d])[\).:-]?\s*/
       );
       const optionText = optionHtml || escapeHtml(optionMatch[3] || '').trim();
       if (!optionText) return;
@@ -2179,16 +2201,51 @@ const extractDocxRowsByMarkerRanges = (parsedParagraphs, defaults) => {
   let current = null;
   let pendingQuestion = '';
   let inQuestionSection = false;
+  let section = 'none';
 
   const pushCurrent = () => {
     if (!current) return;
     const normalized = finalizeDocxQuestion(current, defaults, rows.length + 2);
     if (normalized) rows.push(normalized);
     current = null;
+    section = 'none';
   };
 
   const appendPendingQuestion = (html) => {
     pendingQuestion = appendRichHtmlBlock(pendingQuestion, html);
+  };
+
+  const appendToCurrentSection = (html) => {
+    if (!current) return;
+    const block = html || '';
+    if (!normalizeDocxCellHtml(block)) return;
+
+    if (section === 'question') {
+      current.question_text = appendRichHtmlBlock(current.question_text, block);
+      return;
+    }
+    if (section === 'a' || section === 'b' || section === 'c' || section === 'd') {
+      current.options = current.options || [];
+      const indexMap = { a: 0, b: 1, c: 2, d: 3 };
+      const targetIndex = indexMap[section];
+      while (current.options.length <= targetIndex) {
+        current.options.push({
+          id: `opt-${current.options.length + 1}`,
+          text: '',
+        });
+      }
+      current.options[targetIndex].text = appendRichHtmlBlock(current.options[targetIndex].text, block);
+      return;
+    }
+    if (section === 'answer') {
+      const existing = String(current.correct_answer || '').trim();
+      const incoming = toPlainBulkText(block);
+      current.correct_answer = existing ? `${existing} ${incoming}`.trim() : incoming;
+      return;
+    }
+    if (section === 'solution') {
+      current.solution = appendRichHtmlBlock(current.solution, block);
+    }
   };
 
   const isLikelySectionHeading = (text) =>
@@ -2230,9 +2287,9 @@ const extractDocxRowsByMarkerRanges = (parsedParagraphs, defaults) => {
       text.match(/^q(?:\s+\d+)?\s*[:.-]\s*(.*)$/i) ||
       text.match(/^\d+\s*[\).:-]\s*(.*)$/i);
 
-    const optionMatch = text.match(/^(?:\(?([A-H])\)|([A-H]))[\).:-]?\s*(.*)$/i);
+    const optionMatch = text.match(/^\(?([a-d])\)?[\).:-]?\s*(.*)$/);
     const answerMatch = text.match(
-      /^(answer|ans|correct_answer|correct answer|correct option|key)\s*[:.-]\s*(.+)$/i
+      /^(answer|ans|correct_answer|correct answer|correct option|key)\s*[:.-]?\s*(.*)$/i
     );
     const solutionMatch = text.match(/^solution\s*:?\s*(.*)$/i);
 
@@ -2243,17 +2300,28 @@ const extractDocxRowsByMarkerRanges = (parsedParagraphs, defaults) => {
       return;
     }
 
-    if (!current) {
-      if (explicitQuestionMatch) {
-        const strippedQuestionHtml = stripLeadingRichLabel(
-          paragraphHtml || escapeHtml(text),
-          /^(?:question(?:\s+\d+)?|q(?:\s+\d+)?|\d+)\s*[:\).-]\s*/i
-        );
-        appendPendingQuestion(strippedQuestionHtml || paragraphHtml || escapeHtml(text));
-        return;
+    if (explicitQuestionMatch) {
+      pushCurrent();
+      current = {
+        ...globalMeta,
+        question_type: '',
+        question_text: pendingQuestion || '',
+        options: [],
+      };
+      pendingQuestion = '';
+      section = 'question';
+      const strippedQuestionHtml = stripLeadingRichLabel(
+        paragraphHtml || escapeHtml(text),
+        /^(?:question(?:\s+\d+)?|q(?:\s+\d+)?|\d+)\s*[:\).-]\s*/i
+      );
+      if (strippedQuestionHtml) {
+        appendToCurrentSection(strippedQuestionHtml);
       }
+      return;
+    }
 
-      if (optionMatch && String(optionMatch[1] || optionMatch[2] || '').toUpperCase() === 'A') {
+    if (!current) {
+      if (optionMatch && String(optionMatch[1] || '').toLowerCase() === 'a') {
         current = {
           ...globalMeta,
           question_type: '',
@@ -2261,6 +2329,7 @@ const extractDocxRowsByMarkerRanges = (parsedParagraphs, defaults) => {
           options: [],
         };
         pendingQuestion = '';
+        section = 'a';
       } else {
         appendPendingQuestion(paragraphHtml || escapeHtml(text));
         return;
@@ -2268,55 +2337,61 @@ const extractDocxRowsByMarkerRanges = (parsedParagraphs, defaults) => {
     }
 
     if (optionMatch) {
+      section = String(optionMatch[1] || '').toLowerCase();
       const optionHtml = stripLeadingRichLabel(
         paragraphHtml || escapeHtml(text),
-        /^(?:\(?[A-H]\)|[A-H])[\).:-]?\s*/i
+        /^\(?[a-d]\)?[\).:-]?\s*/i
       );
-      const optionText = optionHtml || escapeHtml(optionMatch[3] || '').trim();
-      if (optionText) {
-        current.options.push({
-          id: `opt-${current.options.length + 1}`,
-          text: optionText,
-        });
+      if (optionHtml) {
+        appendToCurrentSection(optionHtml);
       }
       return;
     }
 
-    if (answerMatch) {
-      current.correct_answer = answerMatch[2].trim();
-      return;
-    }
-
     if (solutionMatch) {
-      current._collecting_solution = true;
+      section = 'solution';
       const strippedSolutionHtml = stripLeadingRichLabel(
         paragraphHtml || escapeHtml(text),
         /^solution\s*:?\s*/i
       );
       if (strippedSolutionHtml) {
-        current.solution = appendRichHtmlBlock(current.solution, strippedSolutionHtml);
+        appendToCurrentSection(strippedSolutionHtml);
       }
       return;
     }
 
-    if (current._collecting_solution) {
-      if (explicitQuestionMatch && current.options.length > 0 && current.correct_answer) {
-        pushCurrent();
-        const strippedQuestionHtml = stripLeadingRichLabel(
-          paragraphHtml || escapeHtml(text),
-          /^(?:question(?:\s+\d+)?|q(?:\s+\d+)?|\d+)\s*[:\).-]\s*/i
-        );
-        appendPendingQuestion(strippedQuestionHtml || paragraphHtml || escapeHtml(text));
-        return;
+    if (answerMatch) {
+      section = 'answer';
+      const answerTextRaw = String(answerMatch[2] || '').trim();
+      const solutionInlineMatch = answerTextRaw.match(/^(.*?)(?:\s*solution\s*:?\s*)(.*)$/i);
+      if (solutionInlineMatch) {
+        const answerPart = normalizeBulkTextValue(solutionInlineMatch[1]);
+        if (answerPart) {
+          appendToCurrentSection(escapeHtml(answerPart));
+        }
+        section = 'solution';
+        const solutionPart = normalizeBulkTextValue(solutionInlineMatch[2]);
+        if (solutionPart) {
+          appendToCurrentSection(escapeHtml(solutionPart));
+        }
+      } else if (answerTextRaw) {
+        appendToCurrentSection(escapeHtml(answerTextRaw));
       }
-      current.solution = appendRichHtmlBlock(current.solution, paragraphHtml || escapeHtml(text));
       return;
     }
 
-    if (!current.question_text) {
-      current.question_text = appendRichHtmlBlock(current.question_text, paragraphHtml || escapeHtml(text));
+    if (section === 'none') {
+      if (current && current.options && current.options.length > 0) {
+        section = 'd';
+      } else if (current) {
+        section = 'question';
+      }
+    }
+
+    if (!current) {
+      appendPendingQuestion(paragraphHtml || escapeHtml(text));
     } else {
-      current.question_text = appendRichHtmlBlock(current.question_text, paragraphHtml || escapeHtml(text));
+      appendToCurrentSection(paragraphHtml || escapeHtml(text));
     }
   });
 

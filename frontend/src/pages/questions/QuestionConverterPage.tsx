@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import api from "@/lib/api";
 import QuestionBankLayout from "@/features/question-bank/components/QuestionBankLayout";
 import type { CurriculumItem } from "@/types/questionBank";
-import type { QuestionFolder } from "@/types/questionFolder";
 
 type InsertSummary = {
   success: boolean;
@@ -37,13 +36,6 @@ const normalizeCurriculum = (items: any[]): CurriculumItem[] =>
     }))
     .filter((item) => item.id !== undefined && item.id !== null);
 
-const normalizeFolder = (item: Record<string, unknown>): QuestionFolder => ({
-  id: (item.id as string | number) ?? "",
-  name: typeof item.name === "string" ? item.name : "Untitled Folder",
-  description: typeof item.description === "string" ? item.description : "",
-  questionCount: Number(item.questionCount ?? item.question_count ?? 0),
-});
-
 const parseBlobError = async (blob: Blob) => {
   try {
     const text = await blob.text();
@@ -64,14 +56,12 @@ export default function QuestionConverterPage() {
   const [category, setCategory] = useState<(typeof CATEGORY_OPTIONS)[number]>("direct question");
   const [marksPositive, setMarksPositive] = useState("4");
   const [marksNegative, setMarksNegative] = useState("0");
-  const [folderId, setFolderId] = useState("");
 
   const [programs, setPrograms] = useState<CurriculumItem[]>([]);
   const [grades, setGrades] = useState<CurriculumItem[]>([]);
   const [subjects, setSubjects] = useState<CurriculumItem[]>([]);
   const [chapters, setChapters] = useState<CurriculumItem[]>([]);
   const [topics, setTopics] = useState<CurriculumItem[]>([]);
-  const [folders, setFolders] = useState<QuestionFolder[]>([]);
 
   const [busyAction, setBusyAction] = useState<"" | "download" | "insert">("");
   const [statusMessage, setStatusMessage] = useState("");
@@ -85,10 +75,7 @@ export default function QuestionConverterPage() {
   useEffect(() => {
     const loadInitial = async () => {
       try {
-        const [programRes, folderRes] = await Promise.all([
-          api.get("/programs"),
-          api.get("/question-folders"),
-        ]);
+        const programRes = await api.get("/programs");
 
         const programPayload = Array.isArray(programRes.data)
           ? programRes.data
@@ -96,16 +83,8 @@ export default function QuestionConverterPage() {
             ? programRes.data.data
             : [];
         setPrograms(normalizeCurriculum(programPayload));
-
-        const folderPayload = Array.isArray(folderRes.data)
-          ? folderRes.data
-          : Array.isArray(folderRes.data?.data)
-            ? folderRes.data.data
-            : [];
-        setFolders(folderPayload.map(normalizeFolder));
       } catch {
         setPrograms([]);
-        setFolders([]);
       }
     };
 
@@ -243,7 +222,6 @@ export default function QuestionConverterPage() {
     formData.append("marks_positive", marksPositive);
     formData.append("marks_negative", marksNegative);
     if (category.trim()) formData.append("category", category.trim());
-    if (folderId) formData.append("folder_id", folderId);
     return formData;
   };
 
@@ -455,7 +433,7 @@ export default function QuestionConverterPage() {
             </div>
           </div>
 
-          <div className="mt-4 grid gap-4 md:grid-cols-3">
+          <div className="mt-4 grid gap-4 md:grid-cols-1">
             <div>
               <label className="text-xs font-semibold text-slate-500">Category</label>
               <select
@@ -466,21 +444,6 @@ export default function QuestionConverterPage() {
                 {CATEGORY_OPTIONS.map((option) => (
                   <option key={option} value={option}>
                     {option}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-slate-500">Folder</label>
-              <select
-                value={folderId}
-                onChange={(event) => setFolderId(event.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
-              >
-                <option value="">Optional</option>
-                {folders.map((folder) => (
-                  <option key={folder.id} value={String(folder.id)}>
-                    {folder.name}
                   </option>
                 ))}
               </select>
