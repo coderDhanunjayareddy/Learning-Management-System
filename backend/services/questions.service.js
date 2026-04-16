@@ -13,6 +13,8 @@ import { load as loadHtml } from 'cheerio';
 import {
   Document,
   ImageRun,
+  Math as DocxMath,
+  MathRun,
   Packer,
   Paragraph,
   Table,
@@ -4005,6 +4007,116 @@ const decodeHtmlEntitiesForDocx = (value) =>
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'");
 
+const SUPERSCRIPT_UNICODE_MAP = {
+  0: '⁰',
+  1: '¹',
+  2: '²',
+  3: '³',
+  4: '⁴',
+  5: '⁵',
+  6: '⁶',
+  7: '⁷',
+  8: '⁸',
+  9: '⁹',
+  '+': '⁺',
+  '-': '⁻',
+  '=': '⁼',
+  '(': '⁽',
+  ')': '⁾',
+  n: 'ⁿ',
+  i: 'ⁱ',
+};
+
+const SUBSCRIPT_UNICODE_MAP = {
+  0: '₀',
+  1: '₁',
+  2: '₂',
+  3: '₃',
+  4: '₄',
+  5: '₅',
+  6: '₆',
+  7: '₇',
+  8: '₈',
+  9: '₉',
+  '+': '₊',
+  '-': '₋',
+  '=': '₌',
+  '(': '₍',
+  ')': '₎',
+  a: 'ₐ',
+  e: 'ₑ',
+  h: 'ₕ',
+  i: 'ᵢ',
+  j: 'ⱼ',
+  k: 'ₖ',
+  l: 'ₗ',
+  m: 'ₘ',
+  n: 'ₙ',
+  o: 'ₒ',
+  p: 'ₚ',
+  r: 'ᵣ',
+  s: 'ₛ',
+  t: 'ₜ',
+  u: 'ᵤ',
+  v: 'ᵥ',
+  x: 'ₓ',
+};
+
+const mapStringWithUnicode = (value, map, fallbackPrefix) => {
+  const input = decodeHtmlEntitiesForDocx(value);
+  if (!input) return '';
+  let usedFallback = false;
+  const transformed = Array.from(input)
+    .map((ch) => {
+      const key = ch.toLowerCase();
+      if (Object.prototype.hasOwnProperty.call(map, key)) {
+        return map[key];
+      }
+      usedFallback = true;
+      return ch;
+    })
+    .join('');
+  if (!usedFallback) return transformed;
+  return `${fallbackPrefix}(${input})`;
+};
+
+const htmlMathNodeToLinear = ($, node) => {
+  if (!node) return '';
+  if (node.type === 'text') {
+    return decodeHtmlEntitiesForDocx($(node).text());
+  }
+  if (node.type !== 'tag') return '';
+
+  const tag = String(node.name || '').toLowerCase();
+  if (tag === 'br') return ' ';
+
+  if (tag === 'sup') {
+    return mapStringWithUnicode($(node).text(), SUPERSCRIPT_UNICODE_MAP, '^');
+  }
+  if (tag === 'sub') {
+    return mapStringWithUnicode($(node).text(), SUBSCRIPT_UNICODE_MAP, '_');
+  }
+
+  let acc = '';
+  (node.children || []).forEach((child) => {
+    acc += htmlMathNodeToLinear($, child);
+  });
+  return acc;
+};
+
+const htmlMathToLinearText = (mathHtml) => {
+  const source = normalizeDocxCellHtml(mathHtml);
+  if (!source) return '';
+  const $ = loadHtml(`<root>${source}</root>`);
+  let linear = '';
+  $('root')
+    .contents()
+    .each((_, node) => {
+      linear += htmlMathNodeToLinear($, node);
+    });
+  return normalizeBulkTextValue(linear);
+};
+
 const parseDataUrlImage = (src) => {
   const match = String(src || '').match(/^data:([^;]+);base64,(.+)$/i);
   if (!match) return null;
@@ -4073,6 +4185,21 @@ const htmlToDocxRuns = (html, styles = {}) => {
         runs.push(new TextRun({ text: `[${altText}]` }));
       }
       return;
+    }
+
+    if (tag === 'span') {
+      const className = String($(node).attr('class') || '').toLowerCase();
+      if (className.includes('math-equation') || className.includes('math-matrix')) {
+        const linearMath = htmlMathToLinearText($(node).html() || $(node).text() || '');
+        if (linearMath) {
+          runs.push(
+            new DocxMath({
+              children: [new MathRun(linearMath)],
+            })
+          );
+        }
+        return;
+      }
     }
 
     const nextStyles = {
