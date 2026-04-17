@@ -113,6 +113,7 @@ export default function ContentAuthorizerCourses() {
         <AdminCourseManager
           mode="admin"
           role={user?.role}
+          permissionKeys={user?.permissions}
           theme={theme}
           brandLogo="/logo.png"
           brandName="Spectropy"
