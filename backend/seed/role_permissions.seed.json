@@ -84,6 +84,26 @@
       "role": "content_authorizer",
       "permission": "exams.publish",
       "granted": true
+    },
+    {
+      "role": "content_authorizer",
+      "permission": "courses.create",
+      "granted": true
+    },
+    {
+      "role": "content_authorizer",
+      "permission": "courses.update",
+      "granted": true
+    },
+    {
+      "role": "content_authorizer",
+      "permission": "courses.delete",
+      "granted": true
+    },
+    {
+      "role": "content_authorizer",
+      "permission": "courses.publish",
+      "granted": true
     }
   ],
   "tenant_permissions": [
