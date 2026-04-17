@@ -52,14 +52,14 @@ export default function ContentAuthorizerCourses() {
       label: "Users",
       icon: <PiUsersBold />,
       active: false,
-      onClick: () => {},
+      onClick: () => { },
     },
     {
       key: "community",
       label: "Community",
       icon: <PiChatsCircleBold />,
       active: false,
-      onClick: () => {},
+      onClick: () => { },
     },
   ];
 
@@ -113,6 +113,7 @@ export default function ContentAuthorizerCourses() {
         <AdminCourseManager
           mode="admin"
           role={user?.role}
+          permissionKeys={user?.permissions}
           theme={theme}
           brandLogo="/logo.png"
           brandName="Spectropy"
