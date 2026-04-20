@@ -52,14 +52,14 @@ export default function ContentAuthorizerCourses() {
       label: "Users",
       icon: <PiUsersBold />,
       active: false,
-      onClick: () => {},
+      onClick: () => { },
     },
     {
       key: "community",
       label: "Community",
       icon: <PiChatsCircleBold />,
       active: false,
-      onClick: () => {},
+      onClick: () => { },
     },
   ];
 
