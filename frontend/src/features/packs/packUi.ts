@@ -7,3 +7,6 @@ export const prettyPackItemType = (value: string) => {
 
 export const formatCourseMeta = (grade: string | null, subject: string | null) =>
   [grade, subject].filter(Boolean).join(' | ') || 'No grade/subject';
+
+export const formatCourseScope = (clientId: number | null) =>
+  clientId === null ? 'Global' : `Client ${clientId}`;

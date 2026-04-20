@@ -285,11 +285,6 @@ const validateAttachableItems = async (itemIds) => {
     throw new HttpError(400, 'One or more content items were not found');
   }
 
-  const forbiddenItem = result.rows.find((row) => row.client_id !== null);
-  if (forbiddenItem) {
-    throw new HttpError(403, 'Only platform-global course items can be attached to a global pack');
-  }
-
   return result.rows;
 };
 
@@ -491,7 +486,8 @@ export const listCourses = async (req, res) => {
     ensurePackBuilderRole(req.user?.role);
     const { page, pageSize, offset } = parsePagination(req.query);
     const q = String(req.query?.q ?? '').trim();
-    const clientId = parseNullableInt(req.query?.client_id, 'client_id');
+    const hasClientFilter = Object.prototype.hasOwnProperty.call(req.query ?? {}, 'client_id');
+    const clientId = hasClientFilter ? parseNullableInt(req.query?.client_id, 'client_id') : undefined;
     const metadata = await getCourseMetadataExpressions('c');
 
     const params = [];
@@ -499,7 +495,7 @@ export const listCourses = async (req, res) => {
 
     if (clientId === null) {
       conditions.push('c.client_id IS NULL');
-    } else {
+    } else if (clientId !== undefined) {
       params.push(clientId);
       conditions.push(`c.client_id = $${params.length}`);
     }
@@ -704,10 +700,6 @@ export const attachCourseToPack = async (req, res) => {
 
     if (courseResult.rows.length === 0) {
       throw new HttpError(404, 'Course not found');
-    }
-
-    if (courseResult.rows[0].client_id !== null) {
-      throw new HttpError(403, 'Only platform-global courses can be attached to a global pack');
     }
 
     const itemsResult = await dbQuery(

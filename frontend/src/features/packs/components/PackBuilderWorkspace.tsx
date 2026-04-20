@@ -83,6 +83,8 @@ export default function PackBuilderWorkspace({ packId }: PackBuilderWorkspacePro
   const [courseQuery, setCourseQuery] = useState('');
   const deferredQuery = useDeferredValue(courseQuery.trim());
   const [courseResults, setCourseResults] = useState<CourseSearchResult[]>([]);
+  const [courseResultsTotal, setCourseResultsTotal] = useState(0);
+  const [courseResultsPage, setCourseResultsPage] = useState(1);
   const [coursesLoading, setCoursesLoading] = useState(false);
   const [coursesError, setCoursesError] = useState<string | null>(null);
   const [selectedCourse, setSelectedCourse] = useState<CourseSearchResult | null>(null);
@@ -194,14 +196,16 @@ export default function PackBuilderWorkspace({ packId }: PackBuilderWorkspacePro
     void refreshPackData(packItemsPage);
   }, [packId, packItemsPage]);
 
-  const loadCourses = async (query = deferredQuery) => {
+  const loadCourses = async ({ page = 1, query = deferredQuery }: { page?: number; query?: string } = {}) => {
     try {
       setCoursesLoading(true);
       setCoursesError(null);
       const response = await api.get<PaginatedResponse<CourseSearchResult>>('/courses', {
-        params: { page: 1, page_size: COURSE_PAGE_SIZE, q: query || undefined },
+        params: { page, page_size: COURSE_PAGE_SIZE, q: query || undefined },
       });
-      setCourseResults(response.data.data);
+      setCourseResults((current) => (page === 1 ? response.data.data : [...current, ...response.data.data]));
+      setCourseResultsTotal(response.data.total);
+      setCourseResultsPage(response.data.page);
       return response.data.data;
     } catch (error) {
       setCoursesError(readError(error, 'Failed to search courses.'));
@@ -213,11 +217,19 @@ export default function PackBuilderWorkspace({ packId }: PackBuilderWorkspacePro
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      void loadCourses(deferredQuery);
+      setCourseResults([]);
+      setCourseResultsTotal(0);
+      setCourseResultsPage(1);
+      void loadCourses({ page: 1, query: deferredQuery });
     }, 250);
 
     return () => window.clearTimeout(timer);
   }, [deferredQuery]);
+
+  const loadMoreCourses = async () => {
+    if (coursesLoading || courseResults.length >= courseResultsTotal) return;
+    await loadCourses({ page: courseResultsPage + 1, query: deferredQuery });
+  };
 
   useEffect(() => {
     setSelectedItemIds([]);
@@ -453,7 +465,7 @@ export default function PackBuilderWorkspace({ packId }: PackBuilderWorkspacePro
       toast.success('Course created.');
 
       startTransition(() => setCourseQuery(payload.name));
-      const refreshedCourses = await loadCourses(payload.name);
+      const refreshedCourses = await loadCourses({ page: 1, query: payload.name });
       const createdCourse =
         refreshedCourses.find((course) => course.id === response.data.course_id) ??
         refreshedCourses.find((course) => course.name.trim().toLowerCase() === payload.name.toLowerCase()) ??
@@ -543,12 +555,16 @@ export default function PackBuilderWorkspace({ packId }: PackBuilderWorkspacePro
           onCourseQueryChange={(value) => startTransition(() => setCourseQuery(value))}
           onOpenCreateCourse={openCreateCourseDialog}
           courseResults={courseResults}
+          courseResultsTotal={courseResultsTotal}
           coursesLoading={coursesLoading}
           coursesError={coursesError}
           selectedCourse={selectedCourse}
           onSelectCourse={(course) => {
             setSelectedCourse(course);
             setCourseContentPage(1);
+          }}
+          onLoadMoreCourses={() => {
+            void loadMoreCourses();
           }}
           courseContent={courseContent}
           courseContentLoading={courseContentLoading}

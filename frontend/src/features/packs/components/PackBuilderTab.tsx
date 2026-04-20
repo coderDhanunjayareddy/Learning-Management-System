@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import Pagination from '@/components/ui/Pagination';
 import { Badge, GhostButton, PrimaryButton } from '@/pages/dashboard/superadmin/components/ui';
 import type {
@@ -7,7 +7,7 @@ import type {
   PaginatedResponse,
   PackSummary,
 } from '../types';
-import { formatCourseMeta, prettyPackItemType } from '../packUi';
+import { formatCourseMeta, formatCourseScope, prettyPackItemType } from '../packUi';
 
 interface PackBuilderTabProps {
   selectedPack: PackSummary | null;
@@ -15,10 +15,12 @@ interface PackBuilderTabProps {
   onCourseQueryChange: (value: string) => void;
   onOpenCreateCourse: () => void;
   courseResults: CourseSearchResult[];
+  courseResultsTotal: number;
   coursesLoading: boolean;
   coursesError: string | null;
   selectedCourse: CourseSearchResult | null;
   onSelectCourse: (course: CourseSearchResult) => void;
+  onLoadMoreCourses: () => void;
   courseContent: PaginatedResponse<CourseContentPreviewItem> | null;
   courseContentLoading: boolean;
   courseContentError: string | null;
@@ -123,10 +125,12 @@ export default function PackBuilderTab({
   onCourseQueryChange,
   onOpenCreateCourse,
   courseResults,
+  courseResultsTotal,
   coursesLoading,
   coursesError,
   selectedCourse,
   onSelectCourse,
+  onLoadMoreCourses,
   courseContent,
   courseContentLoading,
   courseContentError,
@@ -142,6 +146,27 @@ export default function PackBuilderTab({
   onAttachCourse,
 }: PackBuilderTabProps) {
   const courseTree = useMemo(() => buildCourseTree(courseContent?.data ?? []), [courseContent?.data]);
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
+  const hasMoreCourses = courseResults.length < courseResultsTotal;
+  const isInitialCourseLoad = coursesLoading && courseResults.length === 0;
+  const isLoadingMoreCourses = coursesLoading && courseResults.length > 0;
+
+  useEffect(() => {
+    const node = loadMoreRef.current;
+    if (!node || !hasMoreCourses || coursesLoading || coursesError) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          onLoadMoreCourses();
+        }
+      },
+      { rootMargin: '160px 0px' },
+    );
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [coursesError, coursesLoading, hasMoreCourses, onLoadMoreCourses]);
 
   return (
     <div className="grid gap-10 xl:grid-cols-[0.95fr_1.2fr_0.85fr] xl:gap-0 xl:divide-x xl:divide-slate-200">
@@ -149,10 +174,12 @@ export default function PackBuilderTab({
         <div className="flex items-start justify-between gap-3 border-b border-slate-200 pb-4">
           <div>
             <h3 className="text-lg font-semibold text-slate-950">Course Browser</h3>
-            <p className="mt-1 text-sm text-slate-500">Search platform courses by name, grade, or subject.</p>
+            <p className="mt-1 text-sm text-slate-500">
+              Search global and client-owned courses by name, grade, or subject.
+            </p>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
-            <Badge tone="border-slate-200 bg-slate-50 text-slate-700">Global courses</Badge>
+            <Badge tone="border-slate-200 bg-slate-50 text-slate-700">All course scopes</Badge>
             <GhostButton onClick={onOpenCreateCourse} className="!rounded-full !px-4 !py-2 !text-sm">
               Create Course
             </GhostButton>
@@ -167,14 +194,14 @@ export default function PackBuilderTab({
         />
 
         <div className="space-y-0">
-          {coursesLoading && <EmptyState message="Loading courses..." />}
-          {!coursesLoading && coursesError && (
+          {isInitialCourseLoad && <EmptyState message="Loading courses..." />}
+          {!isInitialCourseLoad && coursesError && (
             <div className="border-l-2 border-rose-300 pl-4 text-sm text-rose-600">{coursesError}</div>
           )}
-          {!coursesLoading && !coursesError && courseResults.length === 0 && (
+          {!isInitialCourseLoad && !coursesError && courseResults.length === 0 && (
             <EmptyState message="No courses matched your search." />
           )}
-          {!coursesLoading &&
+          {!isInitialCourseLoad &&
             !coursesError &&
             courseResults.map((course) => {
               const isSelected = selectedCourse?.id === course.id;
@@ -190,8 +217,11 @@ export default function PackBuilderTab({
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="font-semibold text-slate-900">{course.name}</div>
-                      <div className="mt-1 text-xs text-slate-500">
-                        {formatCourseMeta(course.grade, course.subject)}
+                      <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                        <span>{formatCourseMeta(course.grade, course.subject)}</span>
+                        <Badge tone="border-slate-200 bg-slate-50 text-slate-700">
+                          {formatCourseScope(course.client_id)}
+                        </Badge>
                       </div>
                     </div>
                     <div className="text-sm font-medium text-slate-500">{course.content_item_count}</div>
@@ -199,6 +229,15 @@ export default function PackBuilderTab({
                 </button>
               );
             })}
+          {!isInitialCourseLoad && !coursesError && courseResults.length > 0 && (
+            <div ref={loadMoreRef} className="border-b border-dashed border-slate-200 py-4 text-center text-xs text-slate-400">
+              {isLoadingMoreCourses
+                ? 'Loading more courses...'
+                : hasMoreCourses
+                  ? `Showing ${courseResults.length} of ${courseResultsTotal} courses`
+                  : `All ${courseResultsTotal} courses loaded`}
+            </div>
+          )}
         </div>
       </section>
 
