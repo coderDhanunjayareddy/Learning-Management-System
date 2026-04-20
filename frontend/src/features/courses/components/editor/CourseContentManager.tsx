@@ -116,10 +116,12 @@ export default function CourseContentManager({
 
   const [chapterTitle, setChapterTitle] = useState("");
   const [addingChapter, setAddingChapter] = useState(false);
+  const [courseMeta, setCourseMeta] = useState<{ can_manage_content?: boolean } | null>(null);
 
   const normalizedPrefix = apiPrefix.startsWith("/") ? apiPrefix : `/${apiPrefix}`;
   const resolvedCourseId = courseId ? String(courseId) : "";
-  const canEdit = !readOnly && !disableFetch;
+  const serverReadOnly = courseMeta?.can_manage_content === false;
+  const canEdit = !readOnly && !serverReadOnly && !disableFetch;
   const canLinkLicensedContent = canEdit && user?.role === "client_admin";
 
   const items = useMemo(() => allItems, [allItems]);
@@ -164,7 +166,15 @@ export default function CourseContentManager({
     setLoading(true);
     try {
       const res = await api.get(`${normalizedPrefix}/courses/${resolvedCourseId}/content`);
-      syncContentState(res.data);
+      const payload = res.data;
+      const itemsToSync = Array.isArray(payload)
+        ? payload
+        : Array.isArray(payload?.items)
+          ? payload.items
+          : [];
+
+      setCourseMeta(!Array.isArray(payload) && payload?.course ? payload.course : null);
+      syncContentState(itemsToSync);
     } catch (err) {
       console.error("Failed to load course content", err);
     } finally {
@@ -586,6 +596,8 @@ export default function CourseContentManager({
           onBack={onBack || (() => {
             if (normalizedPrefix.includes("/admin")) {
               navigate("/admin/courses");
+            } else if (normalizedPrefix.includes("/school-owner")) {
+              navigate("/school-owner/courses");
             } else {
               navigate(`/courses/${resolvedCourseId}`);
             }

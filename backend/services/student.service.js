@@ -1925,18 +1925,41 @@ export const sweepExpiredInProgressAttempts = async ({ batchSize = 100 } = {}) =
   };
 };
 
+const parseCronBoolean = (value, fallback = false) => {
+  if (value === undefined || value === null || value === '') return fallback;
+  const normalized = String(value).trim().toLowerCase();
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+  if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+  return fallback;
+};
+
 export const startAttemptExpiryCron = (intervalMs = Number(process.env.EXAM_ATTEMPT_SWEEP_INTERVAL_MS || 30000)) => {
   if (attemptSweepTimer) {
     return () => { };
   }
 
+  const cronEnabled = parseCronBoolean(
+    process.env.EXAM_ATTEMPT_SWEEP_ENABLED,
+    process.env.NODE_ENV !== 'production'
+  );
+  if (!cronEnabled) {
+    console.log('Attempt expiry cron disabled');
+    return () => { };
+  }
+
   const normalizedInterval = Number.isFinite(intervalMs) && intervalMs >= 5000 ? Math.floor(intervalMs) : 30000;
+  const runOnStart = parseCronBoolean(
+    process.env.EXAM_ATTEMPT_SWEEP_RUN_ON_START,
+    process.env.NODE_ENV !== 'production'
+  );
+  const batchSize = Number.parseInt(process.env.EXAM_ATTEMPT_SWEEP_BATCH_SIZE || '25', 10);
+  const normalizedBatchSize = Number.isFinite(batchSize) && batchSize > 0 ? batchSize : 25;
 
   const runSweep = async () => {
     if (attemptSweepInProgress) return;
     attemptSweepInProgress = true;
     try {
-      await sweepExpiredInProgressAttempts();
+      await sweepExpiredInProgressAttempts({ batchSize: normalizedBatchSize });
     } catch (error) {
       console.error("Attempt expiry cron error:", error);
     } finally {
@@ -1944,7 +1967,10 @@ export const startAttemptExpiryCron = (intervalMs = Number(process.env.EXAM_ATTE
     }
   };
 
-  void runSweep();
+  if (runOnStart) {
+    void runSweep();
+  }
+
   attemptSweepTimer = setInterval(() => {
     void runSweep();
   }, normalizedInterval);

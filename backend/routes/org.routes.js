@@ -5,7 +5,10 @@ import {
   updateSchool,
   deactivateSchool,
   listSchoolMemberships,
+  listSchoolCourseAssignments,
   addSchoolMembership,
+  assignCoursesToSchool,
+  removeCourseAssignmentFromSchool,
   removeSchoolMembership,
   listBatches,
   createBatch,
@@ -35,6 +38,9 @@ router.delete('/schools/:id', requireRole(['super_admin', 'client_admin']), deac
 
 // School memberships
 router.get('/schools/:schoolId/memberships', requireRole(['super_admin', 'client_admin', 'school_owner']), listSchoolMemberships);
+router.get('/schools/:schoolId/course-assignments', requireRole(['super_admin', 'client_admin']), listSchoolCourseAssignments);
+router.post('/schools/:schoolId/course-assignments', requireRole(['super_admin', 'client_admin']), assignCoursesToSchool);
+router.delete('/schools/:schoolId/course-assignments/:courseId', requireRole(['super_admin', 'client_admin']), removeCourseAssignmentFromSchool);
 router.post('/schools/:schoolId/memberships', requireRole(['super_admin', 'client_admin', 'school_owner']), addSchoolMembership);
 router.delete('/schools/:schoolId/memberships/:userId', requireRole(['super_admin', 'client_admin', 'school_owner']), removeSchoolMembership);
 

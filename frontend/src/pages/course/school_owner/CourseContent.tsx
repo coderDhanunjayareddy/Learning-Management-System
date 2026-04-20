@@ -15,7 +15,7 @@ export default function SchoolOwnerCourseContent() {
 
     <CourseContentManager
       courseId={courseId}
-      apiPrefix="/admin"
+      apiPrefix="/school-owner"
       readOnly={!coursePermissions.canEdit}
       onBack={() => navigate("/school-owner/courses")}
     />

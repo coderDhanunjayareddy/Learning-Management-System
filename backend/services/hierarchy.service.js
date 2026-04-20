@@ -11,6 +11,7 @@ import {
 import { hashPassword } from '../utils/hash.js';
 import * as rolePermissionsService from '../services/rolePermissions.service.js';
 import * as userPermissionsService from '../services/userPermissions.service.js';
+import { ensureCourseSchoolAssignmentsTable } from './courseShared.service.js';
 import { handleServiceError } from '../utils/errors.js';
 
 const VALID_ROLE_SCOPES = ['school_owner', 'teacher', 'student', 'admin'];
@@ -230,6 +231,164 @@ export const listSchoolMemberships = async (req, res) => {
   } catch (err) {
     console.error('Failed to load school memberships:', err);
     res.status(500).json({ error: 'Failed to load school memberships' });
+  }
+};
+
+export const listSchoolCourseAssignments = async (req, res) => {
+  const { schoolId } = req.params;
+  const canAccess = await canAccessSchool(schoolId, req);
+  if (!canAccess) return res.status(403).json({ error: 'Access denied' });
+
+  try {
+    await ensureCourseSchoolAssignmentsTable();
+
+    const result = await dbQuery(
+      `
+        SELECT
+          csa.id,
+          csa.school_id,
+          csa.course_id,
+          csa.assigned_at,
+          csa.assigned_by,
+          c.title,
+          c.description,
+          c.published,
+          c.created_at,
+          c.created_by,
+          u.full_name AS assigned_by_name
+        FROM course_school_assignments csa
+        JOIN courses c
+          ON c.id = csa.course_id
+        LEFT JOIN users u
+          ON u.id = csa.assigned_by
+        WHERE csa.school_id = $1
+        ORDER BY c.title ASC, csa.assigned_at DESC
+      `,
+      [schoolId]
+    );
+
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Failed to load school course assignments:', err);
+    res.status(500).json({ error: 'Failed to load school course assignments' });
+  }
+};
+
+export const assignCoursesToSchool = async (req, res) => {
+  const { schoolId } = req.params;
+  const canAccess = await canAccessSchool(schoolId, req);
+  if (!canAccess) return res.status(403).json({ error: 'Access denied' });
+
+  const inputIds = Array.isArray(req.body?.course_ids)
+    ? req.body.course_ids
+    : req.body?.course_id !== undefined
+      ? [req.body.course_id]
+      : [];
+  const courseIds = Array.from(
+    new Set(
+      inputIds
+        .map((value) => Number(value))
+        .filter((value) => Number.isInteger(value) && value > 0)
+    )
+  );
+
+  if (courseIds.length === 0) {
+    return res.status(400).json({ error: 'At least one valid course_id is required' });
+  }
+
+  const school = await getSchoolContext(schoolId);
+  if (!school) return res.status(404).json({ error: 'School not found' });
+
+  try {
+    await ensureCourseSchoolAssignmentsTable();
+
+    const courseResult = await dbQuery(
+      `
+        SELECT id
+        FROM courses
+        WHERE id = ANY($1::int[])
+          AND client_id = $2
+      `,
+      [courseIds, school.client_id]
+    );
+
+    const validCourseIds = courseResult.rows.map((row) => Number(row.id));
+    const missingCourseIds = courseIds.filter((courseId) => !validCourseIds.includes(courseId));
+
+    if (missingCourseIds.length > 0) {
+      return res.status(400).json({
+        error: 'Some courses do not belong to this client',
+        course_ids: missingCourseIds,
+      });
+    }
+
+    await dbQuery(
+      `
+        INSERT INTO course_school_assignments (course_id, school_id, assigned_by)
+        SELECT course_id, $1, $2
+        FROM unnest($3::int[]) AS course_id
+        ON CONFLICT (course_id, school_id)
+        DO UPDATE SET assigned_by = EXCLUDED.assigned_by, assigned_at = NOW()
+      `,
+      [schoolId, req.user?.id ?? null, validCourseIds]
+    );
+
+    const assignments = await dbQuery(
+      `
+        SELECT
+          csa.id,
+          csa.school_id,
+          csa.course_id,
+          csa.assigned_at,
+          c.title,
+          c.description,
+          c.published
+        FROM course_school_assignments csa
+        JOIN courses c
+          ON c.id = csa.course_id
+        WHERE csa.school_id = $1
+          AND csa.course_id = ANY($2::int[])
+        ORDER BY c.title ASC
+      `,
+      [schoolId, validCourseIds]
+    );
+
+    res.status(201).json({
+      success: true,
+      assignments: assignments.rows,
+    });
+  } catch (err) {
+    console.error('Failed to assign courses to school:', err);
+    res.status(500).json({ error: 'Failed to assign courses to school' });
+  }
+};
+
+export const removeCourseAssignmentFromSchool = async (req, res) => {
+  const { schoolId, courseId } = req.params;
+  const canAccess = await canAccessSchool(schoolId, req);
+  if (!canAccess) return res.status(403).json({ error: 'Access denied' });
+
+  try {
+    await ensureCourseSchoolAssignmentsTable();
+
+    const result = await dbQuery(
+      `
+        DELETE FROM course_school_assignments
+        WHERE school_id = $1
+          AND course_id = $2
+        RETURNING id
+      `,
+      [schoolId, courseId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Assignment not found' });
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Failed to remove school course assignment:', err);
+    res.status(500).json({ error: 'Failed to remove school course assignment' });
   }
 };
 

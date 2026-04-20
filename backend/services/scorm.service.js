@@ -11,6 +11,7 @@ import fsy from "fsy";
 import { url } from "inspector";
 import fetch from "node-fetch"; // add at top if not already
 import { contentIsLinkedIntoCourse, userCanAccessContentItem } from "./clientContent.service.js";
+import { ensureCourseActionAccess, getRequestCourseScope } from "./courseShared.service.js";
 
 
 // Fix __dirname for ES modules
@@ -100,21 +101,18 @@ const ensureContentAccessByPath = async (filePath, req) => {
 export const uploadContentFile = async (req, res) => {
   const { courseId } = req.params;
   const { item_type, title, parent_id = null } = req.body;
-  const role = req.user?.role;
-  const clientId = req.user?.client_id;
-  const shouldScope = Boolean(clientId) && role !== "super_admin";
 
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
   try {
-    if (shouldScope) {
-      const courseCheck = await dbQuery(
-        `SELECT 1 FROM courses WHERE id = $1 AND client_id = $2`,
-        [courseId, clientId]
-      );
-      if (courseCheck.rows.length === 0) {
-        return res.status(403).json({ error: "Access denied" });
-      }
+    const access = await ensureCourseActionAccess({
+      courseId,
+      req,
+      action: "manage_content",
+      scope: getRequestCourseScope(req),
+    });
+    if (!access.ok) {
+      return res.status(access.status).json({ error: access.error });
     }
 
     const filePath = req.file.path;
@@ -215,19 +213,16 @@ export const updateContentFile = async (req, res) => {
   const { title } = req.body;
   const newFile = req.file; // Multer file
   const bucket = process.env.SUPABASE_BUCKET || "courses";
-  const role = req.user?.role;
-  const clientId = req.user?.client_id;
-  const shouldScope = Boolean(clientId) && role !== "super_admin";
 
   try {
-    if (shouldScope) {
-      const courseCheck = await dbQuery(
-        `SELECT 1 FROM courses WHERE id = $1 AND client_id = $2`,
-        [courseId, clientId]
-      );
-      if (courseCheck.rows.length === 0) {
-        return res.status(403).json({ error: "Access denied" });
-      }
+    const access = await ensureCourseActionAccess({
+      courseId,
+      req,
+      action: "manage_content",
+      scope: getRequestCourseScope(req),
+    });
+    if (!access.ok) {
+      return res.status(access.status).json({ error: access.error });
     }
 
     const linkedItem = await contentIsLinkedIntoCourse({ courseId, contentItemId: itemId });

@@ -14,13 +14,14 @@ import DashboardLayout from '@/components/layout/DashboardLayout';
 import SidebarNav, { type SidebarNavItem } from '@/components/layout/SidebarNav';
 import { getDashboardTheme } from '@/components/layout/dashboardTheme';
 
-type TabKey = 'schools' | 'schoolMembers' | 'batches' | 'batchMembers' | 'roles' | 'users' | 'bulkSetup';
+type TabKey = 'schools' | 'schoolMembers' | 'courseAssignments' | 'batches' | 'batchMembers' | 'roles' | 'users' | 'bulkSetup';
 
 interface School {
   id: number;
   name: string;
   school_code?: string | null;
   status: string;
+  client_id?: number | null;
 }
 
 interface Batch {
@@ -61,6 +62,24 @@ interface UserPermission {
   user_id: number;
   permission: string;
   granted: boolean;
+}
+
+interface AssignableCourse {
+  id: number;
+  title: string;
+  description?: string | null;
+  published?: boolean;
+  client_id?: number | null;
+}
+
+interface SchoolCourseAssignment {
+  id: number;
+  school_id: number;
+  course_id: number;
+  title: string;
+  description?: string | null;
+  published?: boolean;
+  assigned_at?: string;
 }
 
 type ClientUser = {
@@ -105,8 +124,13 @@ export default function OrgDashboard() {
   const [overrideSchoolMembers, setOverrideSchoolMembers] = useState<Membership[]>([]);
 
   const [selectedSchoolId, setSelectedSchoolId] = useState<string>('');
+  const [selectedAssignmentSchoolId, setSelectedAssignmentSchoolId] = useState<string>('');
   const [selectedBatchId, setSelectedBatchId] = useState<string>('');
   const [users, setUsers] = useState<User[]>([]);
+  const [clientCourses, setClientCourses] = useState<AssignableCourse[]>([]);
+  const [schoolCourseAssignments, setSchoolCourseAssignments] = useState<SchoolCourseAssignment[]>([]);
+  const [selectedCourseIds, setSelectedCourseIds] = useState<string[]>([]);
+  const [loadingCourseAssignments, setLoadingCourseAssignments] = useState(false);
 
   const [schoolForm, setSchoolForm] = useState({ name: '', school_code: '' });
   const [batchForm, setBatchForm] = useState({ name: '', school_id: '' });
@@ -160,6 +184,28 @@ export default function OrgDashboard() {
     setUsers(res.data);
   };
 
+  const loadClientCourses = async () => {
+    const role = user?.role;
+    if (!role || (role !== 'super_admin' && role !== 'client_admin')) return;
+    const res = await api.get('/admin/courses');
+    setClientCourses(res.data);
+  };
+
+  const loadSchoolCourseAssignments = async (schoolId: string) => {
+    if (!schoolId) {
+      setSchoolCourseAssignments([]);
+      return;
+    }
+
+    setLoadingCourseAssignments(true);
+    try {
+      const res = await api.get(`/org/schools/${schoolId}/course-assignments`);
+      setSchoolCourseAssignments(res.data);
+    } finally {
+      setLoadingCourseAssignments(false);
+    }
+  };
+
   const loadUserOverrides = async (userId: string) => {
     if (!userId) {
       setUserOverrides([]);
@@ -174,7 +220,8 @@ export default function OrgDashboard() {
     loadSchools();
     loadBatches();
     loadUsers();
-  }, []);
+    loadClientCourses();
+  }, [user?.role]);
 
   useEffect(() => {
     loadRolePermissions();
@@ -187,6 +234,14 @@ export default function OrgDashboard() {
   useEffect(() => {
     if (selectedSchoolId) loadSchoolMembers(selectedSchoolId);
   }, [selectedSchoolId]);
+
+  useEffect(() => {
+    loadSchoolCourseAssignments(selectedAssignmentSchoolId);
+  }, [selectedAssignmentSchoolId]);
+
+  useEffect(() => {
+    setSelectedCourseIds([]);
+  }, [selectedAssignmentSchoolId]);
 
   useEffect(() => {
     loadOverrideSchoolMembers(selectedOverrideSchoolId);
@@ -265,6 +320,21 @@ export default function OrgDashboard() {
     selectedOverrideSchoolId,
     overrideSchoolMembers,
   ]);
+
+  const selectedAssignmentSchool = useMemo(
+    () => schools.find((school) => String(school.id) === selectedAssignmentSchoolId) ?? null,
+    [schools, selectedAssignmentSchoolId]
+  );
+
+  const availableCoursesForAssignment = useMemo(() => {
+    const assignedIds = new Set(schoolCourseAssignments.map((assignment) => assignment.course_id));
+    return clientCourses.filter((course) => {
+      const courseClientMatches = !selectedAssignmentSchool?.client_id
+        || !course.client_id
+        || Number(course.client_id) === Number(selectedAssignmentSchool.client_id);
+      return courseClientMatches && !assignedIds.has(course.id);
+    });
+  }, [clientCourses, schoolCourseAssignments, selectedAssignmentSchool]);
 
   const permissionMap = useMemo(() => {
     const map = new Map<string, RolePermission>();
@@ -477,9 +547,44 @@ export default function OrgDashboard() {
     loadUsers();
   };
 
+  const assignCoursesToSchool = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedAssignmentSchoolId || selectedCourseIds.length === 0) {
+      toast.error('Select a school and at least one course');
+      return;
+    }
+
+    try {
+      await api.post(`/org/schools/${selectedAssignmentSchoolId}/course-assignments`, {
+        course_ids: selectedCourseIds.map((courseId) => Number(courseId)),
+      });
+      setSelectedCourseIds([]);
+      await loadSchoolCourseAssignments(selectedAssignmentSchoolId);
+      await loadClientCourses();
+      toast.success('Courses assigned successfully');
+    } catch (error) {
+      console.error(error);
+      toast.error('Failed to assign courses');
+    }
+  };
+
+  const removeCourseAssignment = async (courseId: number) => {
+    if (!selectedAssignmentSchoolId) return;
+
+    try {
+      await api.delete(`/org/schools/${selectedAssignmentSchoolId}/course-assignments/${courseId}`);
+      await loadSchoolCourseAssignments(selectedAssignmentSchoolId);
+      toast.success('Course unassigned');
+    } catch (error) {
+      console.error(error);
+      toast.error('Failed to remove course assignment');
+    }
+  };
+
   const tabs: { key: TabKey; label: string; roles?: string[] }[] = [
     { key: 'schools', label: 'Schools', roles: ['super_admin', 'client_admin', 'school_owner'] },
     { key: 'schoolMembers', label: 'School Members', roles: ['super_admin', 'client_admin', 'school_owner'] },
+    { key: 'courseAssignments', label: 'Course Assignments', roles: ['super_admin', 'client_admin'] },
     { key: 'batches', label: 'Batches', roles: ['super_admin', 'client_admin', 'school_owner'] },
     { key: 'batchMembers', label: 'Batch Members', roles: ['super_admin', 'client_admin', 'school_owner', 'teacher'] },
     { key: 'roles', label: 'Role Permissions', roles: ['super_admin', 'client_admin'] },
@@ -497,6 +602,7 @@ export default function OrgDashboard() {
   const activeTabSubtitle: Record<TabKey, string> = {
     schools: 'Create and manage schools under your organization.',
     schoolMembers: 'Assign users to schools and define their scope.',
+    courseAssignments: 'Assign client courses to schools so school owners see only their own course catalog.',
     batches: 'Create and organize batches for schools.',
     batchMembers: 'Manage users enrolled inside each batch.',
     roles: 'Control role-based permissions for organization users.',
@@ -506,6 +612,7 @@ export default function OrgDashboard() {
   const tabIcons: Record<TabKey, ReactNode> = {
     schools: <HiOutlineBuildingOffice2 />,
     schoolMembers: <PiUsersBold />,
+    courseAssignments: <BiBookOpen />,
     batches: <BiBookOpen />,
     batchMembers: <PiUsersBold />,
     roles: <RiFileList3Line />,
@@ -671,6 +778,127 @@ export default function OrgDashboard() {
                 className="w-full rounded-lg bg-blue-900 px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Add Member
+              </button>
+            </div>
+          </form>
+        </section>
+      )}
+
+      {activeTab === 'courseAssignments' && (
+        <section className="mt-6 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-semibold">Assigned Courses</h3>
+                <p className="text-sm text-slate-500">Courses attached to the selected school.</p>
+              </div>
+              <select
+                value={selectedAssignmentSchoolId}
+                onChange={(e) => setSelectedAssignmentSchoolId(e.target.value)}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+              >
+                <option value="">Select school</option>
+                {schools.map((school) => (
+                  <option key={`course-assignment-school:${school.id}`} value={school.id}>
+                    {school.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {!selectedAssignmentSchoolId ? (
+              <div className="mt-4 rounded-xl border border-dashed border-slate-300 bg-white p-4 text-sm text-slate-500">
+                Choose a school to review and manage its assigned courses.
+              </div>
+            ) : loadingCourseAssignments ? (
+              <div className="mt-4 text-sm text-slate-500">Loading assignments...</div>
+            ) : schoolCourseAssignments.length === 0 ? (
+              <div className="mt-4 rounded-xl border border-dashed border-slate-300 bg-white p-4 text-sm text-slate-500">
+                No courses assigned yet.
+              </div>
+            ) : (
+              <div className="mt-4 space-y-3">
+                {schoolCourseAssignments.map((assignment) => (
+                  <div key={assignment.id} className="rounded-xl border border-slate-200 bg-white p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <div className="font-semibold text-slate-900">{assignment.title}</div>
+                        {assignment.description && (
+                          <div className="mt-1 text-sm text-slate-500">{assignment.description}</div>
+                        )}
+                        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                          <span className={`rounded-full px-2 py-0.5 font-semibold ${assignment.published ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                            {assignment.published ? 'Published' : 'Draft'}
+                          </span>
+                          {assignment.assigned_at && (
+                            <span>Assigned {new Date(assignment.assigned_at).toLocaleDateString()}</span>
+                          )}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeCourseAssignment(assignment.course_id)}
+                        className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-100"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <form onSubmit={assignCoursesToSchool} className="rounded-2xl border border-slate-200 bg-white p-5">
+            <h3 className="text-lg font-semibold">Assign Courses</h3>
+            <p className="mt-1 text-sm text-slate-500">
+              Select one school and assign one or more client courses to it.
+            </p>
+
+            <div className="mt-4 space-y-4">
+              <div>
+                <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">School</label>
+                <select
+                  value={selectedAssignmentSchoolId}
+                  onChange={(e) => setSelectedAssignmentSchoolId(e.target.value)}
+                  className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                >
+                  <option value="">Select school</option>
+                  {schools.map((school) => (
+                    <option key={`course-assign-form-school:${school.id}`} value={school.id}>
+                      {school.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Available Courses</label>
+                <select
+                  multiple
+                  value={selectedCourseIds}
+                  onChange={(e) => {
+                    const next = Array.from(e.target.selectedOptions).map((option) => option.value);
+                    setSelectedCourseIds(next);
+                  }}
+                  className="mt-2 h-64 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                >
+                  {availableCoursesForAssignment.map((course) => (
+                    <option key={`assign-course:${course.id}`} value={course.id}>
+                      {course.title}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-2 text-xs text-slate-500">
+                  Hold Ctrl/Cmd to select multiple courses.
+                </p>
+              </div>
+
+              <button
+                type="submit"
+                className="w-full rounded-lg bg-blue-900 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-800"
+              >
+                Assign Selected Courses
               </button>
             </div>
           </form>

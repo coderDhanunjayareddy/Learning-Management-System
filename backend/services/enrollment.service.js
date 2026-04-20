@@ -1,21 +1,17 @@
 import { query as dbQuery, getClient } from "../repositories/db.repository.js"; // or your db connection
 import { getMergedCourseContentRows } from "./clientContent.service.js";
+import { ensureCourseActionAccess, getRequestCourseScope } from "./courseShared.service.js";
 
 let contentMetadataColumnEnsured = false;
 
 const hasCourseAccess = async (courseId, req) => {
-  const role = req.user?.role;
-  const clientId = req.user?.client_id;
-  const shouldScope = Boolean(clientId) && role !== 'super_admin';
-
-  if (!shouldScope) return true;
-
-  const result = await dbQuery(
-    'SELECT 1 FROM courses WHERE id = $1 AND client_id = $2',
-    [courseId, clientId]
-  );
-
-  return result.rows.length > 0;
+  const access = await ensureCourseActionAccess({
+    courseId,
+    req,
+    action: 'enroll',
+    scope: getRequestCourseScope(req),
+  });
+  return access.ok;
 };
 
 const ensureContentMetadataColumn = async () => {
