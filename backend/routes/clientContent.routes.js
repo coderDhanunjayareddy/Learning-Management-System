@@ -35,7 +35,6 @@ router.get(
   '/client/licensed-content',
   requireRole(['client_admin']),
   attachClientContext,
-  () => { console.log("\n the client licensed pack is executing \n") },
   loadPermissions,
   checkPermission('courses.read'),
   listLicensedContent

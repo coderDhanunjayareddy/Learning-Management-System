@@ -4200,7 +4200,7 @@ const htmlToDocxRuns = (html, styles = {}) => {
         }
         return;
       }
-    }
+     }
 
     const nextStyles = {
       ...inheritedStyles,
