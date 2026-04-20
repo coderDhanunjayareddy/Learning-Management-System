@@ -1,19 +1,16 @@
 import { query as dbQuery, getClient } from "../repositories/db.repository.js";
 import { contentIsLinkedIntoCourse } from "./clientContent.service.js";
+import { ensureCourseActionAccess, getRequestCourseScope } from "./courseShared.service.js";
 
 const ensureCourseAccess = async (courseId, req) => {
-    const role = req.user?.role;
-    const clientId = req.user?.client_id;
-    const shouldScope = Boolean(clientId) && role !== "super_admin";
+    const access = await ensureCourseActionAccess({
+        courseId,
+        req,
+        action: "manage_content",
+        scope: getRequestCourseScope(req),
+    });
 
-    if (!shouldScope) return true;
-
-    const result = await dbQuery(
-        `SELECT 1 FROM courses WHERE id = $1 AND client_id = $2`,
-        [courseId, clientId]
-    );
-
-    return result.rowCount > 0;
+    return access.ok;
 };
 
 export const deleteContentItem = async (req, res) => {

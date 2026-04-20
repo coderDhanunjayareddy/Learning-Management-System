@@ -121,15 +121,16 @@ export default function SchoolOwnerCourses() {
           mode="admin"
           role={user?.role}
           permissionKeys={user?.permissions}
+          apiPrefix="/school-owner"
           theme={theme}
           brandLogo="/logo.png"
           brandName="Spectropy"
           courseBannerClass="bg-amber-50"
-          listTitle="All Courses"
+          listTitle="Assigned Courses"
           emptyMessage="No courses found."
           onManageContent={(courseId) => navigate(`/school-owner/courses/${courseId}/content`)}
           onViewCourse={(courseId) => navigate(`/school-owner/courses/${courseId}/content`)}
-          onEnroll={(courseId) => navigate(`/admin/courses/${courseId}/enroll`)}
+          onEnroll={(courseId) => navigate(`/school-owner/courses/${courseId}/enroll`)}
         />
       </div>
     </DashboardLayout>

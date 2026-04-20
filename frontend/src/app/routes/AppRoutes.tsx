@@ -44,6 +44,7 @@ import ContentAuthorizerPacksPage from '@/pages/dashboard/content_authorizer/Pac
 import ContentAuthorizerPackManagePage from '@/pages/dashboard/content_authorizer/PackManagePage';
 import SchoolOwnerProfile from '@/pages/dashboard/school_owner/Profile';
 import SchoolOwnerCourseContent from '@/pages/course/school_owner/CourseContent';
+import SchoolOwnerEnrollUsers from '@/pages/course/school_owner/EnrollUsers';
 import SchoolOwnerCourses from '@/pages/dashboard/school_owner/Courses';
 import SchoolOwnerDashboard from '@/pages/dashboard/school_owner/Dashboard';
 import AdminProfile from '@/pages/dashboard/admin/Profile';
@@ -139,7 +140,7 @@ export default function AppRoutes() {
       <Route
         element={
           <Protect
-            roles={['super_admin', 'client_admin', 'content_authorizer', 'school_owner']}
+            roles={['super_admin', 'client_admin', 'content_authorizer']}
             permissions={['courses.read']}
           />
         }
@@ -150,7 +151,7 @@ export default function AppRoutes() {
       <Route
         element={
           <Protect
-            roles={['super_admin', 'client_admin', 'content_authorizer', 'school_owner']}
+            roles={['super_admin', 'client_admin', 'content_authorizer']}
             permissions={['courses.update']}
           />
         }
@@ -195,6 +196,17 @@ export default function AppRoutes() {
         }
       >
         <Route path="/school-owner/courses/:courseId/content" element={<SchoolOwnerCourseContent />} />
+      </Route>
+
+      <Route
+        element={
+          <Protect
+            roles={['school_owner', 'client_admin', 'super_admin']}
+            permissions={['courses.update']}
+          />
+        }
+      >
+        <Route path="/school-owner/courses/:courseId/enroll" element={<SchoolOwnerEnrollUsers />} />
       </Route>
 
       {/* Teacher */}

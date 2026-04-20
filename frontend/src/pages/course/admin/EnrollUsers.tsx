@@ -7,10 +7,21 @@ import spectropyLogo from "/logo.png";
 import gvjbLogo from "/gvjb.png";
 import { PiUsersBold } from "react-icons/pi";
 
-export default function EnrollUsers() {
+type EnrollUsersProps = {
+  apiPrefix?: string;
+  backRoute?: string;
+  backLabel?: string;
+};
+
+export default function EnrollUsers({
+  apiPrefix = "/admin",
+  backRoute,
+  backLabel,
+}: EnrollUsersProps) {
   const { courseId } = useParams<{ courseId: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const normalizedApiPrefix = apiPrefix.startsWith('/') ? apiPrefix : `/${apiPrefix}`;
   const isGvjbClient = user?.role === 'client_admin';
   const brandLogo = isGvjbClient ? gvjbLogo : spectropyLogo;
   const shellClass = isGvjbClient
@@ -36,8 +47,10 @@ export default function EnrollUsers() {
   const primaryButtonClass = isGvjbClient
     ? 'bg-amber-400 text-slate-900 hover:bg-amber-500'
     : 'bg-blue-900 text-white hover:bg-blue-700';
-  const backLabel =
-    user?.role === 'school_owner' ? 'Back To School Owner Courses' : 'Back To Admin Dashboard';
+  const resolvedBackLabel =
+    backLabel ?? (normalizedApiPrefix.includes('/school-owner')
+      ? 'Back To School Owner Courses'
+      : 'Back To Admin Dashboard');
 
   const [role, setRole] = useState<'student' | 'teacher' | null>(null);
   const [email, setEmail] = useState('');
@@ -67,7 +80,7 @@ export default function EnrollUsers() {
       if (!courseId) return;
       setLoadingEnrollments(true);
       try {
-        const response = await api.get(`/admin/courses/${courseId}/enrollments`);
+        const response = await api.get(`${normalizedApiPrefix}/courses/${courseId}/enrollments`);
         setAllEnrollments(response.data);
       } catch (err) {
         console.error('Failed to load enrollments:', err);
@@ -78,7 +91,7 @@ export default function EnrollUsers() {
     };
 
     fetchEnrollments();
-  }, [courseId]);
+  }, [courseId, normalizedApiPrefix]);
 
   // Compute displayed enrollments based on selected role
   const displayedEnrollments = useMemo(() => {
@@ -104,7 +117,7 @@ export default function EnrollUsers() {
     setMessage(null);
 
     try {
-      await api.post(`/admin/courses/${courseId}/enroll-by-email`, {
+      await api.post(`${normalizedApiPrefix}/courses/${courseId}/enroll-by-email`, {
         email: email.trim(),
         role,
       });
@@ -113,7 +126,7 @@ export default function EnrollUsers() {
       setEmail('');
 
       // Refetch full enrollment list to update UI
-      const response = await api.get(`/admin/courses/${courseId}/enrollments`);
+      const response = await api.get(`${normalizedApiPrefix}/courses/${courseId}/enrollments`);
       setAllEnrollments(response.data);
 
       // Auto-close modal after success
@@ -139,7 +152,7 @@ const handleRemoveUser = async (userId: number) => {
 
   setRemovingUserId(userId);
   try {
-    await api.delete(`/admin/courses/${courseId}/enrollments/${userId}`);
+    await api.delete(`${normalizedApiPrefix}/courses/${courseId}/enrollments/${userId}`);
     // Optimistically update UI
     setAllEnrollments(prev => prev?.filter(e => e.user_id !== userId) || null);
     setMessage({ type: 'success', text: 'User removed successfully!' });
@@ -163,7 +176,7 @@ const handleUpdateRole = async (userId: number, currentRole: 'student' | 'teache
 
   setUpdatingUserId(userId);
   try {
-    await api.patch(`/admin/courses/${courseId}/enrollments/${userId}`, { role: newRole });
+    await api.patch(`${normalizedApiPrefix}/courses/${courseId}/enrollments/${userId}`, { role: newRole });
     // Optimistically update UI
     setAllEnrollments(prev =>
       prev?.map(e => (e.user_id === userId ? { ...e, role: newRole } : e)) || null
@@ -186,11 +199,7 @@ const handleUpdateRole = async (userId: number, currentRole: 'student' | 'teache
       setRole(null);
       setMessage(null);
     } else {
-      if (user?.role === 'school_owner') {
-        navigate('/school-owner/courses');
-        return;
-      }
-      navigate('/admin/dashboard');
+      navigate(backRoute ?? (normalizedApiPrefix.includes('/school-owner') ? '/school-owner/courses' : '/admin/dashboard'));
     }
   };
 
@@ -269,7 +278,7 @@ const handleUpdateRole = async (userId: number, currentRole: 'student' | 'teache
                 d="M10 19l-7-7m0 0l7-7m-7 7h18"
               />
             </svg>
-            {backLabel}
+            {resolvedBackLabel}
           </button>
         </div>
       </div>

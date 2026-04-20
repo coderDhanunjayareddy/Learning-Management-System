@@ -12,7 +12,17 @@ type Course = {
   description: string | null;
   published?: boolean;
   created_at?: string;
+  updated_at?: string | null;
   enrolled_learners?: number;
+  assigned_school_count?: number;
+  assigned_school_names?: string[];
+  is_created_by_me?: boolean;
+  is_assigned_to_my_school?: boolean;
+  can_edit_course?: boolean;
+  can_publish_course?: boolean;
+  can_delete_course?: boolean;
+  can_manage_content?: boolean;
+  can_enroll?: boolean;
 };
 
 type CourseManagerMode = "admin" | "student" | "custom";
@@ -30,6 +40,7 @@ interface AdminCourseManagerProps {
   emptyMessage?: string;
   courses?: Course[];
   loading?: boolean;
+  apiPrefix?: string;
   onManageContent?: (courseId: number) => void;
   onEnroll?: (courseId: number) => void;
   onViewCourse?: (courseId: number) => void;
@@ -48,6 +59,7 @@ export default function AdminCourseManager({
   emptyMessage = "No courses found.",
   courses: courseOverrides,
   loading: loadingOverride,
+  apiPrefix = "/admin",
   onManageContent,
   onEnroll,
   onViewCourse,
@@ -80,6 +92,7 @@ export default function AdminCourseManager({
   const [editTitle, setEditTitle] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [editPublished, setEditPublished] = useState(false);
+  const normalizedApiPrefix = apiPrefix.startsWith("/") ? apiPrefix : `/${apiPrefix}`;
 
   const displayCourses = mode === "custom" ? courseOverrides ?? [] : courses;
   const isLoading = mode === "custom" ? Boolean(loadingOverride) : fetching;
@@ -104,12 +117,47 @@ export default function AdminCourseManager({
       return;
     }
     fetchAdminCourses();
-  }, [mode]);
+  }, [mode, normalizedApiPrefix]);
+
+  const resolveCourseCapability = (
+    course: Course,
+    courseValue: boolean | undefined,
+    fallback: boolean
+  ) => (typeof courseValue === "boolean" ? courseValue : fallback);
+
+  const canEditCourse = (course: Course) =>
+    resolveCourseCapability(course, course.can_edit_course, mergedPermissions.canEdit);
+
+  const canPublishCourse = (course: Course) =>
+    resolveCourseCapability(course, course.can_publish_course, mergedPermissions.canPublish);
+
+  const canDeleteCourse = (course: Course) =>
+    resolveCourseCapability(course, course.can_delete_course, mergedPermissions.canDelete);
+
+  const canManageCourseContent = (course: Course) =>
+    resolveCourseCapability(course, course.can_manage_content, mergedPermissions.canManageContent);
+
+  const canEnrollInCourse = (course: Course) =>
+    resolveCourseCapability(course, course.can_enroll, mergedPermissions.canEnroll);
+
+  const getCourseScopeLabel = (course: Course) => {
+    if (course.is_assigned_to_my_school && !course.is_created_by_me) {
+      return "Assigned";
+    }
+    if (course.is_created_by_me) {
+      return "Created by you";
+    }
+    if ((course.assigned_school_count ?? 0) > 0) {
+      const count = course.assigned_school_count ?? 0;
+      return `${count} school${count === 1 ? "" : "s"}`;
+    }
+    return "Client course";
+  };
 
   const fetchAdminCourses = async () => {
     setFetching(true);
     try {
-      const res = await api.get("/admin/courses");
+      const res = await api.get(`${normalizedApiPrefix}/courses`);
       setCourses(res.data);
     } catch (err) {
       console.error("Failed to load courses");
@@ -143,7 +191,7 @@ export default function AdminCourseManager({
 
     setLoading(true);
     try {
-      await api.post("/admin/courses", {
+      await api.post(`${normalizedApiPrefix}/courses`, {
         title,
         description: description.trim() || null,
         published,
@@ -175,7 +223,7 @@ export default function AdminCourseManager({
   const handlePublish = async () => {
     if (courseToPublish === null) return;
     try {
-      await api.patch(`/admin/courses/${courseToPublish}/publish`);
+      await api.patch(`${normalizedApiPrefix}/courses/${courseToPublish}/publish`);
       await fetchAdminCourses();
       closePublishModal();
     } catch (err) {
@@ -189,7 +237,7 @@ export default function AdminCourseManager({
       return;
     }
     try {
-      await api.delete(`/admin/courses/${id}`);
+      await api.delete(`${normalizedApiPrefix}/courses/${id}`);
       setCourses((prev) => prev.filter((course) => course.id !== id));
       alert("Course deleted successfully!");
     } catch (err: any) {
@@ -213,7 +261,7 @@ export default function AdminCourseManager({
     }
 
     try {
-      await api.patch(`/admin/courses/${id}`, {
+      await api.patch(`${normalizedApiPrefix}/courses/${id}`, {
         title: editTitle.trim(),
         description: editDescription.trim() || null,
         published: editPublished,
@@ -257,7 +305,6 @@ export default function AdminCourseManager({
     return matchesSearch && matchesStatus;
   });
 
-  const canShowMenu = mergedPermissions.canEdit || mergedPermissions.canDelete;
   const canShowCreate = mergedPermissions.canCreate && mode === "admin";
   const canShowPublishToggle = mergedPermissions.canPublish && mode === "admin";
 
@@ -481,6 +528,17 @@ export default function AdminCourseManager({
               const createdLabel = course.created_at
                 ? `Created: ${new Date(course.created_at).toLocaleDateString()}`
                 : null;
+              const courseCanEdit = canEditCourse(course);
+              const courseCanDelete = canDeleteCourse(course);
+              const courseCanPublish = canPublishCourse(course);
+              const courseCanManageContent = canManageCourseContent(course);
+              const courseCanEnroll = canEnrollInCourse(course);
+              const showCourseMenu = courseCanEdit || courseCanDelete;
+              const showViewAction = !courseCanManageContent && Boolean(onViewCourse);
+              const scopeLabel = getCourseScopeLabel(course);
+              const assignedSchoolsLabel = Array.isArray(course.assigned_school_names) && course.assigned_school_names.length > 0
+                ? course.assigned_school_names.join(", ")
+                : null;
 
               return (
                 <div
@@ -493,7 +551,7 @@ export default function AdminCourseManager({
                   {viewMode === "list" ? (
                     <>
                       <div className="flex-1 min-w-0">
-                        {editingCourseId === course.id && mergedPermissions.canEdit ? (
+                        {editingCourseId === course.id && courseCanEdit ? (
                           <div className="space-y-2">
                             <input
                               value={editTitle}
@@ -509,7 +567,7 @@ export default function AdminCourseManager({
                               placeholder="Description"
                               rows={2}
                             />
-                            {mergedPermissions.canPublish && showStatus && (
+                            {courseCanPublish && showStatus && (
                               <div className="flex items-center gap-2">
                                 <span className="text-[10px]">Published:</span>
                                 <button
@@ -546,6 +604,9 @@ export default function AdminCourseManager({
                               <h3 className="font-semibold text-sm md:text-base break-words">
                                 {course.title.toUpperCase()}
                               </h3>
+                              <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-slate-100 text-slate-700">
+                                {scopeLabel}
+                              </span>
                               {createdLabel && (
                                 <div className="text-[11px] text-gray-500 mt-0.5">
                                   {createdLabel}
@@ -556,7 +617,7 @@ export default function AdminCourseManager({
                                   <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-green-100 text-green-700 cursor-default">
                                     Published
                                   </span>
-                                ) : mergedPermissions.canPublish ? (
+                                ) : courseCanPublish ? (
                                   <button
                                     onClick={() => openPublishModal(course.id)}
                                     className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-orange-100 text-orange-700 cursor-pointer"
@@ -582,12 +643,18 @@ export default function AdminCourseManager({
                                 </div>
                               </div>
                             )}
+
+                            {assignedSchoolsLabel && (
+                              <div className="mt-2 text-[11px] text-slate-500">
+                                Assigned schools: {assignedSchoolsLabel}
+                              </div>
+                            )}
                           </>
                         )}
                       </div>
 
                       <div className="flex items-center gap-2 shrink-0">
-                        {mergedPermissions.canManageContent && onManageContent && (
+                        {courseCanManageContent && onManageContent && (
                           <button
                             onClick={() => onManageContent(course.id)}
                             className="px-3 py-1.5 text-xs border rounded-md hover:bg-gray-50 flex items-center gap-1"
@@ -597,7 +664,7 @@ export default function AdminCourseManager({
                           </button>
                         )}
 
-                        {mergedPermissions.canEnroll && onEnroll && (
+                        {courseCanEnroll && onEnroll && (
                           <button
                             onClick={() => onEnroll(course.id)}
                             className="px-3 py-1.5 text-xs border rounded-md hover:bg-gray-50 flex items-center gap-1"
@@ -607,7 +674,7 @@ export default function AdminCourseManager({
                           </button>
                         )}
 
-                        {!mergedPermissions.canManageContent && onViewCourse && (
+                        {showViewAction && onViewCourse && (
                           <button
                             onClick={() => onViewCourse(course.id)}
                             className="px-3 py-1.5 text-xs border rounded-md hover:bg-gray-50"
@@ -616,7 +683,7 @@ export default function AdminCourseManager({
                           </button>
                         )}
 
-                        {canShowMenu && (
+                        {showCourseMenu && (
                           <div className="relative">
                             <button
                               onClick={(e) => {
@@ -634,7 +701,7 @@ export default function AdminCourseManager({
                                 className="absolute right-0 mt-1 w-36 bg-white border rounded-md shadow-lg text-xs z-50"
                                 onClick={(e) => e.stopPropagation()}
                               >
-                                {mergedPermissions.canEdit && (
+                                {courseCanEdit && (
                                   <button
                                     onClick={() => {
                                       setOpenMenuId(null);
@@ -645,7 +712,7 @@ export default function AdminCourseManager({
                                     Update
                                   </button>
                                 )}
-                                {mergedPermissions.canDelete && (
+                                {courseCanDelete && (
                                   <button
                                     onClick={() => {
                                       setOpenMenuId(null);
@@ -678,7 +745,7 @@ export default function AdminCourseManager({
                             <span className="absolute top-2 right-2 text-[10px] px-2 py-0.5 rounded-md font-medium bg-green-600 text-white cursor-default">
                               Published
                             </span>
-                          ) : mergedPermissions.canPublish ? (
+                          ) : courseCanPublish ? (
                             <button
                               onClick={() => openPublishModal(course.id)}
                               className="absolute top-2 right-2 text-[10px] px-2 py-0.5 rounded-md font-medium bg-orange-500 text-white hover:bg-orange-600"
@@ -694,7 +761,7 @@ export default function AdminCourseManager({
                       </div>
 
                       <div className="px-4 py-3 flex flex-col flex-1">
-                        {editingCourseId === course.id && mergedPermissions.canEdit ? (
+                        {editingCourseId === course.id && courseCanEdit ? (
                           <div className="flex flex-col flex-1">
                             <div className="space-y-2 mb-2">
                               <input
@@ -711,7 +778,7 @@ export default function AdminCourseManager({
                                 placeholder="Description"
                                 rows={2}
                               />
-                              {mergedPermissions.canPublish && showStatus && (
+                              {courseCanPublish && showStatus && (
                                 <div className="flex items-center gap-2">
                                   <span className="text-[11px] font-medium">Published:</span>
                                   <button
@@ -755,7 +822,7 @@ export default function AdminCourseManager({
                                 {course.title.toUpperCase()}
                               </h3>
 
-                              {canShowMenu && (
+                              {showCourseMenu && (
                                 <div className="relative">
                                   <button
                                     onClick={(e) => {
@@ -770,7 +837,7 @@ export default function AdminCourseManager({
 
                                   {openMenuId === course.id && (
                                     <div className="absolute right-0 mt-1 w-36 bg-white border rounded-md shadow-lg text-xs z-50 overflow-hidden">
-                                      {mergedPermissions.canEdit && (
+                                      {courseCanEdit && (
                                         <button
                                           onClick={() => {
                                             setOpenMenuId(null);
@@ -781,7 +848,7 @@ export default function AdminCourseManager({
                                           Update
                                         </button>
                                       )}
-                                      {mergedPermissions.canDelete && (
+                                      {courseCanDelete && (
                                         <button
                                           onClick={() => {
                                             setOpenMenuId(null);
@@ -802,6 +869,17 @@ export default function AdminCourseManager({
                               <div className="text-[11px] text-gray-500 mb-1">{createdLabel}</div>
                             )}
 
+                            <div className="mb-1 flex flex-wrap items-center gap-2">
+                              <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-slate-100 text-slate-700">
+                                {scopeLabel}
+                              </span>
+                              {assignedSchoolsLabel && (
+                                <span className="text-[10px] text-slate-500">
+                                  {assignedSchoolsLabel}
+                                </span>
+                              )}
+                            </div>
+
                             {course.description && (
                               <div className="relative group overflow-visible">
                                 <p className="text-xs text-gray-600 line-clamp-2 cursor-default">
@@ -815,7 +893,7 @@ export default function AdminCourseManager({
                             )}
 
                             <div className="mt-auto grid grid-cols-3 gap-2">
-                              {mergedPermissions.canManageContent && onManageContent && (
+                              {courseCanManageContent && onManageContent && (
                                 <button
                                   onClick={() => onManageContent(course.id)}
                                   className="flex items-center justify-center gap-1 px-2 py-1.5 text-[11px] border rounded-md hover:bg-gray-50"
@@ -825,7 +903,7 @@ export default function AdminCourseManager({
                                 </button>
                               )}
 
-                              {mergedPermissions.canEnroll && onEnroll && (
+                              {courseCanEnroll && onEnroll && (
                                 <button
                                   onClick={() => onEnroll(course.id)}
                                   className="flex items-center justify-center gap-1 px-2 py-1.5 text-[11px] border rounded-md hover:bg-gray-50"
@@ -835,7 +913,7 @@ export default function AdminCourseManager({
                                 </button>
                               )}
 
-                              {!mergedPermissions.canManageContent && onViewCourse && (
+                              {showViewAction && onViewCourse && (
                                 <button
                                   onClick={() => onViewCourse(course.id)}
                                   className="flex items-center justify-center gap-1 px-2 py-1.5 text-[11px] border rounded-md hover:bg-gray-50"

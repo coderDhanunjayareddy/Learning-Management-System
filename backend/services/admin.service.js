@@ -1,5 +1,11 @@
 import { query as dbQuery, getClient } from '../repositories/db.repository.js';
 import { getMergedCourseContentRows } from './clientContent.service.js';
+import {
+  createCourseForRequest,
+  ensureCourseActionAccess,
+  getRequestCourseScope,
+  listCoursesForRequest,
+} from './courseShared.service.js';
 // In your backend (e.g., routes/admin/courses.js or .ts)
 
 let contentItemExamSchemaEnsured = false;
@@ -92,35 +98,9 @@ const ensureCourseExamsTable = async () => {
 };
 
 export const getAllCourses = async (req, res) => {
-  const role = req.user?.role;
-  const clientId = req.user?.client_id;
-  const shouldScope = Boolean(clientId) && role !== 'super_admin';
-  const adminRoles = ['super_admin', 'client_admin', 'school_owner', 'content_authorizer', 'teacher'];
-  const isAdminRole = adminRoles.includes(role);
-
   try {
-    const conditions = [];
-    const params = [];
-
-    if (shouldScope) {
-      conditions.push(`client_id = $${params.length + 1}`);
-      params.push(clientId);
-    }
-
-    if (!isAdminRole) {
-      conditions.push('published = true');
-    }
-
-    const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-
-    const query = `
-      SELECT id, title, description, published, created_at
-      FROM courses
-      ${whereClause}
-      ORDER BY created_at DESC
-    `;
-    const result = await dbQuery(query, params);
-    res.json(result.rows);
+    const courses = await listCoursesForRequest(req);
+    res.json(courses);
   } catch (err) {
     console.error('Failed to fetch courses:', err);
     res.status(500).json({ error: 'Failed to fetch courses' });
@@ -129,26 +109,18 @@ export const getAllCourses = async (req, res) => {
 
 export const createCourse = async (req, res) => {
   const { title, description, published = false } = req.body;
-  const createdBy = req.user?.id; // assuming auth middleware attaches user
-  const role = req.user?.role;
-  const clientId = req.user?.client_id;
-  const shouldScope = Boolean(clientId) && role !== 'super_admin';
-  const courseClientId = shouldScope ? clientId : null;
 
   if (!title?.trim()) {
     return res.status(400).json({ error: 'Title is required' });
   }
 
   try {
-    const result = await dbQuery(
-      `
-        INSERT INTO courses (title, description, published, created_by, client_id)
-        VALUES ($1, $2, $3, $4, $5)
-        RETURNING id, title, description, published, created_at, client_id
-      `,
-      [title.trim(), description?.trim() || null, published, createdBy, courseClientId]
-    );
-    res.status(201).json(result.rows[0]);
+    const result = await createCourseForRequest({ req, title, description, published });
+    if (!result.ok) {
+      return res.status(result.status).json({ error: result.error });
+    }
+
+    res.status(result.status).json(result.course);
   } catch (err) {
     console.error('Course creation error:', err);
     res.status(500).json({ error: 'Failed to create course' });
@@ -160,19 +132,13 @@ export const getCourseContent = async (req, res) => {
   const { courseId } = req.params;
   const userId = req.user?.id; // assuming you have user info from auth middleware
   const role = req.user?.role; // e.g., 'student', 'admin', 'instructor'
-  const clientId = req.user?.client_id;
-  const shouldScope = Boolean(clientId) && role !== 'super_admin';
   const shouldIncludeAttemptStatus = role === 'student' && Boolean(userId);
+  const scope = getRequestCourseScope(req);
 
   try {
-    if (shouldScope) {
-      const courseCheck = await dbQuery(
-        `SELECT 1 FROM courses WHERE id = $1 AND client_id = $2`,
-        [courseId, clientId]
-      );
-      if (courseCheck.rows.length === 0) {
-        return res.status(403).json({ error: 'Access denied' });
-      }
+    const access = await ensureCourseActionAccess({ courseId, req, action: 'read', scope });
+    if (!access.ok) {
+      return res.status(access.status).json({ error: access.error });
     }
 
     const rows = await getMergedCourseContentRows({
@@ -180,6 +146,13 @@ export const getCourseContent = async (req, res) => {
       includeAttemptStatus: shouldIncludeAttemptStatus,
       userId,
     });
+
+    if (scope === 'school_owner') {
+      return res.json({
+        items: rows,
+        course: access.course,
+      });
+    }
 
     res.json(rows);
   } catch (err) {
@@ -193,9 +166,7 @@ export const getCourseContent = async (req, res) => {
 export const createContentItem = async (req, res) => {
   const { courseId } = req.params;
   const { item_type, title, parent_id = null, content_url = null } = req.body;
-  const role = req.user?.role;
-  const clientId = req.user?.client_id;
-  const shouldScope = Boolean(clientId) && role !== 'super_admin';
+  const scope = getRequestCourseScope(req);
   const parsedParentId =
     parent_id === null || parent_id === undefined || parent_id === ''
       ? null
@@ -228,14 +199,14 @@ export const createContentItem = async (req, res) => {
   }
 
   try {
-    if (shouldScope) {
-      const courseCheck = await dbQuery(
-        `SELECT 1 FROM courses WHERE id = $1 AND client_id = $2`,
-        [courseId, clientId]
-      );
-      if (courseCheck.rows.length === 0) {
-        return res.status(403).json({ error: 'Access denied' });
-      }
+    const access = await ensureCourseActionAccess({
+      courseId,
+      req,
+      action: 'manage_content',
+      scope,
+    });
+    if (!access.ok) {
+      return res.status(access.status).json({ error: access.error });
     }
 
     const courseScopeResult = await dbQuery(
@@ -357,25 +328,32 @@ export const createContentItem = async (req, res) => {
 // PATCH /api/courses/:id/publish
 export const publishCourse = async (req, res) => {
   const { id } = req.params;
-  const role = req.user?.role;
-  const clientId = req.user?.client_id;
-  const shouldScope = Boolean(clientId) && role !== 'super_admin';
   try {
+    const scope = getRequestCourseScope(req);
+    const access = await ensureCourseActionAccess({ courseId: id, req, action: 'publish', scope });
+    if (!access.ok) {
+      return res.status(access.status).json({ error: access.error });
+    }
+
     const query = `
       UPDATE courses
       SET published = true
       WHERE id = $1
-      ${shouldScope ? 'AND client_id = $2' : ''}
       RETURNING *
     `;
-    const params = shouldScope ? [id, clientId] : [id];
-    const result = await dbQuery(query, params);
+    const result = await dbQuery(query, [id]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Course not found' });
     }
 
-    res.json({ success: true, course: result.rows[0] });
+    const courses = await listCoursesForRequest({
+      ...req,
+      params: req.params,
+    }, scope);
+    const updatedCourse = courses.find((course) => course.id === Number(id)) ?? result.rows[0];
+
+    res.json({ success: true, course: updatedCourse });
   } catch (err) {
     console.error('Failed to publish course:', err);
     res.status(500).json({ error: 'Failed to publish course' });
@@ -385,19 +363,20 @@ export const publishCourse = async (req, res) => {
 // DELETE /admin/courses/:id
 export const deleteCourse = async (req, res) => {
   const { id } = req.params;
-  const role = req.user?.role;
-  const clientId = req.user?.client_id;
-  const shouldScope = Boolean(clientId) && role !== 'super_admin';
 
   try {
+    const scope = getRequestCourseScope(req);
+    const access = await ensureCourseActionAccess({ courseId: id, req, action: 'delete', scope });
+    if (!access.ok) {
+      return res.status(access.status).json({ error: access.error });
+    }
+
     const query = `
       DELETE FROM courses
       WHERE id = $1
-      ${shouldScope ? 'AND client_id = $2' : ''}
       RETURNING id
     `;
-    const params = shouldScope ? [id, clientId] : [id];
-    const result = await dbQuery(query, params);
+    const result = await dbQuery(query, [id]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Course not found' });
@@ -418,9 +397,6 @@ export const deleteCourse = async (req, res) => {
 export const updateCourse = async (req, res) => {
   const { id } = req.params;
   const { title, description, published } = req.body;
-  const role = req.user?.role;
-  const clientId = req.user?.client_id;
-  const shouldScope = Boolean(clientId) && role !== 'super_admin';
 
   // Basic validation
   if (title !== undefined) {
@@ -430,6 +406,12 @@ export const updateCourse = async (req, res) => {
   }
 
   try {
+    const scope = getRequestCourseScope(req);
+    const access = await ensureCourseActionAccess({ courseId: id, req, action: 'update', scope });
+    if (!access.ok) {
+      return res.status(access.status).json({ error: access.error });
+    }
+
     const query = `
         UPDATE courses
         SET 
@@ -438,8 +420,7 @@ export const updateCourse = async (req, res) => {
           published = COALESCE($3, published),
           updated_at = NOW()
         WHERE id = $4
-        ${shouldScope ? 'AND client_id = $5' : ''}
-        RETURNING id, title, description, published, created_at, updated_at
+        RETURNING id
       `;
     const params = [
       title?.trim() || null,
@@ -447,16 +428,19 @@ export const updateCourse = async (req, res) => {
       published, // pass undefined to skip, or boolean to update
       id
     ];
-    if (shouldScope) {
-      params.push(clientId);
-    }
     const result = await dbQuery(query, params);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Course not found' });
     }
 
-    res.json(result.rows[0]);
+    const courses = await listCoursesForRequest({
+      ...req,
+      params: req.params,
+    }, scope);
+    const updatedCourse = courses.find((course) => course.id === Number(id));
+
+    res.json(updatedCourse ?? result.rows[0]);
   } catch (err) {
     console.error('Update course error:', err);
     res.status(500).json({ error: 'Failed to update course' });
