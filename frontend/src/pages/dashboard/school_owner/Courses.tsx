@@ -125,7 +125,7 @@ export default function SchoolOwnerCourses() {
           theme={theme}
           brandLogo="/logo.png"
           brandName="Spectropy"
-          courseBannerClass="bg-amber-50"
+          courseBannerClass="bg-blue-50"
           listTitle="Assigned Courses"
           emptyMessage="No courses found."
           onManageContent={(courseId) => navigate(`/school-owner/courses/${courseId}/content`)}

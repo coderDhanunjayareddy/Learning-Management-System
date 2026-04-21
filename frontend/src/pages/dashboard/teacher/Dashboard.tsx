@@ -127,7 +127,7 @@ export default function TeacherDashboard() {
           theme={theme}
           brandLogo="/logo.png"
           brandName="Spectropy"
-          courseBannerClass="bg-slate-100"
+          courseBannerClass="bg-blue-50"
           listTitle="My Courses"
           emptyMessage="No courses found."
           onManageContent={(courseId) =>
@@ -141,6 +141,5 @@ export default function TeacherDashboard() {
     </DashboardLayout>
   );
 }
-
 
 

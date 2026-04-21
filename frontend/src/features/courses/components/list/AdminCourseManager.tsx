@@ -54,7 +54,7 @@ export default function AdminCourseManager({
   theme,
   brandLogo,
   brandName = "Spectropy",
-  courseBannerClass = "bg-amber-50",
+  courseBannerClass = "bg-blue-50",
   listTitle = "All Courses",
   emptyMessage = "No courses found.",
   courses: courseOverrides,

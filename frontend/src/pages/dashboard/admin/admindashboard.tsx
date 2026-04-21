@@ -1,16 +1,15 @@
 ﻿// src/pages/admin/admindashboard.tsx
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/features/auth/hooks/useAuth';
 
 import spectropyLogo from "/logo.png";
 import { RiHome2Line, RiFileList3Line } from "react-icons/ri";
 import { BiBookOpen } from "react-icons/bi";
-import { PiUsersBold, PiChatsCircleBold } from 'react-icons/pi';
+import { PiUsersBold } from 'react-icons/pi';
 import { HiOutlineBuildingOffice2 } from "react-icons/hi2";
 import UserManagement from './UserManagement';
 import DashboardHome from './Home';
-import Community from './Community';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import SidebarNav from '@/components/layout/SidebarNav';
 import { getDashboardTheme } from '@/components/layout/dashboardTheme';
@@ -26,6 +25,7 @@ type ClientUser = {
 
 export default function CourseStudents() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { logout, user } = useAuth();
 
   const clientUser = user as (typeof user & ClientUser) | null;
@@ -42,13 +42,20 @@ export default function CourseStudents() {
     : 'Welcome to the Admin Dashboard';
   const clientMeta = clientUser?.client_name ? `${clientUser.client_name} Client` : null;
   const theme = getDashboardTheme(false);
-  const courseBannerClass = isContentAuthorizer ? 'bg-sky-100' : 'bg-amber-50';
+  const courseBannerClass = isContentAuthorizer ? 'bg-sky-100' : 'bg-blue-50';
   const coursePermissions = getCoursePermissions(user);
   const questionPermissions = getQuestionPermissions(user);
   const examPermissions = getExamPermissions(user);
 
-  const [activeTab, setActiveTab] = useState<'courses' | 'home' | 'users' | 'community'>('home');
+  const [activeTab, setActiveTab] = useState<'courses' | 'home' | 'users'>('home');
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    const requestedTab = (location.state as { activeTab?: typeof activeTab } | null)?.activeTab;
+    if (requestedTab) {
+      setActiveTab(requestedTab);
+    }
+  }, [location.state]);
 
   useEffect(() => {
     if (activeTab === 'courses' && !coursePermissions.canView) {
@@ -114,13 +121,6 @@ export default function CourseStudents() {
       active: activeTab === 'users',
       onClick: () => setActiveTab('users'),
     },
-    {
-      key: 'community',
-      label: 'Community',
-      icon: <PiChatsCircleBold />,
-      active: activeTab === 'community',
-      onClick: () => setActiveTab('community'),
-    },
   ];
 
   const handleBackToLogin = async () => {
@@ -167,7 +167,6 @@ export default function CourseStudents() {
                 {activeTab === 'courses' && 'Courses'}
                 {activeTab === 'home' && homeTitle}
                 {activeTab === 'users' && 'User Management'}
-                {activeTab === 'community' && 'Community'}
               </h1>
 
               <p
@@ -177,8 +176,6 @@ export default function CourseStudents() {
                   'Set up your courses and share your knowledge.'}
                 {activeTab === 'home' && 'Key metrics at a glance'}
                 {activeTab === 'users' && 'Manage your users and their activities.'}
-                {activeTab === 'community' &&
-                  'Monitor community interactions and content.'}
               </p>
             </div>
           </div>
@@ -197,17 +194,27 @@ export default function CourseStudents() {
             courseBannerClass={courseBannerClass}
             listTitle="All Courses"
             emptyMessage="No courses found."
-            onManageContent={(courseId) => navigate(`/admin/courses/${courseId}/content`)}
-            onViewCourse={(courseId) => navigate(`/admin/courses/${courseId}/content`)}
-            onEnroll={(courseId) => navigate(`/admin/courses/${courseId}/enroll`)}
+            onManageContent={(courseId) =>
+              navigate(`/admin/courses/${courseId}/content`, {
+                state: { activeTab: 'courses' },
+              })
+            }
+            onViewCourse={(courseId) =>
+              navigate(`/admin/courses/${courseId}/content`, {
+                state: { activeTab: 'courses' },
+              })
+            }
+            onEnroll={(courseId) =>
+              navigate(`/admin/courses/${courseId}/enroll`, {
+                state: { activeTab: 'courses' },
+              })
+            }
           />
         )}
 
         {activeTab === 'home' && <DashboardHome />}
 
         {activeTab === 'users' && <UserManagement />}
-
-        {activeTab === 'community' && <Community />}
       </div>
     </DashboardLayout>
   );

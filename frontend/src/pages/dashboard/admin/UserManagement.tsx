@@ -23,19 +23,25 @@ interface User {
 
 // Define tab options (matches UI)
 type UserTab =
-  | 'Students'
-  | 'Teachers'
   | 'Client Admins'
-  | 'Content Authorizers'
   | 'School Owners'
-  | 'Super Admins'
+  | 'Teachers'
+  | 'Students'
   | 'Inactive';
+
+const USER_TABS: UserTab[] = [
+  'Client Admins',
+  'School Owners',
+  'Teachers',
+  'Students',
+  'Inactive',
+];
 
 const UserManagement: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<UserTab>('Students');
+  const [activeTab, setActiveTab] = useState<UserTab>('Client Admins');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   useEffect(() => {
@@ -62,23 +68,17 @@ const UserManagement: React.FC = () => {
 
     let matchesTab = true;
     switch (activeTab) {
-      case 'Students':
-        matchesTab = user.role === 'student';
-        break;
-      case 'Teachers':
-        matchesTab = user.role === 'teacher';
-        break;
       case 'Client Admins':
         matchesTab = user.role === 'client_admin';
-        break;
-      case 'Content Authorizers':
-        matchesTab = user.role === 'content_authorizer';
         break;
       case 'School Owners':
         matchesTab = user.role === 'school_owner';
         break;
-      case 'Super Admins':
-        matchesTab = user.role === 'super_admin';
+      case 'Teachers':
+        matchesTab = user.role === 'teacher';
+        break;
+      case 'Students':
+        matchesTab = user.role === 'student';
         break;
       case 'Inactive':
         matchesTab = user.is_active === false;
@@ -127,15 +127,7 @@ const UserManagement: React.FC = () => {
       {/* Tabs */}
       <div className="border-b border-gray-200 mb-4">
         <nav className="flex space-x-6">
-          {([
-            'Students',
-            'Teachers',
-            'Client Admins',
-            'Content Authorizers',
-            'School Owners',
-            'Super Admins',
-            'Inactive',
-          ] as UserTab[]).map((tab) => (
+          {USER_TABS.map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
