@@ -51,6 +51,20 @@ const fileFilter = (req, file, cb) => {
 
 export const upload = multer({ storage, fileFilter });
 
+const getSafeStorageExtension = (originalName = "") => {
+  const rawExt = path.extname(String(originalName || "")).toLowerCase();
+  return /^[.a-z0-9_-]+$/.test(rawExt) ? rawExt : "";
+};
+
+const buildSafeStorageKey = ({ courseId, itemId = null, originalName = "" }) => {
+  const safeExt = getSafeStorageExtension(originalName);
+  const uniquePart = itemId
+    ? `${itemId}_${Date.now()}`
+    : `${Date.now()}_${Math.round(Math.random() * 1e9)}`;
+
+  return `${courseId}/${uniquePart}${safeExt}`;
+};
+
 const ensureContentAccessById = async (contentId, req) => {
   return userCanAccessContentItem({
     user: req.user,
@@ -173,7 +187,10 @@ export const uploadContentFile = async (req, res) => {
     } else {
       // ---------- Non-SCORM file ----------
       const fileBuffer = fs.readFileSync(filePath);
-      const fileName = `${courseId}/${Date.now()}_${req.file.originalname}`;
+      const fileName = buildSafeStorageKey({
+        courseId,
+        originalName: req.file.originalname,
+      });
       const { error: uploadError } = await supabase.storage
         .from(bucket)
         .upload(fileName, fileBuffer, {
@@ -337,8 +354,11 @@ export const updateContentFile = async (req, res) => {
       // ============= NORMAL FILE (video/audio/pdf) =============
       else {
         const fileBuffer = fs.readFileSync(filePath);
-        const ext = path.extname(newFile.originalname);
-        const finalPath = `${courseId}/${itemId}_${Date.now()}${ext}`;
+        const finalPath = buildSafeStorageKey({
+          courseId,
+          itemId,
+          originalName: newFile.originalname,
+        });
 
         const { error: uploadError } = await supabase.storage
           .from(bucket)
