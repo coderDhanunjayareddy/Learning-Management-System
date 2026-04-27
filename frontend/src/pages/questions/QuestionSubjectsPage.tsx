@@ -2,13 +2,15 @@ import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import api from "@/lib/api";
 import QuestionBankLayout from "@/features/question-bank/components/QuestionBankLayout";
-import type { CurriculumItem } from "@/types/questionBank";
+import { formatSubjectDisplay, type CurriculumItem } from "@/types/questionBank";
 
 const normalizeCurriculum = (items: any[]): CurriculumItem[] =>
   items
     .map((item) => ({
       id: item.id ?? item.subject_id,
       name: item.name ?? item.title ?? item.subject_name ?? "Untitled",
+      code: item.code ?? null,
+      grade_number: item.grade_number ?? item.gradeNumber ?? null,
       subject_id: item.subject_id ?? null,
       chapter_id: item.chapter_id ?? null,
     }))
@@ -87,8 +89,24 @@ export default function QuestionSubjectsPage() {
                 className="flex items-center justify-between rounded-xl border border-slate-200 px-4 py-3"
               >
                 <div>
-                  <div className="text-sm font-semibold text-slate-900">{subject.name}</div>
-                  <div className="text-xs text-slate-500">ID: {subject.id}</div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="text-sm font-semibold text-slate-900">
+                      {subject.name}
+                    </div>
+                    {subject.grade_number !== undefined && subject.grade_number !== null && (
+                      <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-700">
+                        Grade {subject.grade_number}
+                      </span>
+                    )}
+                    {subject.code ? (
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
+                        {subject.code}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="mt-1 text-xs text-slate-500">
+                    {formatSubjectDisplay(subject, { includeId: true })}
+                  </div>
                 </div>
                 <button
                   onClick={() => navigate(`/question-bank/subjects/${subject.id}/edit`)}

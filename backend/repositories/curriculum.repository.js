@@ -144,7 +144,7 @@ export const fetchGradeContext = async (gradeId) => {
 export const fetchSubjectsByGrade = async ({ gradeId, clientId }) => {
   const params = [gradeId];
   let query = `
-    SELECT s.*
+    SELECT s.*, g.grade_number, g.program_id
     FROM subjects s
     JOIN grades g ON g.id = s.grade_id
     JOIN programs p ON p.id = g.program_id
@@ -161,7 +161,11 @@ export const fetchSubjectsByGrade = async ({ gradeId, clientId }) => {
 export const fetchSubjects = async (clientId, gradeId = null) => {
   const params = [];
   const conditions = [];
-  let query = `SELECT s.* FROM subjects s`;
+  let query = `
+    SELECT s.*, g.grade_number, g.program_id
+    FROM subjects s
+    LEFT JOIN grades g ON g.id = s.grade_id
+  `;
   if (clientId) {
     conditions.push(`s.client_id = $1`);
     params.push(clientId);
@@ -179,9 +183,14 @@ export const fetchSubjects = async (clientId, gradeId = null) => {
 
 export const fetchSubjectById = async (id, clientId) => {
   const params = [id];
-  let query = `SELECT * FROM subjects WHERE id = $1`;
+  let query = `
+    SELECT s.*, g.grade_number, g.program_id
+    FROM subjects s
+    LEFT JOIN grades g ON g.id = s.grade_id
+    WHERE s.id = $1
+  `;
   if (clientId) {
-    query += ` AND client_id = $2`;
+    query += ` AND s.client_id = $2`;
     params.push(clientId);
   }
   return dbQuery(query, params);
@@ -200,7 +209,7 @@ export const insertSubject = async ({
     `
     INSERT INTO subjects (client_id, grade_id, name, code, description, display_order, is_active)
     VALUES ($1, $2, $3, $4, $5, $6, $7)
-    RETURNING *
+    RETURNING id
     `,
     [clientId, grade_id, name, code, description, display_order, is_active]
   );
@@ -222,7 +231,7 @@ export const updateSubject = async ({ id, clientId, updates }) => {
     query += ` AND client_id = $${idx++}`;
     values.push(clientId);
   }
-  query += ` RETURNING *`;
+  query += ` RETURNING id`;
   return dbQuery(query, values);
 };
 

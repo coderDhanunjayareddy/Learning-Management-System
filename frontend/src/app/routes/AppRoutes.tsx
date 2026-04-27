@@ -83,6 +83,7 @@ import ExamListPage from '@/pages/exams/ExamListPage';
 import ExamCreatePage from '@/pages/exams/ExamCreatePage';
 import ExamBuilderPage from '@/pages/exams/ExamBuilderPage';
 import ExamSectionQuestionsPage from '@/pages/exams/ExamSectionQuestionsPage';
+import BlueprintsPage from '@/pages/exams/BlueprintsPage';
 
 export default function AppRoutes() {
   const { loading } = useAuth();
@@ -335,6 +336,7 @@ export default function AppRoutes() {
         }
       >
         <Route path="/exams" element={<ExamListPage />} />
+        <Route path="/exams/blueprints" element={<BlueprintsPage />} />
       </Route>
 
       <Route

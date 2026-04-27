@@ -234,7 +234,7 @@ export const createSubject = async ({ user, body }) => {
     is_active: isActive ?? true,
   });
 
-  return result.rows[0];
+  return (await curriculumRepo.fetchSubjectById(result.rows[0].id, clientId || null)).rows[0];
 };
 
 export const updateSubject = async ({ user, params, body }) => {
@@ -277,7 +277,7 @@ export const updateSubject = async ({ user, params, body }) => {
   if (result.rows.length === 0) {
     throw new AppError('Subject not found', 404);
   }
-  return result.rows[0];
+  return (await curriculumRepo.fetchSubjectById(id, clientId || null)).rows[0];
 };
 
 export const deleteSubject = async ({ user, params }) => {

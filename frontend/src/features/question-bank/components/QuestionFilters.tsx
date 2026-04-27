@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { CurriculumItem, DifficultyLevel, QuestionStatus, QuestionType } from "@/types/questionBank";
+import { formatSubjectDisplay, type CurriculumItem, type DifficultyLevel, type QuestionStatus, type QuestionType } from "@/types/questionBank";
 
 export interface QuestionFiltersState {
   search: string;
@@ -134,7 +134,7 @@ export default function QuestionFilters({
           <option value="">All</option>
           {subjects.map((subject) => (
             <option key={subject.id} value={String(subject.id)}>
-              {subject.name}
+              {formatSubjectDisplay(subject, { includeId: true })}
             </option>
           ))}
         </select>

@@ -119,3 +119,18 @@ export interface CurriculumItem {
   subject_id?: string | number | null;
   chapter_id?: string | number | null;
 }
+
+export const formatSubjectDisplay = (
+  subject: Pick<CurriculumItem, "id" | "name" | "grade_number">,
+  options?: { includeId?: boolean }
+) => {
+  const gradeLabel =
+    subject.grade_number !== undefined && subject.grade_number !== null && String(subject.grade_number).trim() !== ""
+      ? `Grade ${subject.grade_number}`
+      : null;
+
+  const parts = [subject.name];
+  if (gradeLabel) parts.push(`(${gradeLabel})`);
+  if (options?.includeId) parts.push(`- ID ${subject.id}`);
+  return parts.join(" ");
+};

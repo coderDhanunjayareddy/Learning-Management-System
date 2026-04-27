@@ -43,7 +43,9 @@ export default function QuestionSubjectEditPage() {
           const loaded = {
             id: res.data.id ?? res.data.subject_id ?? id,
             name: res.data.name ?? res.data.title ?? "Untitled",
+            code: res.data.code ?? null,
             grade_id: res.data.grade_id ?? null,
+            grade_number: res.data.grade_number ?? null,
           };
           setSubject(loaded);
           setName(loaded.name);
@@ -100,6 +102,9 @@ export default function QuestionSubjectEditPage() {
       const updated: CurriculumItem = {
         id: subject.id,
         name: res.data?.name ?? name.trim(),
+        code: res.data?.code ?? subject.code ?? null,
+        grade_id: res.data?.grade_id ?? Number(gradeId),
+        grade_number: res.data?.grade_number ?? grades.find((grade) => String(grade.id) === gradeId)?.grade_number ?? null,
       };
       navigate("/question-bank/subjects", { state: { updatedSubject: updated } });
       return;

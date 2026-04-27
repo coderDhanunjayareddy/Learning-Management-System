@@ -13,6 +13,7 @@ import type {
   RichTextValue,
   ScoringMode,
 } from "@/types/questionBank";
+import { formatSubjectDisplay } from "@/types/questionBank";
 import RichTextEditor from "@/components/ui/RichTextEditor";
 import api from "@/lib/api";
 
@@ -1334,7 +1335,7 @@ export default function QuestionForm({
             <option value="">Select</option>
             {availableSubjects.map((subject) => (
               <option key={subject.id} value={String(subject.id)}>
-                {subject.name}
+                {formatSubjectDisplay(subject, { includeId: true })}
               </option>
             ))}
           </select>

@@ -76,6 +76,9 @@ export default function QuestionSubjectCreatePage() {
         const created: CurriculumItem = {
           id: res.data.id ?? res.data.subject_id ?? Date.now(),
           name: res.data.name ?? name.trim(),
+          code: res.data.code ?? null,
+          grade_id: res.data.grade_id ?? Number(gradeId),
+          grade_number: res.data.grade_number ?? grades.find((grade) => String(grade.id) === gradeId)?.grade_number ?? null,
         };
         navigate("/question-bank/subjects", { state: { createdSubject: created } });
         return;

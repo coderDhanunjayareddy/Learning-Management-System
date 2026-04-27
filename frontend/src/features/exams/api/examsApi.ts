@@ -4,6 +4,11 @@ import type {
   ExamListResponse,
   ExamCreateFormState,
   ExamSection,
+  BlueprintSummary,
+  ExamBuilderSection,
+  ExamPreviewPayload,
+  ExamSectionSyllabusOptions,
+  CurriculumOption,
 } from '../types';
 
 // ============================================
@@ -38,13 +43,18 @@ export const fetchExamById = async (id: number): Promise<ExamSummary> => {
   return res.data as ExamSummary;
 };
 
+export const fetchExamPreview = async (id: number): Promise<ExamPreviewPayload> => {
+  const res = await api.get(`/exams/${id}/preview`);
+  return res.data as ExamPreviewPayload;
+};
+
 // ============================================
 // EXAM CREATE, UPDATE, DELETE
 // ============================================
 
 export const createExam = async (payload: Record<string, unknown>): Promise<ExamSummary> => {
   const res = await api.post('/exams', payload);
-  return res.data as ExamSummary;
+  return (res.data?.exam ?? res.data) as ExamSummary;
 };
 
 export const updateExam = async (
@@ -52,7 +62,7 @@ export const updateExam = async (
   payload: Partial<ExamCreateFormState>
 ): Promise<ExamSummary> => {
   const res = await api.put(`/exams/${id}`, payload);
-  return res.data as ExamSummary;
+  return (res.data?.exam ?? res.data) as ExamSummary;
 };
 
 export const deleteExam = async (id: number): Promise<void> => {
@@ -110,6 +120,105 @@ export const addQuestionToSection = async (
 export const publishExam = async (id: number): Promise<ExamSummary> => {
   const res = await api.post(`/exams/${id}/publish`);
   return res.data as ExamSummary;
+};
+
+export interface BlueprintFilters {
+  q?: string;
+  status?: string;
+}
+
+export interface BlueprintPayload {
+  name: string;
+  school_id?: number | null;
+  status?: string;
+  client_id?: number | null;
+  sections: Array<{
+    section_name: string;
+    required_question_count: number;
+    display_order: number;
+  }>;
+}
+
+export const fetchBlueprints = async (filters?: BlueprintFilters): Promise<BlueprintSummary[]> => {
+  const res = await api.get('/blueprints', { params: filters });
+  return Array.isArray(res.data) ? (res.data as BlueprintSummary[]) : [];
+};
+
+export const fetchBlueprintById = async (id: number): Promise<BlueprintSummary> => {
+  const res = await api.get(`/blueprints/${id}`);
+  return res.data as BlueprintSummary;
+};
+
+export const createBlueprint = async (payload: BlueprintPayload): Promise<BlueprintSummary> => {
+  const res = await api.post('/blueprints', payload);
+  return res.data as BlueprintSummary;
+};
+
+export const updateBlueprint = async (id: number, payload: Partial<BlueprintPayload>): Promise<BlueprintSummary> => {
+  const res = await api.put(`/blueprints/${id}`, payload);
+  return res.data as BlueprintSummary;
+};
+
+export const deleteBlueprint = async (id: number): Promise<void> => {
+  await api.delete(`/blueprints/${id}`);
+};
+
+export const fetchPrograms = async (): Promise<CurriculumOption[]> => {
+  const res = await api.get('/programs');
+  return Array.isArray(res.data) ? (res.data as CurriculumOption[]) : [];
+};
+
+export const fetchGradesByProgram = async (programId: number): Promise<CurriculumOption[]> => {
+  const res = await api.get(`/programs/${programId}/grades`);
+  return Array.isArray(res.data) ? (res.data as CurriculumOption[]) : [];
+};
+
+export const fetchSubjectsByGrade = async (gradeId: number): Promise<CurriculumOption[]> => {
+  const res = await api.get(`/grades/${gradeId}/subjects`);
+  return Array.isArray(res.data) ? (res.data as CurriculumOption[]) : [];
+};
+
+export const fetchExamSectionSyllabusOptions = async (
+  examId: number,
+  sectionId: number,
+  params?: { subject_id?: number; chapter_ids?: number[] }
+): Promise<ExamSectionSyllabusOptions> => {
+  const res = await api.get(`/exams/${examId}/sections/${sectionId}/syllabus-options`, {
+    params: {
+      subject_id: params?.subject_id,
+      chapter_ids: params?.chapter_ids?.join(','),
+    },
+  });
+  return res.data as ExamSectionSyllabusOptions;
+};
+
+export const configureExamSectionSyllabus = async (
+  examId: number,
+  sectionId: number,
+  payload: {
+    subject_id: number;
+    chapter_ids: number[];
+    topic_ids: number[];
+  }
+): Promise<ExamBuilderSection> => {
+  const res = await api.put(`/exams/${examId}/sections/${sectionId}/configure`, payload);
+  return res.data as ExamBuilderSection;
+};
+
+export const generateExamSectionQuestions = async (
+  examId: number,
+  sectionId: number
+): Promise<ExamBuilderSection> => {
+  const res = await api.post(`/exams/${examId}/sections/${sectionId}/generate`);
+  return res.data as ExamBuilderSection;
+};
+
+export const finalizeBlueprintExam = async (
+  examId: number,
+  payload?: { status?: string }
+): Promise<ExamPreviewPayload> => {
+  const res = await api.post(`/exams/${examId}/finalize`, payload ?? {});
+  return res.data as ExamPreviewPayload;
 };
 
 // ============================================

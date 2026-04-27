@@ -4,6 +4,8 @@ import { parseNullableInt, parseRequiredInt, requireString } from '../schemas/qu
 import { getAttemptResultPayloadByAttemptId } from './student.service.js';
 
 const VALID_EXAM_STATUSES = ['draft', 'published', 'active', 'completed'];
+const VALID_BLUEPRINT_STATUSES = ['active', 'inactive', 'archived'];
+const QUESTION_GROUP_TYPES = ['direction', 'similar', 'previous_year', 'reference'];
 let examResultColumnsEnsured = false;
 let examInstructionsColumnKnown = null;
 
@@ -283,6 +285,461 @@ const parseCourseIds = (value) => {
   return normalized;
 };
 
+const parsePositiveIntArray = (value, fieldName) => {
+  if (!Array.isArray(value)) {
+    throw new AppError(`${fieldName} must be an array`, 400);
+  }
+
+  const normalized = value.map((item, index) => parseRequiredInt(item, `${fieldName}[${index}]`));
+  if (normalized.some((item) => item <= 0)) {
+    throw new AppError(`${fieldName} must contain positive integers`, 400);
+  }
+
+  const deduped = [...new Set(normalized)];
+  if (deduped.length !== normalized.length) {
+    throw new AppError(`${fieldName} must not contain duplicates`, 400);
+  }
+
+  return deduped;
+};
+
+const parseBlueprintSectionsInput = (sections) => {
+  if (!Array.isArray(sections) || sections.length === 0) {
+    throw new AppError('sections must be a non-empty array', 400);
+  }
+
+  const seenNames = new Set();
+  const seenOrders = new Set();
+  return sections.map((section, index) => {
+    const sectionName = requireString(section?.section_name ?? section?.sectionName, `sections[${index}].section_name`);
+    const normalizedName = sectionName.toLowerCase();
+    if (seenNames.has(normalizedName)) {
+      throw new AppError('section names must be unique within a blueprint', 400);
+    }
+    seenNames.add(normalizedName);
+
+    const requiredQuestionCount = parseRequiredInt(
+      section?.required_question_count ?? section?.requiredQuestionCount,
+      `sections[${index}].required_question_count`
+    );
+    if (requiredQuestionCount <= 0) {
+      throw new AppError(`sections[${index}].required_question_count must be greater than 0`, 400);
+    }
+
+    const displayOrder = section?.display_order !== undefined
+      ? parseRequiredInt(section.display_order, `sections[${index}].display_order`)
+      : index + 1;
+    if (displayOrder <= 0) {
+      throw new AppError(`sections[${index}].display_order must be greater than 0`, 400);
+    }
+    if (seenOrders.has(displayOrder)) {
+      throw new AppError('display_order values must be unique within a blueprint', 400);
+    }
+    seenOrders.add(displayOrder);
+
+    return {
+      section_name: sectionName,
+      required_question_count: requiredQuestionCount,
+      display_order: displayOrder,
+    };
+  });
+};
+
+const ensureBlueprintStatus = (status) => {
+  if (!VALID_BLUEPRINT_STATUSES.includes(status)) {
+    throw new AppError('Invalid blueprint status', 400);
+  }
+};
+
+const ensureProgramAccess = async ({ programId, user, clientId }) => {
+  const result = await dbQuery(`SELECT id, client_id FROM programs WHERE id = $1`, [programId]);
+  if (result.rows.length === 0) {
+    throw new AppError('Program not found', 404);
+  }
+  const program = result.rows[0];
+
+  if (!isPlatformAdmin(user?.role) && Number(program.client_id) !== Number(clientId)) {
+    throw new AppError('Program does not belong to this client', 403);
+  }
+
+  return program;
+};
+
+const ensureBlueprintAccessible = async ({ blueprintId, user, clientId }) => {
+  const result = await dbQuery(
+    `
+      SELECT b.*,
+             COALESCE(
+               JSON_AGG(
+                 JSON_BUILD_OBJECT(
+                   'id', bs.id,
+                   'section_name', bs.section_name,
+                   'required_question_count', bs.required_question_count,
+                   'display_order', bs.display_order
+                 )
+                 ORDER BY bs.display_order, bs.id
+               ) FILTER (WHERE bs.id IS NOT NULL),
+               '[]'::json
+             ) AS sections
+      FROM blueprints b
+      LEFT JOIN blueprint_sections bs ON bs.blueprint_id = b.id
+      WHERE b.id = $1
+      GROUP BY b.id
+    `,
+    [blueprintId]
+  );
+
+  if (result.rows.length === 0) {
+    throw new AppError('Blueprint not found', 404);
+  }
+
+  const blueprint = result.rows[0];
+  if (!isPlatformAdmin(user?.role) && Number(blueprint.client_id) !== Number(clientId)) {
+    throw new AppError('Blueprint not found', 404);
+  }
+
+  if ((isSchoolOwner(user?.role) || isTeacher(user?.role)) && blueprint.school_id) {
+    const schoolIds = await fetchUserSchoolIds(user.id);
+    if (!schoolIds.includes(Number(blueprint.school_id))) {
+      throw new AppError('Access denied for this blueprint', 403);
+    }
+  }
+
+  return blueprint;
+};
+
+const fetchSubjectsForProgram = async ({ programId, clientId }) => {
+  const result = await dbQuery(
+    `
+      SELECT s.*, g.program_id, g.grade_number
+      FROM subjects s
+      JOIN grades g ON g.id = s.grade_id
+      WHERE g.program_id = $1
+        AND ($2::int IS NULL OR s.client_id = $2)
+      ORDER BY COALESCE(s.display_order, 0), s.name, s.id
+    `,
+    [programId, clientId]
+  );
+  return result.rows;
+};
+
+const ensureSubjectWithinProgram = async ({ subjectId, programId, clientId }) => {
+  const result = await dbQuery(
+    `
+      SELECT s.*, g.program_id
+      FROM subjects s
+      JOIN grades g ON g.id = s.grade_id
+      WHERE s.id = $1
+        AND g.program_id = $2
+        AND ($3::int IS NULL OR s.client_id = $3)
+    `,
+    [subjectId, programId, clientId]
+  );
+  if (result.rows.length === 0) {
+    throw new AppError('Subject does not belong to the selected program', 400);
+  }
+  return result.rows[0];
+};
+
+const fetchChaptersForSubject = async ({ subjectId, clientId }) => {
+  const result = await dbQuery(
+    `
+      SELECT c.*, s.client_id
+      FROM chapters c
+      JOIN subjects s ON s.id = c.subject_id
+      WHERE c.subject_id = $1
+        AND ($2::int IS NULL OR s.client_id = $2)
+      ORDER BY c.chapter_number, c.id
+    `,
+    [subjectId, clientId]
+  );
+  return result.rows;
+};
+
+const ensureChaptersWithinSubject = async ({ chapterIds, subjectId, clientId }) => {
+  if (chapterIds.length === 0) {
+    throw new AppError('chapter_ids must contain at least one chapter', 400);
+  }
+
+  const result = await dbQuery(
+    `
+      SELECT c.*, s.client_id
+      FROM chapters c
+      JOIN subjects s ON s.id = c.subject_id
+      WHERE c.id = ANY($1::int[])
+        AND c.subject_id = $2
+        AND ($3::int IS NULL OR s.client_id = $3)
+      ORDER BY c.chapter_number, c.id
+    `,
+    [chapterIds, subjectId, clientId]
+  );
+
+  if (result.rows.length !== chapterIds.length) {
+    throw new AppError('One or more chapters do not belong to the selected subject', 400);
+  }
+
+  return result.rows;
+};
+
+const fetchTopicsForChapters = async ({ chapterIds, clientId }) => {
+  if (chapterIds.length === 0) return [];
+
+  const result = await dbQuery(
+    `
+      SELECT t.*, c.subject_id, s.client_id
+      FROM topics t
+      JOIN chapters c ON c.id = t.chapter_id
+      JOIN subjects s ON s.id = c.subject_id
+      WHERE t.chapter_id = ANY($1::int[])
+        AND ($2::int IS NULL OR s.client_id = $2)
+      ORDER BY c.chapter_number, t.topic_number, t.id
+    `,
+    [chapterIds, clientId]
+  );
+  return result.rows;
+};
+
+const ensureTopicsWithinChapters = async ({ topicIds, chapterIds, clientId }) => {
+  if (topicIds.length === 0) {
+    throw new AppError('topic_ids must contain at least one topic', 400);
+  }
+
+  const result = await dbQuery(
+    `
+      SELECT t.*, c.subject_id, s.client_id
+      FROM topics t
+      JOIN chapters c ON c.id = t.chapter_id
+      JOIN subjects s ON s.id = c.subject_id
+      WHERE t.id = ANY($1::int[])
+        AND t.chapter_id = ANY($2::int[])
+        AND ($3::int IS NULL OR s.client_id = $3)
+      ORDER BY c.chapter_number, t.topic_number, t.id
+    `,
+    [topicIds, chapterIds, clientId]
+  );
+
+  if (result.rows.length !== topicIds.length) {
+    throw new AppError('One or more topics do not belong to the selected chapters', 400);
+  }
+
+  return result.rows;
+};
+
+const groupQuestionsByType = (questions) =>
+  QUESTION_GROUP_TYPES.reduce((acc, groupType) => {
+    acc[groupType] = questions.filter((question) => question.question_group_type === groupType);
+    return acc;
+  }, {});
+
+const pickQuestionsForSection = ({ candidates, requiredCount }) => {
+  if (candidates.length < requiredCount) {
+    throw new AppError('Not enough approved questions available for this section', 400);
+  }
+
+  const groups = QUESTION_GROUP_TYPES.map((groupType) =>
+    candidates.filter((candidate) => candidate.question_group_type === groupType)
+  );
+  const selected = [];
+
+  while (selected.length < requiredCount) {
+    let addedInRound = false;
+    for (const group of groups) {
+      if (group.length === 0) continue;
+      selected.push(group.shift());
+      addedInRound = true;
+      if (selected.length === requiredCount) break;
+    }
+
+    if (!addedInRound) break;
+  }
+
+  if (selected.length < requiredCount) {
+    throw new AppError('Not enough approved questions available for this section', 400);
+  }
+
+  return selected;
+};
+
+const hydrateSectionRows = async (sectionRows) => {
+  if (sectionRows.length === 0) return [];
+
+  const sectionIds = sectionRows.map((row) => Number(row.id));
+  const [chaptersResult, topicsResult, questionsResult] = await Promise.all([
+    dbQuery(
+      `
+        SELECT esc.exam_section_id, c.id, c.name, c.chapter_number
+        FROM exam_section_chapters esc
+        JOIN chapters c ON c.id = esc.chapter_id
+        WHERE esc.exam_section_id = ANY($1::int[])
+        ORDER BY c.chapter_number, c.id
+      `,
+      [sectionIds]
+    ),
+    dbQuery(
+      `
+        SELECT est.exam_section_id, t.id, t.name, t.topic_number, t.chapter_id
+        FROM exam_section_topics est
+        JOIN topics t ON t.id = est.topic_id
+        WHERE est.exam_section_id = ANY($1::int[])
+        ORDER BY t.topic_number, t.id
+      `,
+      [sectionIds]
+    ),
+    dbQuery(
+      `
+        SELECT
+          eq.section_id,
+          eq.question_id,
+          eq.order_index,
+          eq.question_group_type,
+          q.question_type,
+          q.question_text,
+          q.options,
+          q.correct_answer,
+          q.solution,
+          q.subject_id,
+          q.chapter_id,
+          q.topic_id,
+          q.difficulty_level,
+          q.status
+        FROM exam_questions eq
+        JOIN questions q ON q.id = eq.question_id
+        WHERE eq.section_id = ANY($1::int[])
+        ORDER BY eq.section_id, eq.order_index, eq.id
+      `,
+      [sectionIds]
+    ),
+  ]);
+
+  const chaptersBySection = new Map();
+  for (const row of chaptersResult.rows) {
+    const current = chaptersBySection.get(Number(row.exam_section_id)) ?? [];
+    current.push({
+      id: Number(row.id),
+      name: row.name,
+      chapter_number: Number(row.chapter_number),
+    });
+    chaptersBySection.set(Number(row.exam_section_id), current);
+  }
+
+  const topicsBySection = new Map();
+  for (const row of topicsResult.rows) {
+    const current = topicsBySection.get(Number(row.exam_section_id)) ?? [];
+    current.push({
+      id: Number(row.id),
+      name: row.name,
+      topic_number: Number(row.topic_number),
+      chapter_id: Number(row.chapter_id),
+    });
+    topicsBySection.set(Number(row.exam_section_id), current);
+  }
+
+  const questionsBySection = new Map();
+  for (const row of questionsResult.rows) {
+    const current = questionsBySection.get(Number(row.section_id)) ?? [];
+    current.push({
+      question_id: Number(row.question_id),
+      order_index: Number(row.order_index),
+      question_group_type: row.question_group_type,
+      question_type: row.question_type,
+      question_text: row.question_text,
+      options: row.options,
+      correct_answer: row.correct_answer,
+      solution: row.solution,
+      subject_id: row.subject_id ? Number(row.subject_id) : null,
+      chapter_id: row.chapter_id ? Number(row.chapter_id) : null,
+      topic_id: row.topic_id ? Number(row.topic_id) : null,
+      difficulty_level: row.difficulty_level,
+      status: row.status,
+    });
+    questionsBySection.set(Number(row.section_id), current);
+  }
+
+  return sectionRows.map((row) => {
+    const sectionId = Number(row.id);
+    const questionRows = questionsBySection.get(sectionId) ?? [];
+    return {
+      ...row,
+      chapter_ids: (chaptersBySection.get(sectionId) ?? []).map((item) => item.id),
+      topic_ids: (topicsBySection.get(sectionId) ?? []).map((item) => item.id),
+      chapters: chaptersBySection.get(sectionId) ?? [],
+      topics: topicsBySection.get(sectionId) ?? [],
+      question_count: questionRows.length,
+      question_groups: groupQuestionsByType(questionRows),
+    };
+  });
+};
+
+const fetchExamSectionsWithBlueprintData = async (examId) => {
+  const result = await dbQuery(
+    `
+      SELECT
+        es.*,
+        s.name AS selected_subject_name,
+        bs.section_name AS blueprint_section_name
+      FROM exam_sections es
+      LEFT JOIN subjects s ON s.id = es.selected_subject_id
+      LEFT JOIN blueprint_sections bs ON bs.id = es.blueprint_section_id
+      WHERE es.exam_id = $1
+      ORDER BY es.order_index, es.id
+    `,
+    [examId]
+  );
+
+  return hydrateSectionRows(result.rows.map((row) => ({
+    ...row,
+    id: Number(row.id),
+    exam_id: Number(row.exam_id),
+    blueprint_section_id: row.blueprint_section_id ? Number(row.blueprint_section_id) : null,
+    required_question_count: row.required_question_count ? Number(row.required_question_count) : null,
+    selected_subject_id: row.selected_subject_id ? Number(row.selected_subject_id) : null,
+  })));
+};
+
+const buildExamPreviewPayload = async (exam) => {
+  const blueprint = exam.blueprint_id
+    ? await ensureBlueprintAccessible({
+      blueprintId: Number(exam.blueprint_id),
+      user: { role: 'super_admin', id: exam.created_by },
+      clientId: Number(exam.client_id),
+    })
+    : null;
+
+  const sections = await fetchExamSectionsWithBlueprintData(Number(exam.id));
+  const allSectionsCompleted = sections.every(
+    (section) =>
+      Number(section.question_count) === Number(section.required_question_count || 0) &&
+      section.completion_status === 'completed'
+  );
+
+  return {
+    exam: {
+      ...exam,
+      id: Number(exam.id),
+      client_id: Number(exam.client_id),
+      school_id: exam.school_id ? Number(exam.school_id) : null,
+      program_id: exam.program_id ? Number(exam.program_id) : null,
+      blueprint_id: exam.blueprint_id ? Number(exam.blueprint_id) : null,
+    },
+    blueprint: blueprint
+      ? {
+        ...blueprint,
+        id: Number(blueprint.id),
+        client_id: Number(blueprint.client_id),
+        school_id: blueprint.school_id ? Number(blueprint.school_id) : null,
+      }
+      : null,
+    sections,
+    totals: {
+      section_count: sections.length,
+      question_count: sections.reduce((sum, section) => sum + Number(section.question_count || 0), 0),
+      required_question_count: sections.reduce((sum, section) => sum + Number(section.required_question_count || 0), 0),
+      completed_section_count: sections.filter((section) => section.completion_status === 'completed').length,
+    },
+    all_sections_completed: allSectionsCompleted,
+  };
+};
+
 const listAssignedCoursesForExam = async (examId) => {
   const assignedResult = await dbQuery(
     `
@@ -369,6 +826,21 @@ export const addQuestionToSection = async (req, res) => {
     );
     if (duplicateCheck.rows.length > 0) {
       throw new AppError('Question already exists in this section', 409);
+    }
+
+    const examDuplicateCheck = await dbQuery(
+      `
+        SELECT 1
+        FROM exam_questions eq
+        JOIN exam_sections es ON es.id = eq.section_id
+        WHERE es.exam_id = $1
+          AND eq.question_id = $2
+        LIMIT 1
+      `,
+      [exam.id, questionId]
+    );
+    if (examDuplicateCheck.rows.length > 0) {
+      throw new AppError('Question already exists in this exam', 409);
     }
 
     let orderIndex = req.body?.order_index !== undefined ? parseRequiredInt(req.body.order_index, 'order_index') : null;
@@ -530,6 +1002,268 @@ export const assignExamCourses = async (req, res) => {
   }
 };
 
+export const listBlueprints = async (req, res) => {
+  try {
+    if (!req.user?.id || !req.user?.role) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const explicitClientId = parseNullableInt(req.query?.client_id, 'client_id');
+    const clientId = isPlatformAdmin(req.user.role) ? explicitClientId : (req.clientId || req.user.client_id);
+    const schoolId = parseNullableInt(req.query?.school_id, 'school_id');
+    const status = req.query?.status ? requireString(req.query.status, 'status') : null;
+    if (status) ensureBlueprintStatus(status);
+
+    if (!clientId && !isPlatformAdmin(req.user.role)) {
+      throw new AppError('client_id is required', 400);
+    }
+
+    const params = [];
+    const conditions = [];
+    const addParam = (value) => {
+      params.push(value);
+      return `$${params.length}`;
+    };
+
+    if (clientId) {
+      conditions.push(`b.client_id = ${addParam(clientId)}`);
+    }
+    if (schoolId) {
+      conditions.push(`b.school_id = ${addParam(schoolId)}`);
+    } else if (isSchoolOwner(req.user.role) || isTeacher(req.user.role)) {
+      const schoolIds = await fetchUserSchoolIds(req.user.id);
+      if (schoolIds.length > 0) {
+        conditions.push(`(b.school_id IS NULL OR b.school_id = ANY(${addParam(schoolIds)}))`);
+      } else {
+        conditions.push(`b.school_id IS NULL`);
+      }
+    }
+    if (status) {
+      conditions.push(`b.status = ${addParam(status)}`);
+    }
+    if (req.query?.q) {
+      const search = String(req.query.q).trim();
+      if (search) {
+        conditions.push(`b.name ILIKE ${addParam(`%${search}%`)}`);
+      }
+    }
+
+    const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const result = await dbQuery(
+      `
+        SELECT
+          b.*,
+          COALESCE(COUNT(bs.id), 0)::int AS section_count,
+          COALESCE(SUM(bs.required_question_count), 0)::int AS total_required_questions,
+          COALESCE(
+            JSON_AGG(
+              JSON_BUILD_OBJECT(
+                'id', bs.id,
+                'section_name', bs.section_name,
+                'required_question_count', bs.required_question_count,
+                'display_order', bs.display_order
+              )
+              ORDER BY bs.display_order, bs.id
+            ) FILTER (WHERE bs.id IS NOT NULL),
+            '[]'::json
+          ) AS sections
+        FROM blueprints b
+        LEFT JOIN blueprint_sections bs ON bs.blueprint_id = b.id
+        ${whereClause}
+        GROUP BY b.id
+        ORDER BY b.updated_at DESC, b.id DESC
+      `,
+      params
+    );
+
+    res.json(result.rows);
+  } catch (err) {
+    handleServiceError(res, err, 'Failed to list blueprints');
+  }
+};
+
+export const getBlueprintById = async (req, res) => {
+  try {
+    if (!req.user?.id || !req.user?.role) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const clientId = isPlatformAdmin(req.user.role) ? null : (req.clientId || req.user.client_id);
+    const blueprint = await ensureBlueprintAccessible({
+      blueprintId: parseRequiredInt(req.params.id, 'id'),
+      user: req.user,
+      clientId,
+    });
+
+    res.json(blueprint);
+  } catch (err) {
+    handleServiceError(res, err, 'Failed to load blueprint');
+  }
+};
+
+export const createBlueprint = async (req, res) => {
+  try {
+    if (!req.user?.id || !req.user?.role) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const name = requireString(req.body?.name, 'name');
+    const sections = parseBlueprintSectionsInput(req.body?.sections);
+    const clientId = isPlatformAdmin(req.user.role) ? parseRequiredInt(req.body?.client_id, 'client_id') : (req.clientId || req.user.client_id);
+    if (!clientId) throw new AppError('client_id is required', 400);
+
+    const schoolIdInput = parseNullableInt(req.body?.school_id, 'school_id');
+    const schoolScope = await resolveSchoolScope({
+      schoolId: schoolIdInput,
+      user: req.user,
+      clientId,
+    });
+    const status = req.body?.status ? requireString(req.body.status, 'status') : 'active';
+    ensureBlueprintStatus(status);
+
+    const tx = await getClient();
+    let blueprintId;
+    try {
+      await tx.query('BEGIN');
+      const blueprintResult = await tx.query(
+        `
+          INSERT INTO blueprints (client_id, school_id, name, status, created_by)
+          VALUES ($1, $2, $3, $4, $5)
+          RETURNING *
+        `,
+        [clientId, schoolScope.schoolId, name, status, req.user.id]
+      );
+      blueprintId = Number(blueprintResult.rows[0].id);
+
+      for (const section of sections) {
+        await tx.query(
+          `
+            INSERT INTO blueprint_sections (blueprint_id, section_name, required_question_count, display_order)
+            VALUES ($1, $2, $3, $4)
+          `,
+          [blueprintId, section.section_name, section.required_question_count, section.display_order]
+        );
+      }
+
+      await tx.query('COMMIT');
+    } catch (error) {
+      await tx.query('ROLLBACK');
+      throw error;
+    } finally {
+      tx.release();
+    }
+
+    const blueprint = await ensureBlueprintAccessible({
+      blueprintId,
+      user: req.user,
+      clientId,
+    });
+    res.status(201).json(blueprint);
+  } catch (err) {
+    handleServiceError(res, err, 'Failed to create blueprint');
+  }
+};
+
+export const updateBlueprint = async (req, res) => {
+  try {
+    if (!req.user?.id || !req.user?.role) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const clientId = isPlatformAdmin(req.user.role) ? null : (req.clientId || req.user.client_id);
+    const blueprintId = parseRequiredInt(req.params.id, 'id');
+    const existing = await ensureBlueprintAccessible({
+      blueprintId,
+      user: req.user,
+      clientId,
+    });
+
+    const nextName = req.body?.name !== undefined ? requireString(req.body.name, 'name') : existing.name;
+    const nextStatus = req.body?.status !== undefined ? requireString(req.body.status, 'status') : existing.status;
+    ensureBlueprintStatus(nextStatus);
+
+    const schoolId = req.body?.school_id !== undefined
+      ? (await resolveSchoolScope({
+        schoolId: parseNullableInt(req.body.school_id, 'school_id'),
+        user: req.user,
+        clientId: Number(existing.client_id),
+      })).schoolId
+      : existing.school_id;
+
+    const sections = req.body?.sections !== undefined
+      ? parseBlueprintSectionsInput(req.body.sections)
+      : (Array.isArray(existing.sections) ? existing.sections : []);
+
+    const tx = await getClient();
+    try {
+      await tx.query('BEGIN');
+      await tx.query(
+        `
+          UPDATE blueprints
+          SET name = $1, status = $2, school_id = $3, updated_at = NOW()
+          WHERE id = $4
+        `,
+        [nextName, nextStatus, schoolId, blueprintId]
+      );
+
+      if (req.body?.sections !== undefined) {
+        await tx.query(`DELETE FROM blueprint_sections WHERE blueprint_id = $1`, [blueprintId]);
+        for (const section of sections) {
+          await tx.query(
+            `
+              INSERT INTO blueprint_sections (blueprint_id, section_name, required_question_count, display_order)
+              VALUES ($1, $2, $3, $4)
+            `,
+            [blueprintId, section.section_name, section.required_question_count, section.display_order]
+          );
+        }
+      }
+
+      await tx.query('COMMIT');
+    } catch (error) {
+      await tx.query('ROLLBACK');
+      throw error;
+    } finally {
+      tx.release();
+    }
+
+    const blueprint = await ensureBlueprintAccessible({
+      blueprintId,
+      user: req.user,
+      clientId: Number(existing.client_id),
+    });
+    res.json(blueprint);
+  } catch (err) {
+    handleServiceError(res, err, 'Failed to update blueprint');
+  }
+};
+
+export const deleteBlueprint = async (req, res) => {
+  try {
+    if (!req.user?.id || !req.user?.role) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const clientId = isPlatformAdmin(req.user.role) ? null : (req.clientId || req.user.client_id);
+    const blueprintId = parseRequiredInt(req.params.id, 'id');
+    await ensureBlueprintAccessible({
+      blueprintId,
+      user: req.user,
+      clientId,
+    });
+
+    const usageResult = await dbQuery(`SELECT COUNT(*)::int AS count FROM exams WHERE blueprint_id = $1`, [blueprintId]);
+    if (Number(usageResult.rows[0]?.count || 0) > 0) {
+      throw new AppError('Blueprint is already linked to exams and cannot be deleted', 409);
+    }
+
+    await dbQuery(`DELETE FROM blueprints WHERE id = $1`, [blueprintId]);
+    res.json({ success: true, id: blueprintId });
+  } catch (err) {
+    handleServiceError(res, err, 'Failed to delete blueprint');
+  }
+};
+
 export const listExams = async (req, res) => {
 
   try {
@@ -646,26 +1380,19 @@ export const getExamById = async (req, res) => {
       [exam.id]
     );
 
-    const sectionsResult = await dbQuery(
-      `
-      SELECT
-        es.*,
-        COALESCE(COUNT(eq.id), 0)::int AS question_count
-      FROM exam_sections es
-      LEFT JOIN exam_questions eq ON eq.section_id = es.id
-      WHERE es.exam_id = $1
-      GROUP BY es.id
-      ORDER BY es.order_index, es.id
-      `,
-      [exam.id]
-    );
-
     const assignedCourses = await listAssignedCoursesForExam(exam.id);
+    const preview = await buildExamPreviewPayload(examResult.rows[0]);
 
     res.json({
-      ...examResult.rows[0],
-      sections: sectionsResult.rows,
+      ...preview.exam,
+      blueprint: preview.blueprint,
+      sections: preview.sections,
+      totals: preview.totals,
+      all_sections_completed: preview.all_sections_completed,
       assigned_courses: assignedCourses,
+      course_count: examResult.rows[0].course_count,
+      course_names: examResult.rows[0].course_names,
+      attempts_count: examResult.rows[0].attempts_count,
     });
   } catch (err) {
     handleServiceError(res, err, 'Failed to load exam');
@@ -802,6 +1529,31 @@ export const createExam = async (req, res) => {
       }
     }
     const schoolId = schoolIdInput;
+    const programId = parseNullableInt(req.body?.program_id, 'program_id');
+    const blueprintId = parseNullableInt(req.body?.blueprint_id, 'blueprint_id');
+
+    if (blueprintId && !programId) {
+      throw new AppError('program_id is required when blueprint_id is provided', 400);
+    }
+
+    if (programId) {
+      await ensureProgramAccess({ programId, user: req.user, clientId: Number(clientId) });
+    }
+
+    let blueprint = null;
+    if (blueprintId) {
+      blueprint = await ensureBlueprintAccessible({
+        blueprintId,
+        user: req.user,
+        clientId: Number(clientId),
+      });
+      if (!Array.isArray(blueprint.sections) || blueprint.sections.length === 0) {
+        throw new AppError('Selected blueprint does not contain any sections', 400);
+      }
+      if (schoolId && blueprint.school_id && Number(blueprint.school_id) !== Number(schoolId)) {
+        throw new AppError('Blueprint does not belong to the selected school scope', 403);
+      }
+    }
 
     const shuffleQuestions = parseBoolean(req.body?.shuffle_questions, 'shuffle_questions');
     const shuffleOptions = parseBoolean(req.body?.shuffle_options, 'shuffle_options');
@@ -819,70 +1571,109 @@ export const createExam = async (req, res) => {
     ensureValidStatus(statusInput);
     const status = isTeacher(req.user.role) ? 'draft' : statusInput;
 
-    const result = supportsExamInstructions
-      ? await dbQuery(
-        `
-        INSERT INTO exams
-          (client_id, school_id, title, description, instructions, total_duration_minutes, start_datetime, end_datetime,
-           shuffle_questions, shuffle_options, show_result_immediately, show_score, show_pass_or_fail, show_solutions_to_user,
-           max_attempts, status, created_by)
-        VALUES
-          ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9, FALSE), COALESCE($10, FALSE), COALESCE($11, TRUE),
-           COALESCE($12, TRUE), COALESCE($13, TRUE), COALESCE($14, FALSE), $15, $16, $17)
-        RETURNING *
-        `,
-        [
-          clientId,
-          schoolId,
-          title,
-          description,
-          instructions,
-          totalDuration,
-          startDateTime,
-          endDateTime,
-          shuffleQuestions,
-          shuffleOptions,
-          showResultImmediately,
-          showScore,
-          showPassOrFail,
-          showSolutionsToUser,
-          maxAttempts,
-          status,
-          req.user.id,
-        ]
-      )
-      : await dbQuery(
-        `
-        INSERT INTO exams
-          (client_id, school_id, title, description, total_duration_minutes, start_datetime, end_datetime,
-           shuffle_questions, shuffle_options, show_result_immediately, show_score, show_pass_or_fail, show_solutions_to_user,
-           max_attempts, status, created_by)
-        VALUES
-          ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, FALSE), COALESCE($9, FALSE), COALESCE($10, TRUE),
-           COALESCE($11, TRUE), COALESCE($12, TRUE), COALESCE($13, FALSE), $14, $15, $16)
-        RETURNING *
-        `,
-        [
-          clientId,
-          schoolId,
-          title,
-          description,
-          totalDuration,
-          startDateTime,
-          endDateTime,
-          shuffleQuestions,
-          shuffleOptions,
-          showResultImmediately,
-          showScore,
-          showPassOrFail,
-          showSolutionsToUser,
-          maxAttempts,
-          status,
-          req.user.id,
-        ]
-      );
+    const tx = await getClient();
+    let createdExam;
+    try {
+      await tx.query('BEGIN');
+      const result = supportsExamInstructions
+        ? await tx.query(
+          `
+          INSERT INTO exams
+            (client_id, school_id, program_id, blueprint_id, title, description, instructions, total_duration_minutes, start_datetime, end_datetime,
+             shuffle_questions, shuffle_options, show_result_immediately, show_score, show_pass_or_fail, show_solutions_to_user,
+             max_attempts, status, created_by)
+          VALUES
+            ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, COALESCE($11, FALSE), COALESCE($12, FALSE), COALESCE($13, TRUE),
+             COALESCE($14, TRUE), COALESCE($15, TRUE), COALESCE($16, FALSE), $17, $18, $19)
+          RETURNING *
+          `,
+          [
+            clientId,
+            schoolId,
+            programId,
+            blueprintId,
+            title,
+            description,
+            instructions,
+            totalDuration,
+            startDateTime,
+            endDateTime,
+            shuffleQuestions,
+            shuffleOptions,
+            showResultImmediately,
+            showScore,
+            showPassOrFail,
+            showSolutionsToUser,
+            maxAttempts,
+            status,
+            req.user.id,
+          ]
+        )
+        : await tx.query(
+          `
+          INSERT INTO exams
+            (client_id, school_id, program_id, blueprint_id, title, description, total_duration_minutes, start_datetime, end_datetime,
+             shuffle_questions, shuffle_options, show_result_immediately, show_score, show_pass_or_fail, show_solutions_to_user,
+             max_attempts, status, created_by)
+          VALUES
+            ($1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE($10, FALSE), COALESCE($11, FALSE), COALESCE($12, TRUE),
+             COALESCE($13, TRUE), COALESCE($14, TRUE), COALESCE($15, FALSE), $16, $17, $18)
+          RETURNING *
+          `,
+          [
+            clientId,
+            schoolId,
+            programId,
+            blueprintId,
+            title,
+            description,
+            totalDuration,
+            startDateTime,
+            endDateTime,
+            shuffleQuestions,
+            shuffleOptions,
+            showResultImmediately,
+            showScore,
+            showPassOrFail,
+            showSolutionsToUser,
+            maxAttempts,
+            status,
+            req.user.id,
+          ]
+        );
 
-    res.status(201).json(result.rows[0]);
+      createdExam = result.rows[0];
+
+      if (blueprint) {
+        for (const section of blueprint.sections) {
+          await tx.query(
+            `
+              INSERT INTO exam_sections
+                (exam_id, title, order_index, required_question_count, blueprint_section_id, completion_status, instructions, marks_per_question, negative_marks)
+              VALUES
+                ($1, $2, $3, $4, $5, 'pending', NULL, 4, 1)
+            `,
+            [
+              createdExam.id,
+              section.section_name,
+              section.display_order,
+              section.required_question_count,
+              section.id,
+            ]
+          );
+        }
+      }
+
+      await tx.query('COMMIT');
+    } catch (error) {
+      await tx.query('ROLLBACK');
+      throw error;
+    } finally {
+      tx.release();
+    }
+
+    const payload = await buildExamPreviewPayload(createdExam);
+    res.status(201).json(payload);
   } catch (err) {
     handleServiceError(res, err, 'Failed to create exam');
   }
@@ -974,6 +1765,35 @@ export const updateExam = async (req, res) => {
       });
       addUpdate('school_id', scoped.schoolId);
     }
+    if (req.body?.program_id !== undefined) {
+      const programId = parseNullableInt(req.body.program_id, 'program_id');
+      if (programId) {
+        await ensureProgramAccess({ programId, user: req.user, clientId: Number(exam.client_id) });
+      }
+      addUpdate('program_id', programId);
+    }
+    if (req.body?.blueprint_id !== undefined) {
+      const blueprintId = parseNullableInt(req.body.blueprint_id, 'blueprint_id');
+      if (blueprintId) {
+        const nextProgramId = req.body?.program_id !== undefined
+          ? parseNullableInt(req.body.program_id, 'program_id')
+          : (exam.program_id ? Number(exam.program_id) : null);
+        if (!nextProgramId) {
+          throw new AppError('program_id is required when blueprint_id is provided', 400);
+        }
+        await ensureBlueprintAccessible({
+          blueprintId,
+          user: req.user,
+          clientId: Number(exam.client_id),
+        });
+
+        const sectionCountRes = await dbQuery(`SELECT COUNT(*)::int AS count FROM exam_sections WHERE exam_id = $1`, [exam.id]);
+        if (Number(sectionCountRes.rows[0]?.count || 0) > 0) {
+          throw new AppError('Cannot change blueprint after exam sections have been created', 409);
+        }
+      }
+      addUpdate('blueprint_id', blueprintId);
+    }
 
     if (updates.length === 0) {
       throw new AppError('No valid fields to update', 400);
@@ -990,7 +1810,9 @@ export const updateExam = async (req, res) => {
       values
     );
 
-    res.json(result.rows[0]);
+    const refreshedExam = await getExamByIdForAccess({ examId: result.rows[0].id, user: req.user });
+    const payload = await buildExamPreviewPayload(refreshedExam);
+    res.json(payload);
   } catch (err) {
     handleServiceError(res, err, 'Failed to update exam');
   }
@@ -1156,6 +1978,331 @@ export const deleteExamSection = async (req, res) => {
     res.json({ success: true, id: Number(section.id) });
   } catch (err) {
     handleServiceError(res, err, 'Failed to delete exam section');
+  }
+};
+
+export const getExamSectionSyllabusOptions = async (req, res) => {
+  try {
+    if (!req.user?.id || !req.user?.role) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const exam = await getExamByIdForAccess({ examId: req.params.id, user: req.user });
+    const section = await getSectionByIdForAccess({
+      examId: req.params.id,
+      sectionId: req.params.sectionId,
+      user: req.user,
+    });
+
+    if (!exam.program_id) {
+      throw new AppError('Exam program is not configured', 400);
+    }
+
+    const clientId = Number(exam.client_id);
+    const subjectId = parseNullableInt(req.query?.subject_id ?? section.selected_subject_id, 'subject_id');
+    const chapterIds = req.query?.chapter_ids
+      ? parsePositiveIntArray(String(req.query.chapter_ids).split(',').filter(Boolean), 'chapter_ids')
+      : [];
+
+    const subjects = await fetchSubjectsForProgram({
+      programId: Number(exam.program_id),
+      clientId,
+    });
+
+    let chapters = [];
+    let topics = [];
+    if (subjectId) {
+      await ensureSubjectWithinProgram({
+        subjectId,
+        programId: Number(exam.program_id),
+        clientId,
+      });
+      chapters = await fetchChaptersForSubject({ subjectId, clientId });
+    }
+
+    if (chapterIds.length > 0 && subjectId) {
+      await ensureChaptersWithinSubject({ chapterIds, subjectId, clientId });
+      topics = await fetchTopicsForChapters({ chapterIds, clientId });
+    }
+
+    res.json({
+      program_id: Number(exam.program_id),
+      section_id: Number(section.id),
+      selected_subject_id: section.selected_subject_id ? Number(section.selected_subject_id) : null,
+      subjects,
+      chapters,
+      topics,
+    });
+  } catch (err) {
+    handleServiceError(res, err, 'Failed to load section syllabus options');
+  }
+};
+
+export const configureExamSectionSyllabus = async (req, res) => {
+  try {
+    if (!req.user?.id || !req.user?.role) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const exam = await getExamByIdForAccess({ examId: req.params.id, user: req.user });
+    ensureExamEditable(exam);
+
+    const section = await getSectionByIdForAccess({
+      examId: req.params.id,
+      sectionId: req.params.sectionId,
+      user: req.user,
+    });
+
+    if (!exam.program_id) {
+      throw new AppError('Exam program is not configured', 400);
+    }
+
+    const subjectId = parseRequiredInt(req.body?.subject_id, 'subject_id');
+    const chapterIds = parsePositiveIntArray(req.body?.chapter_ids, 'chapter_ids');
+    const topicIds = parsePositiveIntArray(req.body?.topic_ids, 'topic_ids');
+    const clientId = Number(exam.client_id);
+
+    await ensureSubjectWithinProgram({
+      subjectId,
+      programId: Number(exam.program_id),
+      clientId,
+    });
+    await ensureChaptersWithinSubject({ chapterIds, subjectId, clientId });
+    await ensureTopicsWithinChapters({ topicIds, chapterIds, clientId });
+
+    const tx = await getClient();
+    try {
+      await tx.query('BEGIN');
+      await tx.query(
+        `
+          UPDATE exam_sections
+          SET selected_subject_id = $1,
+              completion_status = 'configured',
+              syllabus_locked = FALSE
+          WHERE id = $2
+        `,
+        [subjectId, section.id]
+      );
+
+      await tx.query(`DELETE FROM exam_section_chapters WHERE exam_section_id = $1`, [section.id]);
+      await tx.query(`DELETE FROM exam_section_topics WHERE exam_section_id = $1`, [section.id]);
+      await tx.query(`DELETE FROM exam_questions WHERE section_id = $1`, [section.id]);
+
+      for (const chapterId of chapterIds) {
+        await tx.query(
+          `INSERT INTO exam_section_chapters (exam_section_id, chapter_id) VALUES ($1, $2)`,
+          [section.id, chapterId]
+        );
+      }
+
+      for (const topicId of topicIds) {
+        await tx.query(
+          `INSERT INTO exam_section_topics (exam_section_id, topic_id) VALUES ($1, $2)`,
+          [section.id, topicId]
+        );
+      }
+
+      await tx.query('COMMIT');
+    } catch (error) {
+      await tx.query('ROLLBACK');
+      throw error;
+    } finally {
+      tx.release();
+    }
+
+    const sections = await fetchExamSectionsWithBlueprintData(Number(exam.id));
+    const configuredSection = sections.find((item) => Number(item.id) === Number(section.id));
+    res.json(configuredSection);
+  } catch (err) {
+    handleServiceError(res, err, 'Failed to configure exam section');
+  }
+};
+
+export const generateExamSectionQuestions = async (req, res) => {
+  try {
+    if (!req.user?.id || !req.user?.role) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const exam = await getExamByIdForAccess({ examId: req.params.id, user: req.user });
+    ensureExamEditable(exam);
+
+    const section = await getSectionByIdForAccess({
+      examId: req.params.id,
+      sectionId: req.params.sectionId,
+      user: req.user,
+    });
+
+    if (!exam.program_id) {
+      throw new AppError('Exam program is not configured', 400);
+    }
+    if (!section.selected_subject_id) {
+      throw new AppError('Section subject is not configured', 400);
+    }
+
+    const topicResult = await dbQuery(
+      `SELECT topic_id FROM exam_section_topics WHERE exam_section_id = $1 ORDER BY topic_id`,
+      [section.id]
+    );
+    const topicIds = topicResult.rows.map((row) => Number(row.topic_id));
+    if (topicIds.length === 0) {
+      throw new AppError('Select topics before generating questions', 400);
+    }
+
+    const duplicateResult = await dbQuery(
+      `
+        SELECT eq.question_id
+        FROM exam_questions eq
+        JOIN exam_sections es ON es.id = eq.section_id
+        WHERE es.exam_id = $1
+          AND es.id <> $2
+      `,
+      [exam.id, section.id]
+    );
+    const excludedQuestionIds = duplicateResult.rows.map((row) => Number(row.question_id));
+
+    const candidateResult = await dbQuery(
+      `
+        SELECT
+          q.id,
+          q.question_type,
+          q.question_group_type,
+          q.question_text,
+          q.options,
+          q.correct_answer,
+          q.solution,
+          q.subject_id,
+          q.chapter_id,
+          q.topic_id,
+          q.difficulty_level,
+          q.status,
+          q.created_at
+        FROM questions q
+        JOIN subjects s ON s.id = q.subject_id
+        JOIN grades g ON g.id = s.grade_id
+        WHERE q.status = 'approved'
+          AND q.question_type <> 'comprehensive'
+          AND q.question_group_type IS NOT NULL
+          AND q.subject_id = $1
+          AND q.topic_id = ANY($2::int[])
+          AND g.program_id = $3
+          AND ($4::int[] IS NULL OR q.id <> ALL($4::int[]))
+        ORDER BY q.created_at DESC, q.id DESC
+      `,
+      [
+        Number(section.selected_subject_id),
+        topicIds,
+        Number(exam.program_id),
+        excludedQuestionIds.length > 0 ? excludedQuestionIds : null,
+      ]
+    );
+
+    const candidates = candidateResult.rows.map((row) => ({
+      ...row,
+      id: Number(row.id),
+    }));
+
+    const requiredQuestionCount = Number(section.required_question_count || 0);
+    if (requiredQuestionCount <= 0) {
+      throw new AppError('Section required question count is invalid', 400);
+    }
+
+    const selectedQuestions = pickQuestionsForSection({
+      candidates,
+      requiredCount: requiredQuestionCount,
+    });
+
+    const tx = await getClient();
+    try {
+      await tx.query('BEGIN');
+      await tx.query(`DELETE FROM exam_questions WHERE section_id = $1`, [section.id]);
+
+      let orderIndex = 1;
+      for (const question of selectedQuestions) {
+        await tx.query(
+          `
+            INSERT INTO exam_questions
+              (section_id, question_id, order_index, question_group_type, generated_from_topic_selection)
+            VALUES
+              ($1, $2, $3, $4, TRUE)
+          `,
+          [section.id, question.id, orderIndex, question.question_group_type]
+        );
+        orderIndex += 1;
+      }
+
+      await tx.query(
+        `
+          UPDATE exam_sections
+          SET completion_status = 'completed',
+              syllabus_locked = TRUE
+          WHERE id = $1
+        `,
+        [section.id]
+      );
+
+      await tx.query('COMMIT');
+    } catch (error) {
+      await tx.query('ROLLBACK');
+      throw error;
+    } finally {
+      tx.release();
+    }
+
+    const sections = await fetchExamSectionsWithBlueprintData(Number(exam.id));
+    const generatedSection = sections.find((item) => Number(item.id) === Number(section.id));
+    res.json(generatedSection);
+  } catch (err) {
+    handleServiceError(res, err, 'Failed to generate exam section questions');
+  }
+};
+
+export const getExamPreview = async (req, res) => {
+  try {
+    if (!req.user?.id || !req.user?.role) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const exam = await getExamByIdForAccess({ examId: req.params.id, user: req.user });
+    const payload = await buildExamPreviewPayload(exam);
+    res.json(payload);
+  } catch (err) {
+    handleServiceError(res, err, 'Failed to load exam preview');
+  }
+};
+
+export const finalizeExamBlueprint = async (req, res) => {
+  try {
+    if (!req.user?.id || !req.user?.role) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const exam = await getExamByIdForAccess({ examId: req.params.id, user: req.user });
+    ensureExamEditable(exam);
+
+    const preview = await buildExamPreviewPayload(exam);
+    if (!preview.all_sections_completed) {
+      throw new AppError('All blueprint sections must be completed before finalizing the exam', 400);
+    }
+
+    const nextStatus = req.body?.status ? requireString(req.body.status, 'status') : exam.status;
+    ensureValidStatus(nextStatus);
+
+    const result = await dbQuery(
+      `
+        UPDATE exams
+        SET status = $1,
+            updated_at = NOW()
+        WHERE id = $2
+        RETURNING *
+      `,
+      [nextStatus, exam.id]
+    );
+
+    const payload = await buildExamPreviewPayload(result.rows[0]);
+    res.json(payload);
+  } catch (err) {
+    handleServiceError(res, err, 'Failed to finalize exam');
   }
 };
 

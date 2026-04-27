@@ -1,5 +1,109 @@
 export type ExamStatus = "draft" | "active" | "completed";
 
+export type BlueprintStatus = "active" | "inactive" | "archived";
+export type QuestionGroupType = "direction" | "similar" | "previous_year" | "reference";
+
+export interface BlueprintSection {
+  id: number;
+  blueprint_id?: number;
+  section_name: string;
+  required_question_count: number;
+  display_order: number;
+}
+
+export interface BlueprintSummary {
+  id: number;
+  client_id?: number | null;
+  school_id?: number | null;
+  name: string;
+  status: BlueprintStatus | string;
+  created_by?: number | null;
+  created_at?: string;
+  updated_at?: string;
+  section_count?: number;
+  total_required_questions?: number;
+  sections: BlueprintSection[];
+}
+
+export interface GeneratedExamQuestion {
+  question_id: number;
+  order_index: number;
+  question_group_type: QuestionGroupType | null;
+  question_type: string;
+  question_text: { html?: string; text?: string } | string | null;
+  options?: unknown;
+  correct_answer?: unknown;
+  solution?: { html?: string; text?: string } | string | null;
+  subject_id?: number | null;
+  chapter_id?: number | null;
+  topic_id?: number | null;
+  difficulty_level?: string | null;
+  status?: string | null;
+}
+
+export interface ExamBuilderSection {
+  id: number;
+  exam_id: number;
+  title: string;
+  order_index?: number | null;
+  instructions?: string | null;
+  marks_per_question?: number | null;
+  negative_marks?: number | null;
+  question_count?: number | null;
+  blueprint_section_id?: number | null;
+  required_question_count?: number | null;
+  selected_subject_id?: number | null;
+  selected_subject_name?: string | null;
+  completion_status?: "pending" | "configured" | "generated" | "completed" | string;
+  syllabus_locked?: boolean;
+  chapter_ids?: number[];
+  topic_ids?: number[];
+  chapters?: Array<{ id: number; name: string; chapter_number?: number }>;
+  topics?: Array<{ id: number; name: string; chapter_id?: number; topic_number?: number }>;
+  question_groups?: Record<QuestionGroupType, GeneratedExamQuestion[]>;
+}
+
+export interface CurriculumOption {
+  id: number;
+  name: string;
+  grade_number?: number | string | null;
+  program_id?: number | null;
+  grade_id?: number | null;
+  subject_id?: number | null;
+  chapter_id?: number | null;
+  topic_number?: number | null;
+  chapter_number?: number | null;
+}
+
+export interface ExamSectionSyllabusOptions {
+  program_id: number;
+  section_id: number;
+  selected_subject_id: number | null;
+  subjects: CurriculumOption[];
+  chapters: CurriculumOption[];
+  topics: CurriculumOption[];
+}
+
+export interface ExamPreviewPayload {
+  exam: ExamSummary & {
+    client_id?: number | null;
+    school_id?: number | null;
+    program_id?: number | null;
+    blueprint_id?: number | null;
+    total_duration_minutes?: number | null;
+    max_attempts?: number | null;
+  };
+  blueprint: BlueprintSummary | null;
+  sections: ExamBuilderSection[];
+  totals: {
+    section_count: number;
+    question_count: number;
+    required_question_count: number;
+    completed_section_count: number;
+  };
+  all_sections_completed: boolean;
+}
+
 export interface ExamSummary {
   id: number | string;
   title: string;
@@ -8,12 +112,16 @@ export interface ExamSummary {
   start_datetime?: string | null;
   end_datetime?: string | null;
   duration_minutes?: number | null;
+  total_duration_minutes?: number | null;
+  max_attempts?: number | null;
   status?: ExamStatus | string | null;
   course_count?: number | null;
   course_names?: string[] | null;
   attempts_count?: number | null;
   created_by_name?: string | null;
   tags?: string[] | null;
+  program_id?: number | null;
+  blueprint_id?: number | null;
 }
 
 export interface ExamFiltersState {
@@ -34,6 +142,8 @@ export interface ExamListResponse {
 export interface ExamCreateFormState {
   title: string;
   description: string;
+  program_id: string;
+  blueprint_id: string;
   total_duration_minutes: string;
   start_datetime: string;
   end_datetime: string;

@@ -5,13 +5,14 @@ import DashboardLayout from "@/components/layout/DashboardLayout";
 import SidebarNav from "@/components/layout/SidebarNav";
 import { getDashboardTheme } from "@/components/layout/dashboardTheme";
 import spectropyLogo from "/logo.png";
-import { RiArrowLeftLine, RiFileList3Line } from "react-icons/ri";
+import { RiArrowLeftLine, RiDraftLine, RiFileList3Line } from "react-icons/ri";
 
 interface ExamShellProps {
   title: string;
   description: string;
   children: React.ReactNode;
   headerAction?: React.ReactNode;
+  backTo?: string;
 }
 
 const DASHBOARD_BY_ROLE: Record<string, string> = {
@@ -27,6 +28,7 @@ export default function ExamShell({
   description,
   children,
   headerAction,
+  backTo,
 }: ExamShellProps) {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -38,7 +40,7 @@ export default function ExamShell({
   const userEmail = user?.email || "";
   const isActive = (path: string) => location.pathname === path;
   const resolvedBackPath =
-    DASHBOARD_BY_ROLE[String(user?.role ?? "")] || "/admin/dashboard";
+    backTo || DASHBOARD_BY_ROLE[String(user?.role ?? "")] || "/admin/dashboard";
   const handleBack = () => {
     navigate(resolvedBackPath);
   };
@@ -50,6 +52,13 @@ export default function ExamShell({
       icon: <RiFileList3Line />,
       active: isActive("/exams"),
       onClick: () => navigate("/exams"),
+    },
+    {
+      key: "blueprints",
+      label: "Blueprints",
+      icon: <RiDraftLine />,
+      active: isActive("/exams/blueprints"),
+      onClick: () => navigate("/exams/blueprints"),
     },
   ];
 

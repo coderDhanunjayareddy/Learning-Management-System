@@ -330,6 +330,32 @@ CREATE POLICY questions_tenant_isolation ON questions
   USING (app_role() = 'super_admin' OR client_id = app_client_id())
   WITH CHECK (app_role() = 'super_admin' OR client_id = app_client_id());
 
+-- BLUEPRINTS
+ALTER TABLE blueprints ENABLE ROW LEVEL SECURITY;
+CREATE POLICY blueprints_tenant_isolation ON blueprints
+  FOR ALL
+  USING (app_role() = 'super_admin' OR client_id = app_client_id())
+  WITH CHECK (app_role() = 'super_admin' OR client_id = app_client_id());
+
+-- BLUEPRINT SECTIONS (scoped by blueprint->client)
+ALTER TABLE blueprint_sections ENABLE ROW LEVEL SECURITY;
+CREATE POLICY blueprint_sections_tenant_isolation ON blueprint_sections
+  FOR ALL
+  USING (
+    app_role() = 'super_admin'
+    OR EXISTS (
+      SELECT 1 FROM blueprints b
+      WHERE b.id = blueprint_id AND b.client_id = app_client_id()
+    )
+  )
+  WITH CHECK (
+    app_role() = 'super_admin'
+    OR EXISTS (
+      SELECT 1 FROM blueprints b
+      WHERE b.id = blueprint_id AND b.client_id = app_client_id()
+    )
+  );
+
 -- EXAMS
 ALTER TABLE exams ENABLE ROW LEVEL SECURITY;
 CREATE POLICY exams_tenant_isolation ON exams
@@ -353,6 +379,52 @@ CREATE POLICY exam_sections_tenant_isolation ON exam_sections
     OR EXISTS (
       SELECT 1 FROM exams e
       WHERE e.id = exam_id AND e.client_id = app_client_id()
+    )
+  );
+
+-- EXAM SECTION CHAPTERS (scoped by exam_section->exam->client)
+ALTER TABLE exam_section_chapters ENABLE ROW LEVEL SECURITY;
+CREATE POLICY exam_section_chapters_tenant_isolation ON exam_section_chapters
+  FOR ALL
+  USING (
+    app_role() = 'super_admin'
+    OR EXISTS (
+      SELECT 1
+      FROM exam_sections es
+      JOIN exams e ON es.exam_id = e.id
+      WHERE es.id = exam_section_id AND e.client_id = app_client_id()
+    )
+  )
+  WITH CHECK (
+    app_role() = 'super_admin'
+    OR EXISTS (
+      SELECT 1
+      FROM exam_sections es
+      JOIN exams e ON es.exam_id = e.id
+      WHERE es.id = exam_section_id AND e.client_id = app_client_id()
+    )
+  );
+
+-- EXAM SECTION TOPICS (scoped by exam_section->exam->client)
+ALTER TABLE exam_section_topics ENABLE ROW LEVEL SECURITY;
+CREATE POLICY exam_section_topics_tenant_isolation ON exam_section_topics
+  FOR ALL
+  USING (
+    app_role() = 'super_admin'
+    OR EXISTS (
+      SELECT 1
+      FROM exam_sections es
+      JOIN exams e ON es.exam_id = e.id
+      WHERE es.id = exam_section_id AND e.client_id = app_client_id()
+    )
+  )
+  WITH CHECK (
+    app_role() = 'super_admin'
+    OR EXISTS (
+      SELECT 1
+      FROM exam_sections es
+      JOIN exams e ON es.exam_id = e.id
+      WHERE es.id = exam_section_id AND e.client_id = app_client_id()
     )
   );
 

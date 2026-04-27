@@ -544,15 +544,26 @@ export default function ExamListPage() {
               <h2 className="text-lg font-semibold text-slate-900">All Exams</h2>
               <p className="text-sm text-slate-500">{total} exams found</p>
             </div>
-            {examPermissions.canCreate && (
-              <button
-                type="button"
-                onClick={() => navigate("/exams/new")}
-                className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
-              >
-                Create Exam
-              </button>
-            )}
+            <div className="flex flex-wrap items-center gap-2">
+              {examPermissions.canCreate && (
+                <button
+                  type="button"
+                  onClick={() => navigate("/exams/blueprints")}
+                  className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Manage Blueprints
+                </button>
+              )}
+              {examPermissions.canCreate && (
+                <button
+                  type="button"
+                  onClick={() => navigate("/exams/new")}
+                  className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+                >
+                  Create Exam
+                </button>
+              )}
+            </div>
           </div>
 
           <details className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
