@@ -20,6 +20,13 @@ const typeLabels: Record<string, string> = {
   comprehensive: "Comprehensive",
 };
 
+const questionGroupTypeLabels: Record<string, string> = {
+  direction: "Direction",
+  similar: "Similar",
+  previous_year: "Previous Year",
+  reference: "Reference",
+};
+
 
 interface QuestionCardProps {
   number: number;
@@ -87,6 +94,11 @@ function QuestionCard({
           </div>
         </div>
         <div className="flex flex-wrap gap-2 text-[11px] text-slate-500">
+          {question.question_group_type ? (
+            <span className="rounded-full bg-slate-50 px-2 py-1">
+              Category: {questionGroupTypeLabels[question.question_group_type] ?? question.question_group_type}
+            </span>
+          ) : null}
           <span className="rounded-full bg-slate-50 px-2 py-1">
             +{question.marks_positive} / -{question.marks_negative}
           </span>

@@ -298,7 +298,7 @@ export default function QuestionBulkUploadPage() {
                         <td className="border border-slate-200 px-2 py-1">-</td>
                         <td className="border border-slate-200 px-2 py-1">-</td>
                         <td className="border border-slate-200 px-2 py-1">-</td>
-                        <td className="border border-slate-200 px-2 py-1">direct question</td>
+                        <td className="border border-slate-200 px-2 py-1">direction</td>
                       </tr>
                       <tr>
                         <td className="border border-slate-200 px-2 py-1">2</td>
@@ -320,7 +320,7 @@ export default function QuestionBulkUploadPage() {
                         <td className="border border-slate-200 px-2 py-1">-</td>
                         <td className="border border-slate-200 px-2 py-1">-</td>
                         <td className="border border-slate-200 px-2 py-1">-</td>
-                        <td className="border border-slate-200 px-2 py-1">similar question</td>
+                        <td className="border border-slate-200 px-2 py-1">similar</td>
                       </tr>
                       <tr>
                         <td className="border border-slate-200 px-2 py-1">3</td>
@@ -344,7 +344,7 @@ export default function QuestionBulkUploadPage() {
                         <td className="border border-slate-200 px-2 py-1">P1</td>
                         <td className="border border-slate-200 px-2 py-1">Rainforest Reading</td>
                         <td className="border border-slate-200 px-2 py-1">Rainforests support rich biodiversity and help regulate climate.</td>
-                        <td className="border border-slate-200 px-2 py-1">passage based</td>
+                        <td className="border border-slate-200 px-2 py-1">reference</td>
                       </tr>
                       <tr>
                         <td className="border border-slate-200 px-2 py-1">4</td>
@@ -371,7 +371,7 @@ export default function QuestionBulkUploadPage() {
                         <td className="border border-slate-200 px-2 py-1">-</td>
                         <td className="border border-slate-200 px-2 py-1">-</td>
                         <td className="border border-slate-200 px-2 py-1">-</td>
-                        <td className="border border-slate-200 px-2 py-1">image only</td>
+                        <td className="border border-slate-200 px-2 py-1">direction</td>
                       </tr>
                     </tbody>
                   </table>

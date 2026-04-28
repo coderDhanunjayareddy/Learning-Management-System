@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import pool from '../config/db.js';
 import {
   approveQuestion,
+  archiveQuestionFolderQuestions,
   bulkUploadQuestions,
   createQuestion,
   getQuestionById,
@@ -53,6 +54,11 @@ const createMockDb = () => {
     chapters: [
       { id: 2001, subject_id: 1001, client_id: 101, name: 'Thermodynamics' },
       { id: 2002, subject_id: 1002, client_id: 202, name: 'Thermodynamics' },
+    ],
+    questionFolders: [
+      { id: 701, client_id: 101, school_id: null, is_active: true, name: 'Tenant A Folder' },
+      { id: 702, client_id: 101, school_id: null, is_active: true, name: 'Tenant A Folder Two' },
+      { id: 801, client_id: 202, school_id: null, is_active: true, name: 'Tenant B Folder' },
     ],
     comprehensionPassages: [
       {
@@ -112,6 +118,12 @@ const createMockDb = () => {
       rows = rows.filter((question) => question.status !== 'archived');
     }
 
+    const folderMatch = normalized.match(/q\.folder_id = \$(\d+)/);
+    if (folderMatch) {
+      const folderId = Number(params[Number(folderMatch[1]) - 1]);
+      rows = rows.filter((question) => Number(question.folder_id) === folderId);
+    }
+
     const searchMatch = normalized.match(/plainto_tsquery\('simple', \$(\d+)\)/);
     if (searchMatch) {
       const term = String(params[Number(searchMatch[1]) - 1] ?? '').trim().toLowerCase();
@@ -166,42 +178,13 @@ const createMockDb = () => {
             { column_name: 'comprehension_passage' },
             { column_name: 'comprehension_questions' },
             { column_name: 'comprehension_passage_id' },
+            { column_name: 'folder_id' },
           ],
         };
       }
 
       if (normalized.includes("from information_schema.tables") && normalized.includes("table_name = 'comprehension_passages'")) {
         return { rows: [{ '?column?': 1 }] };
-      }
-
-      if (normalized.startsWith('select id from programs where id = $1')) {
-        const program = data.programs.find((item) => item.id === Number(params[0]));
-        if (!program) return { rows: [] };
-        if (params[1] !== undefined && Number(program.client_id) !== Number(params[1])) return { rows: [] };
-        return { rows: [{ id: program.id }] };
-      }
-
-      if (
-        normalized.includes('select g.id, g.program_id') &&
-        normalized.includes('from grades g') &&
-        normalized.includes('join programs p on p.id = g.program_id') &&
-        normalized.includes('where g.grade_number = $1')
-      ) {
-        return { rows: [] };
-      }
-
-      if (
-        normalized.includes('select g.id, g.program_id') &&
-        normalized.includes('from grades g') &&
-        normalized.includes('join programs p on p.id = g.program_id') &&
-        normalized.includes('where g.id = $1')
-      ) {
-        const grade = data.grades.find((item) => item.id === Number(params[0]));
-        if (!grade) return { rows: [] };
-        const program = data.programs.find((item) => item.id === Number(grade.program_id));
-        if (!program) return { rows: [] };
-        if (params[1] !== undefined && Number(program.client_id) !== Number(params[1])) return { rows: [] };
-        return { rows: [{ id: grade.id, program_id: grade.program_id }] };
       }
 
       if (normalized.includes('from subjects s left join grades g on g.id = s.grade_id where s.id = $1')) {
@@ -237,6 +220,30 @@ const createMockDb = () => {
 
       if (normalized.startsWith('select school_id from school_memberships where user_id = $1')) {
         return { rows: [] };
+      }
+
+      if (normalized.startsWith('select id, client_id, school_id, is_active from question_folders where id = $1 limit 1')) {
+        const folder = data.questionFolders.find((item) => Number(item.id) === Number(params[0]));
+        return { rows: folder ? [{ ...folder }] : [] };
+      }
+
+      if (
+        normalized.startsWith("update questions set status = 'archived', updated_at = now()") &&
+        normalized.includes('where folder_id = $1')
+      ) {
+        const folderId = Number(params[0]);
+        const clientId = params[1] == null ? null : Number(params[1]);
+        const archivedRows = [];
+        data.questions.forEach((question) => {
+          const matchesFolder = Number(question.folder_id) === folderId;
+          const matchesClient = clientId == null || Number(question.client_id) === clientId;
+          if (matchesFolder && matchesClient && question.status !== 'archived') {
+            question.status = 'archived';
+            question.updated_at = new Date(Date.UTC(2026, 2, 25, 12, 30, 0)).toISOString();
+            archivedRows.push({ id: question.id });
+          }
+        });
+        return { rows: archivedRows };
       }
 
       if (normalized.startsWith('insert into questions (')) {
@@ -664,6 +671,55 @@ test('Question scoring_mode persists on create and update', async (t) => {
   assert.equal(updateRes.body.scoring_mode, 'mixed');
 });
 
+test('Question category persists on create and update', async (t) => {
+  const originalQuery = pool.query.bind(pool);
+  const mockDb = createMockDb();
+  pool.query = mockDb.query.bind(mockDb);
+  t.after(() => {
+    pool.query = originalQuery;
+  });
+
+  const teacherTenantA = { id: 11, role: 'teacher', client_id: 101 };
+
+  const createRes = makeRes();
+  await createQuestion(
+    {
+      user: teacherTenantA,
+      body: {
+        question_type: 'mcq_single',
+        question_text: { html: '<p>Find the referenced direction</p>' },
+        options: [
+          { id: 'opt-1', text: 'North' },
+          { id: 'opt-2', text: 'South' },
+        ],
+        correct_answer: { answer_ids: ['opt-1'] },
+        category: 'direct question',
+        subject_id: 1001,
+        chapter_id: 2001,
+      },
+    },
+    createRes
+  );
+
+  assert.equal(createRes.statusCode, 201);
+  assert.equal(createRes.body.category, 'direct question');
+
+  const updateRes = makeRes();
+  await updateQuestion(
+    {
+      user: teacherTenantA,
+      params: { id: String(createRes.body.id) },
+      body: {
+        category: 'reference question',
+      },
+    },
+    updateRes
+  );
+
+  assert.equal(updateRes.statusCode, 200);
+  assert.equal(updateRes.body.category, 'reference question');
+});
+
 test('Question can link to a comprehension passage and returns passage summary', async (t) => {
   const originalQuery = pool.query.bind(pool);
   const originalConnect = pool.connect.bind(pool);
@@ -763,4 +819,258 @@ test('Bulk upload can create one linked passage and reuse it across multiple chi
   const linkedPassageId = createdPassages[0].id;
   assert.equal(bulkRes.body.data[0].comprehension_passage_id, linkedPassageId);
   assert.equal(bulkRes.body.data[1].comprehension_passage_id, linkedPassageId);
+});
+
+test('Bulk upload maps Category only to category', async (t) => {
+  const originalQuery = pool.query.bind(pool);
+  const originalConnect = pool.connect.bind(pool);
+  const mockDb = createMockDb();
+  pool.query = mockDb.query.bind(mockDb);
+  pool.connect = mockDb.connect.bind(mockDb);
+  t.after(() => {
+    pool.query = originalQuery;
+    pool.connect = originalConnect;
+  });
+
+  const teacherTenantA = { id: 11, role: 'teacher', client_id: 101 };
+
+  const bulkReq = {
+    user: teacherTenantA,
+    body: {},
+    file: {
+      originalname: 'question-group-type.csv',
+      buffer: Buffer.from(
+        [
+          'Type,Question,Options,Correct Answer,Tags,Category,Program,Grade,Subject,Chapter',
+          'mcq_single,Which value is grouped?,A;B;C;D,A,physics,direction,401,501,1001,2001',
+        ].join('\n'),
+        'utf8'
+      ),
+    },
+  };
+  const bulkRes = makeRes();
+
+  await bulkUploadQuestions(bulkReq, bulkRes);
+
+  assert.equal(bulkRes.statusCode, 200);
+  assert.equal(bulkRes.body.inserted, 1);
+  assert.equal(bulkRes.body.data[0].category, 'direction');
+  assert.deepEqual(bulkRes.body.data[0].exam_tags, ['physics']);
+});
+
+test('Bulk upload maps Marks- into marks_negative', async (t) => {
+  const originalQuery = pool.query.bind(pool);
+  const originalConnect = pool.connect.bind(pool);
+  const mockDb = createMockDb();
+  pool.query = mockDb.query.bind(mockDb);
+  pool.connect = mockDb.connect.bind(mockDb);
+  t.after(() => {
+    pool.query = originalQuery;
+    pool.connect = originalConnect;
+  });
+
+  const teacherTenantA = { id: 11, role: 'teacher', client_id: 101 };
+
+  const bulkReq = {
+    user: teacherTenantA,
+    body: {},
+    file: {
+      originalname: 'marks-negative.csv',
+      buffer: Buffer.from(
+        [
+          'Type,Question,Options,Correct Answer,Marks+,Marks-,Program,Grade,Subject,Chapter',
+          'mcq_single,Which value is negative?,A;B;C;D,A,4,1,401,501,1001,2001',
+        ].join('\n'),
+        'utf8'
+      ),
+    },
+  };
+  const bulkRes = makeRes();
+
+  await bulkUploadQuestions(bulkReq, bulkRes);
+
+  assert.equal(bulkRes.statusCode, 200);
+  assert.equal(bulkRes.body.inserted, 1);
+  assert.equal(Number(bulkRes.body.data[0].marks_positive), 4);
+  assert.equal(Number(bulkRes.body.data[0].marks_negative), 1);
+});
+
+test('Question create and list support folder_id scoping', async (t) => {
+  const originalQuery = pool.query.bind(pool);
+  const mockDb = createMockDb();
+  pool.query = mockDb.query.bind(mockDb);
+  t.after(() => {
+    pool.query = originalQuery;
+  });
+
+  const teacherTenantA = { id: 11, role: 'teacher', client_id: 101 };
+
+  const folderCreateRes = makeRes();
+  await createQuestion(
+    {
+      user: teacherTenantA,
+      body: {
+        question_type: 'mcq_single',
+        question_text: { html: '<p>Folder scoped question</p>' },
+        options: [
+          { id: 'opt-1', text: 'A' },
+          { id: 'opt-2', text: 'B' },
+        ],
+        correct_answer: { answer_ids: ['opt-1'] },
+        folder_id: 701,
+        subject_id: 1001,
+        chapter_id: 2001,
+      },
+    },
+    folderCreateRes
+  );
+
+  assert.equal(folderCreateRes.statusCode, 201);
+  assert.equal(folderCreateRes.body.folder_id, 701);
+
+  const otherCreateRes = makeRes();
+  await createQuestion(
+    {
+      user: teacherTenantA,
+      body: {
+        question_type: 'mcq_single',
+        question_text: { html: '<p>Different folder question</p>' },
+        options: [
+          { id: 'opt-1', text: 'A' },
+          { id: 'opt-2', text: 'B' },
+        ],
+        correct_answer: { answer_ids: ['opt-1'] },
+        folder_id: 702,
+        subject_id: 1001,
+        chapter_id: 2001,
+      },
+    },
+    otherCreateRes
+  );
+
+  assert.equal(otherCreateRes.statusCode, 201);
+  assert.equal(otherCreateRes.body.folder_id, 702);
+
+  const listRes = makeRes();
+  await listQuestions(
+    {
+      user: teacherTenantA,
+      query: { folder_id: '701', page: '1', page_size: '20' },
+    },
+    listRes
+  );
+
+  assert.equal(listRes.statusCode, 200);
+  assert.equal(listRes.body.data.length, 1);
+  assert.equal(listRes.body.data[0].folder_id, 701);
+});
+
+test('Folder question bulk delete archives all questions in that folder', async (t) => {
+  const originalQuery = pool.query.bind(pool);
+  const mockDb = createMockDb();
+  pool.query = mockDb.query.bind(mockDb);
+  t.after(() => {
+    pool.query = originalQuery;
+  });
+
+  const adminTenantA = { id: 31, role: 'client_admin', client_id: 101 };
+
+  const firstCreateRes = makeRes();
+  await createQuestion(
+    {
+      user: adminTenantA,
+      body: {
+        question_type: 'mcq_single',
+        question_text: { html: '<p>Folder delete one</p>' },
+        options: [
+          { id: 'opt-1', text: 'A' },
+          { id: 'opt-2', text: 'B' },
+        ],
+        correct_answer: { answer_ids: ['opt-1'] },
+        folder_id: 701,
+        subject_id: 1001,
+        chapter_id: 2001,
+        status: 'approved',
+      },
+    },
+    firstCreateRes
+  );
+
+  const secondCreateRes = makeRes();
+  await createQuestion(
+    {
+      user: adminTenantA,
+      body: {
+        question_type: 'mcq_single',
+        question_text: { html: '<p>Folder delete two</p>' },
+        options: [
+          { id: 'opt-1', text: 'A' },
+          { id: 'opt-2', text: 'B' },
+        ],
+        correct_answer: { answer_ids: ['opt-1'] },
+        folder_id: 701,
+        subject_id: 1001,
+        chapter_id: 2001,
+        status: 'approved',
+      },
+    },
+    secondCreateRes
+  );
+
+  const thirdCreateRes = makeRes();
+  await createQuestion(
+    {
+      user: adminTenantA,
+      body: {
+        question_type: 'mcq_single',
+        question_text: { html: '<p>Keep this folder question</p>' },
+        options: [
+          { id: 'opt-1', text: 'A' },
+          { id: 'opt-2', text: 'B' },
+        ],
+        correct_answer: { answer_ids: ['opt-1'] },
+        folder_id: 702,
+        subject_id: 1001,
+        chapter_id: 2001,
+        status: 'approved',
+      },
+    },
+    thirdCreateRes
+  );
+
+  const deleteRes = makeRes();
+  await archiveQuestionFolderQuestions(
+    {
+      user: adminTenantA,
+      params: { id: '701' },
+    },
+    deleteRes
+  );
+
+  assert.equal(deleteRes.statusCode, 200);
+  assert.equal(deleteRes.body.archived, 2);
+
+  const listDeletedFolderRes = makeRes();
+  await listQuestions(
+    {
+      user: adminTenantA,
+      query: { folder_id: '701', page: '1', page_size: '20' },
+    },
+    listDeletedFolderRes
+  );
+
+  assert.equal(listDeletedFolderRes.statusCode, 200);
+  assert.equal(listDeletedFolderRes.body.data.length, 0);
+
+  const listOtherFolderRes = makeRes();
+  await listQuestions(
+    {
+      user: adminTenantA,
+      query: { folder_id: '702', page: '1', page_size: '20' },
+    },
+    listOtherFolderRes
+  );
+
+  assert.equal(listOtherFolderRes.statusCode, 200);
+  assert.equal(listOtherFolderRes.body.data.length, 1);
 });

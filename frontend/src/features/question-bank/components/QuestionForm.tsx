@@ -8,6 +8,7 @@ import type {
   MatchFollowingOptions,
   MatchFollowingPair,
   Question,
+  QuestionGroupType,
   QuestionOption,
   QuestionType,
   RichTextValue,
@@ -31,6 +32,19 @@ interface QuestionFormProps {
 }
 
 type ComprehensionMode = "new" | "existing";
+
+const QUESTION_GROUP_TYPE_OPTIONS: Array<{ value: QuestionGroupType; label: string }> = [
+  { value: "direction", label: "Direction" },
+  { value: "similar", label: "Similar" },
+  { value: "previous_year", label: "Previous Year" },
+  { value: "reference", label: "Reference" },
+];
+
+const normalizeCategorySelection = (category: Question["category"] | undefined): QuestionGroupType | "" => {
+  if (typeof category !== "string") return "";
+  const normalized = category.trim();
+  return QUESTION_GROUP_TYPE_OPTIONS.some((option) => option.value === normalized) ? (normalized as QuestionGroupType) : "";
+};
 
 const makeId = () => `opt-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -185,6 +199,7 @@ export default function QuestionForm({
   const [subjectId, setSubjectId] = useState("");
   const [chapterId, setChapterId] = useState("");
   const [topicId, setTopicId] = useState("");
+  const [questionGroupType, setQuestionGroupType] = useState<Question["question_group_type"] | "">("");
   const [difficulty, setDifficulty] = useState<Question["difficulty_level"]>("easy");
   const [marksPositive, setMarksPositive] = useState(4);
   const [marksNegative, setMarksNegative] = useState(1);
@@ -496,6 +511,9 @@ export default function QuestionForm({
       setSubjectId(initialQuestion.subject_id ? String(initialQuestion.subject_id) : "");
       setChapterId(initialQuestion.chapter_id ? String(initialQuestion.chapter_id) : "");
       setTopicId(initialQuestion.topic_id ? String(initialQuestion.topic_id) : "");
+      setQuestionGroupType(
+        normalizeCategorySelection(initialQuestion.category) || initialQuestion.question_group_type || ""
+      );
       setDifficulty(initialQuestion.difficulty_level);
       setMarksPositive(initialQuestion.marks_positive);
       setMarksNegative(initialQuestion.marks_negative);
@@ -528,6 +546,7 @@ export default function QuestionForm({
     setSubjectId("");
     setChapterId("");
     setTopicId("");
+    setQuestionGroupType("");
     setDifficulty("easy");
     setMarksPositive(4);
     setMarksNegative(1);
@@ -833,6 +852,7 @@ export default function QuestionForm({
           scoring_mode: scoringMode,
           comprehension_passage_id: resolvedComprehensionPassageId,
           ...scopePayload,
+          category: questionGroupType || null,
           difficulty_level: difficulty,
           marks_positive: Number(marksPositive) || 0,
           marks_negative: Number(marksNegative) || 0,
@@ -865,7 +885,7 @@ export default function QuestionForm({
   if (!open) return null;
   const formContent = (
     <form onSubmit={handleSave} className="space-y-4">
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-3">
         <div>
           <label className="text-xs font-semibold text-slate-500">Question Type</label>
           <select
@@ -890,6 +910,21 @@ export default function QuestionForm({
             <option value="easy">Easy</option>
             <option value="medium">Medium</option>
             <option value="hard">Hard</option>
+          </select>
+        </div>
+        <div>
+          <label className="text-xs font-semibold text-slate-500">Category</label>
+          <select
+            value={questionGroupType ?? ""}
+            onChange={(event) => setQuestionGroupType((event.target.value as QuestionGroupType) || "")}
+            className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+          >
+            <option value="">Select</option>
+            {QUESTION_GROUP_TYPE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
           </select>
         </div>
       </div>

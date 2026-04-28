@@ -72,7 +72,16 @@ export default function QuestionFoldersPage() {
           {folders.map((folder) => (
             <div
               key={folder.id}
-              className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+              role="button"
+              tabIndex={0}
+              onClick={() => navigate(`/question-bank/folders/${folder.id}`)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  navigate(`/question-bank/folders/${folder.id}`);
+                }
+              }}
+              className="cursor-pointer rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-slate-300 hover:shadow-md"
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -85,13 +94,28 @@ export default function QuestionFoldersPage() {
               </div>
               <div className="mt-4 flex flex-wrap gap-2">
                 <button
-                  onClick={() => navigate(`/question-bank/bulk-upload?folderId=${folder.id}`)}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    navigate(`/question-bank/folders/${folder.id}`);
+                  }}
+                  className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800"
+                >
+                  Open Folder
+                </button>
+                <button
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    navigate(`/question-bank/bulk-upload?folderId=${folder.id}`);
+                  }}
                   className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
                 >
                   Upload to Folder
                 </button>
                 <button
-                  onClick={() => navigate(`/question-bank/folders/${folder.id}/edit`)}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    navigate(`/question-bank/folders/${folder.id}/edit`);
+                  }}
                   className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
                 >
                   Edit

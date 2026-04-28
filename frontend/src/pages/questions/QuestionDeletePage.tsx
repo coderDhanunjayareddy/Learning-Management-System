@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import api from "@/lib/api";
 import QuestionBankLayout from "@/features/question-bank/components/QuestionBankLayout";
 import QuestionPreview from "@/features/question-bank/components/QuestionPreview";
@@ -35,9 +35,13 @@ const normalizeQuestion = (item: any): Question => ({
   comprehension: item.comprehension ?? null,
   comprehension_passage: normalizeQuestionText(item.comprehension_passage),
   comprehension_questions: item.comprehension_questions ?? [],
+  program_id: item.program_id ?? null,
+  grade_id: item.grade_id ?? null,
   subject_id: item.subject_id ?? null,
   chapter_id: item.chapter_id ?? null,
   topic_id: item.topic_id ?? null,
+  folder_id: item.folder_id ?? null,
+  question_group_type: item.question_group_type ?? null,
   difficulty_level: item.difficulty_level ?? "easy",
   marks_positive: Number(item.marks_positive ?? 4),
   marks_negative: Number(item.marks_negative ?? 1),
@@ -52,6 +56,12 @@ const normalizeQuestion = (item: any): Question => ({
 export default function QuestionDeletePage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const folderId = searchParams.get("folderId") ?? "";
+  const returnPath = useMemo(
+    () => (folderId ? `/question-bank/folders/${folderId}` : "/question-bank"),
+    [folderId]
+  );
   const [question, setQuestion] = useState<Question | null>(null);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
@@ -78,7 +88,7 @@ export default function QuestionDeletePage() {
     setDeleting(true);
     try {
       await api.delete(`/questions/${id}`);
-      navigate("/question-bank", { state: { deletedQuestionId: id } });
+      navigate(returnPath, { state: { deletedQuestionId: id } });
     } catch {
       alert("Failed to delete question.");
       return;
@@ -93,7 +103,7 @@ export default function QuestionDeletePage() {
       description="This action cannot be undone."
       actions={
         <button
-          onClick={() => navigate("/question-bank")}
+          onClick={() => navigate(returnPath)}
           className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
         >
           Cancel
@@ -120,7 +130,7 @@ export default function QuestionDeletePage() {
                 {deleting ? "Deleting..." : "Yes, delete"}
               </button>
               <button
-                onClick={() => navigate(`/question-bank`)}
+                onClick={() => navigate(returnPath)}
                 className="rounded-lg border border-rose-200 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-100"
               >
                 Keep Question

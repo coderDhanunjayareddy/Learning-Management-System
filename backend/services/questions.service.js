@@ -256,6 +256,23 @@ const buildQuestionWhere = async ({ user, query, includeArchived = false }) => {
     conditions.push(`q.difficulty_level = ${addParam(difficulty)}`);
   }
 
+  if (query.folder_id !== undefined) {
+    const schemaSupport = await getQuestionSchemaSupport();
+    if (!schemaSupport.hasFolderId) {
+      throw new AppError('This database does not support folder assignment on questions yet', 400);
+    }
+    const folderId = parseNullableInt(query.folder_id, 'folder_id');
+    if (folderId) {
+      const scopedFolderId = await ensureBulkFolderAccess({
+        folderId,
+        user,
+        role,
+        clientId,
+      });
+      conditions.push(`q.folder_id = ${addParam(scopedFolderId)}`);
+    }
+  }
+
   const createdBy = parseNullableInt(query.created_by, 'created_by');
   if (createdBy) conditions.push(`q.created_by = ${addParam(createdBy)}`);
 
@@ -491,6 +508,13 @@ const BULK_CSV_HEADER_ALIASES = {
   'school id': 'school_id',
   difficulty: 'difficulty_level',
   'difficulty level': 'difficulty_level',
+  'marks+': 'marks_positive',
+  marks_positive: 'marks_positive',
+  marksplus: 'marks_positive',
+  'marks-': 'marks_negative',
+  marks_: 'marks_negative',
+  marks_negative: 'marks_negative',
+  marksminus: 'marks_negative',
   tags: 'exam_tags',
   'exam tags': 'exam_tags',
   category: 'category',
@@ -558,7 +582,40 @@ const getImageMimeType = (filename = '') => {
   if (ext === 'gif') return 'image/gif';
   if (ext === 'svg') return 'image/svg+xml';
   if (ext === 'webp') return 'image/webp';
-  return 'application/octet-stream';
+  return '';
+};
+
+const detectImageMimeTypeFromBuffer = (buffer, filename = '') => {
+  const extensionMimeType = getImageMimeType(filename);
+  if (extensionMimeType) return extensionMimeType;
+  if (!buffer || buffer.length < 4) return 'image/png';
+
+  if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) {
+    return 'image/png';
+  }
+
+  if (buffer[0] === 0xff && buffer[1] === 0xd8) {
+    return 'image/jpeg';
+  }
+
+  if (buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46) {
+    return 'image/gif';
+  }
+
+  if (
+    buffer.length >= 12 &&
+    buffer.subarray(0, 4).toString('ascii') === 'RIFF' &&
+    buffer.subarray(8, 12).toString('ascii') === 'WEBP'
+  ) {
+    return 'image/webp';
+  }
+
+  const sniff = buffer.subarray(0, Math.min(buffer.length, 256)).toString('utf8').trimStart();
+  if (sniff.startsWith('<svg') || sniff.startsWith('<?xml')) {
+    return 'image/svg+xml';
+  }
+
+  return 'image/png';
 };
 
 const normalizeBulkDefaults = (source) => {
@@ -619,6 +676,8 @@ const normalizeBulkDefaults = (source) => {
 
   if (source?.category !== undefined && source.category !== '') {
     defaults.category = source.category;
+  } else if (source?.catagory !== undefined && source.catagory !== '') {
+    defaults.category = source.catagory;
   }
 
   if (source?.status !== undefined && source.status !== '') {
@@ -823,6 +882,7 @@ const BULK_DOCX_TABLE_HEADER_ALIASES = {
   marks_positive: 'marks_positive',
   marksplus: 'marks_positive',
   'marks-': 'marks_negative',
+  marks_: 'marks_negative',
   marks_negative: 'marks_negative',
   marksminus: 'marks_negative',
   tags: 'exam_tags',
@@ -1154,9 +1214,10 @@ const extractParagraphContent = (paragraphXml, relationshipMap, zip) => {
     const normalizedTarget = target.replace(/^\/+/, '');
     const imageEntry = zip.getEntry(`word/${normalizedTarget}`);
     if (!imageEntry) continue;
-    const base64 = imageEntry.getData().toString('base64');
+    const imageBuffer = imageEntry.getData();
+    const base64 = imageBuffer.toString('base64');
     const filename = normalizedTarget.split('/').pop() || 'image';
-    const mimeType = getImageMimeType(filename);
+    const mimeType = detectImageMimeTypeFromBuffer(imageBuffer, filename);
     inlineTokens.push(`<img src="data:${mimeType};base64,${base64}" alt="${escapeHtml(filename)}" />`);
   }
 
@@ -2597,6 +2658,21 @@ const buildQuestionInsertPayload = async ({ input, user, role, clientId, queryRu
   }
 
   const schemaSupport = await getQuestionSchemaSupport();
+  let folderId = null;
+  if (input.folder_id !== undefined) {
+    if (!schemaSupport.hasFolderId) {
+      throw new AppError('This database does not support folder assignment on questions yet', 400);
+    }
+    const parsedFolderId = parseNullableInt(input.folder_id, 'folder_id');
+    if (parsedFolderId) {
+      folderId = await ensureBulkFolderAccess({
+        folderId: parsedFolderId,
+        user,
+        role,
+        clientId,
+      });
+    }
+  }
   let comprehensionPassageId = null;
   if (input.comprehension_passage_id !== undefined && input.comprehension_passage_id !== null && input.comprehension_passage_id !== '') {
     if (!schemaSupport.hasComprehensionPassageId || !schemaSupport.hasComprehensionPassageTable) {
@@ -2624,13 +2700,14 @@ const buildQuestionInsertPayload = async ({ input, user, role, clientId, queryRu
     solution: input.solution ?? null,
     solution_video_url: input.solution_video_url ?? null,
     comprehension_passage_id: comprehensionPassageId,
+    folder_id: folderId,
     subject_id: subjectId,
     chapter_id: chapterId,
     topic_id: topicId,
     scoring_mode: scoringModeInput,
     difficulty_level: difficulty,
-    exam_tags: parseExamTagsInput(input.exam_tags ?? input.tags),
     category: parseCategoryInput(input.category ?? input.catagory),
+    exam_tags: parseExamTagsInput(input.exam_tags ?? input.tags),
     marks_positive: parseNumberField(input.marks_positive, 'marks_positive', 4),
     marks_negative: parseNumberField(input.marks_negative, 'marks_negative', 0),
     status,
@@ -2653,7 +2730,7 @@ const getQuestionSchemaSupport = async () => {
       AND table_name = 'questions'
       AND column_name = ANY($1::text[])
     `,
-    [['comprehension_passage', 'comprehension_questions', 'comprehension_passage_id']]
+    [['comprehension_passage', 'comprehension_questions', 'comprehension_passage_id', 'folder_id']]
   );
 
   const tableResult = await dbQuery(
@@ -2672,6 +2749,7 @@ const getQuestionSchemaSupport = async () => {
     hasComprehensionPassage: existingColumns.has('comprehension_passage'),
     hasComprehensionQuestions: existingColumns.has('comprehension_questions'),
     hasComprehensionPassageId: existingColumns.has('comprehension_passage_id'),
+    hasFolderId: existingColumns.has('folder_id'),
   };
   return questionSchemaSupportCache;
 };
@@ -2875,6 +2953,10 @@ const insertQuestion = async (payload, queryRunner = dbQuery) => {
   if (schemaSupport.hasComprehensionPassageId) {
     columns.push('comprehension_passage_id');
     values.push(payload.comprehension_passage_id);
+  }
+  if (schemaSupport.hasFolderId) {
+    columns.push('folder_id');
+    values.push(payload.folder_id ?? null);
   }
 
   columns.push(
@@ -3170,6 +3252,21 @@ export const updateQuestion = async (req, res) => {
         throw new AppError('Invalid scoring_mode', 400);
       }
       updates.scoring_mode = req.body.scoring_mode;
+    }
+
+    if (req.body.folder_id !== undefined) {
+      if (!schemaSupport.hasFolderId) {
+        throw new AppError('This database does not support folder assignment on questions yet', 400);
+      }
+      const folderId = parseNullableInt(req.body.folder_id, 'folder_id');
+      updates.folder_id = folderId
+        ? await ensureBulkFolderAccess({
+          folderId,
+          user: req.user,
+          role,
+          clientId,
+        })
+        : null;
     }
 
     if (req.body.exam_tags !== undefined) {
@@ -3989,6 +4086,52 @@ export const updateQuestionFolder = async (req, res) => {
   }
 };
 
+export const archiveQuestionFolderQuestions = async (req, res) => {
+  try {
+    if (!req.user?.id || !req.user?.role) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const role = req.user.role;
+    if (isTeacher(role)) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const folderId = parseRequiredInt(req.params.id, 'id');
+    const clientId = ensureClientScope(req.user.client_id ?? null, role);
+    const scopedFolderId = await ensureBulkFolderAccess({
+      folderId,
+      user: req.user,
+      role,
+      clientId,
+    });
+
+    const schemaSupport = await getQuestionSchemaSupport();
+    if (!schemaSupport.hasFolderId) {
+      throw new AppError('This database does not support folder assignment on questions yet', 400);
+    }
+
+    const result = await dbQuery(
+      `
+      UPDATE questions
+      SET status = 'archived', updated_at = NOW()
+      WHERE folder_id = $1
+        AND status <> 'archived'
+        AND ($2::int IS NULL OR client_id = $2)
+      RETURNING id
+      `,
+      [scopedFolderId, clientId]
+    );
+
+    res.json({
+      folder_id: scopedFolderId,
+      archived: result.rows.length,
+    });
+  } catch (err) {
+    handleServiceError(res, err, 'Failed to delete folder questions');
+  }
+};
+
 const buildTemplateRow = (cells) =>
   new TableRow({
     children: cells.map(
@@ -4500,7 +4643,7 @@ const buildConverterTemplateBuffer = async (rows) => {
       passageKey,
       passageTitle,
       passageContent,
-      category,
+      questionGroupType,
     ] = values;
 
     return new TableRow({
@@ -4524,7 +4667,7 @@ const buildConverterTemplateBuffer = async (rows) => {
         buildPlainCell(passageKey),
         buildRichCell(passageTitle),
         buildRichCell(passageContent),
-        buildPlainCell(category),
+        buildPlainCell(questionGroupType),
       ],
     });
   });
@@ -4741,7 +4884,12 @@ const prepareBulkInsertPayloads = async ({
       });
       preparedRows.push({ rowNumber, payload });
     } catch (err) {
-      const message = err instanceof AppError ? err.message : 'Failed to prepare question for insert';
+      const message =
+        err instanceof AppError
+          ? err.message
+          : err instanceof Error && err.message
+            ? err.message
+            : 'Failed to prepare question for insert';
       errors.push({
         row: rowNumber,
         message: `Row ${rowNumber}: ${message}`,
@@ -4794,7 +4942,12 @@ const executeAtomicBulkInsert = async ({
         }
         inserted.push(created);
       } catch (err) {
-        const message = err instanceof AppError ? err.message : 'Failed to insert question';
+        const message =
+          err instanceof AppError
+            ? err.message
+            : err instanceof Error && err.message
+              ? err.message
+              : 'Failed to insert question';
         await client.query('ROLLBACK');
         return {
           ok: false,

@@ -19,6 +19,7 @@ import {
   getQuestionFolderById,
   createQuestionFolder,
   updateQuestionFolder,
+  archiveQuestionFolderQuestions,
 } from '../controllers/questions.controller.js';
 import { authenticateToken, requireRole, attachClientContext, loadPermissions, checkPermission } from '../middleware/auth.js';
 import multer from 'multer';
@@ -48,6 +49,7 @@ router.get('/question-folders', checkPermission('questions.read'), listQuestionF
 router.get('/question-folders/:id', checkPermission('questions.read'), getQuestionFolderById);
 router.post('/question-folders', checkPermission('questions.create'), createQuestionFolder);
 router.patch('/question-folders/:id', checkPermission('questions.create'), updateQuestionFolder);
+router.delete('/question-folders/:id/questions', checkPermission('questions.delete'), archiveQuestionFolderQuestions);
 
 router.get('/comprehension-passages', checkPermission('questions.read'), listComprehensionPassages);
 router.get('/comprehension-passages/:id', checkPermission('questions.read'), getComprehensionPassageById);

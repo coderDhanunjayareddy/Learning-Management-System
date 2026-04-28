@@ -110,6 +110,8 @@ const normalizeQuestions = (items: any[]): Question[] =>
     subject_id: item.subject_id ?? null,
     chapter_id: item.chapter_id ?? null,
     topic_id: item.topic_id ?? null,
+    folder_id: item.folder_id ?? null,
+    question_group_type: item.question_group_type ?? null,
     difficulty_level: item.difficulty_level ?? "easy",
     marks_positive: Number(item.marks_positive ?? 4),
     marks_negative: Number(item.marks_negative ?? 1),
@@ -134,7 +136,13 @@ const sortByIdAsc = (items: Question[]) => {
   });
 };
 
-export default function QuestionBankList({ filtersPlacement = "sidebar" }: { filtersPlacement?: "content" | "sidebar" }) {
+export default function QuestionBankList({
+  filtersPlacement = "sidebar",
+  folderId = null,
+}: {
+  filtersPlacement?: "content" | "sidebar";
+  folderId?: string | number | null;
+}) {
   const { user, token } = useAuth();
   const permissions = getQuestionPermissions(user);
   const navigate = useNavigate();
@@ -159,6 +167,7 @@ export default function QuestionBankList({ filtersPlacement = "sidebar" }: { fil
     topicId: "",
     difficulty: "",
     type: "",
+    questionGroupType: "",
     status: "",
   });
 
@@ -224,7 +233,11 @@ export default function QuestionBankList({ filtersPlacement = "sidebar" }: { fil
         if (filters.topicId) params.topic_id = filters.topicId;
         if (filters.difficulty) params.difficulty_level = filters.difficulty;
         if (filters.type) params.question_type = filters.type;
+        if (filters.questionGroupType) params.question_group_type = filters.questionGroupType;
         if (filters.status) params.status = filters.status;
+        if (folderId !== null && folderId !== undefined && String(folderId).trim() !== "") {
+          params.folder_id = String(folderId);
+        }
 
         const res = await api.get("/questions", {
           params,
@@ -247,7 +260,7 @@ export default function QuestionBankList({ filtersPlacement = "sidebar" }: { fil
     return () => {
       isMounted = false;
     };
-  }, [filters, currentPage, pageSize, authHeaders]);
+  }, [filters, currentPage, pageSize, authHeaders, folderId]);
 
   useEffect(() => {
     let isMounted = true;
@@ -469,7 +482,7 @@ export default function QuestionBankList({ filtersPlacement = "sidebar" }: { fil
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [filters]);
+  }, [filters, folderId]);
 
   const totalCount = total;
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
@@ -596,8 +609,20 @@ export default function QuestionBankList({ filtersPlacement = "sidebar" }: { fil
               number={(currentPage - 1) * pageSize + index + 1}
               question={question}
               permissions={permissions}
-              onEdit={(item) => navigate(`/question-bank/${item.id}/edit`)}
-              onDelete={(item) => navigate(`/question-bank/${item.id}/delete`)}
+              onEdit={(item) =>
+                navigate(
+                  folderId
+                    ? `/question-bank/${item.id}/edit?folderId=${encodeURIComponent(String(folderId))}`
+                    : `/question-bank/${item.id}/edit`
+                )
+              }
+              onDelete={(item) =>
+                navigate(
+                  folderId
+                    ? `/question-bank/${item.id}/delete?folderId=${encodeURIComponent(String(folderId))}`
+                    : `/question-bank/${item.id}/delete`
+                )
+              }
               onApprove={handleApprove}
               onReject={handleReject}
             />

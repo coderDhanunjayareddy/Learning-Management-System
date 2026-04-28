@@ -12,10 +12,10 @@ type InsertSummary = {
 };
 
 const CATEGORY_OPTIONS = [
-  "direct question",
-  "similar questions",
-  "previous year question",
-  "reference question",
+  { value: "direction", label: "Direction" },
+  { value: "similar", label: "Similar" },
+  { value: "previous_year", label: "Previous Year" },
+  { value: "reference", label: "Reference" },
 ] as const;
 
 const normalizeCurriculum = (items: any[]): CurriculumItem[] =>
@@ -53,7 +53,7 @@ export default function QuestionConverterPage() {
   const [subjectId, setSubjectId] = useState("");
   const [chapterId, setChapterId] = useState("");
   const [topicId, setTopicId] = useState("");
-  const [category, setCategory] = useState<(typeof CATEGORY_OPTIONS)[number]>("direct question");
+  const [category, setCategory] = useState<(typeof CATEGORY_OPTIONS)[number]["value"]>("direction");
   const [marksPositive, setMarksPositive] = useState("4");
   const [marksNegative, setMarksNegative] = useState("0");
 
@@ -438,12 +438,12 @@ export default function QuestionConverterPage() {
               <label className="text-xs font-semibold text-slate-500">Category</label>
               <select
                 value={category}
-                onChange={(event) => setCategory(event.target.value as (typeof CATEGORY_OPTIONS)[number])}
+                onChange={(event) => setCategory(event.target.value as (typeof CATEGORY_OPTIONS)[number]["value"])}
                 className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
               >
                 {CATEGORY_OPTIONS.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
+                  <option key={option.value} value={option.value}>
+                    {option.label}
                   </option>
                 ))}
               </select>
