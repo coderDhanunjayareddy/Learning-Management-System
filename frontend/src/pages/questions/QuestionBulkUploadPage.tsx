@@ -204,7 +204,7 @@ export default function QuestionBulkUploadPage() {
                 <li>For linked comprehension sets, keep normal child question types and set Has Comprehension = yes.</li>
                 <li>Use the same Passage Key across all child questions that should share one passage.</li>
                 <li>For passage-based questions, provide Passage Title and Passage Content; all rows with the same Passage Key will share that passage.</li>
-                <li>Category: optional category/tag value (example: algebra, grammar, reading).</li>
+                <li>Category: optional question group type. Allowed values: direction, similar, previous_year, reference.</li>
                 <li>Program, Grade, Subject, Chapter, Topic can be provided as IDs or names inside the file.</li>
               </ul>
               <p className="mt-3 text-xs text-slate-500">If a column is not applicable, leave it empty.</p>
@@ -260,7 +260,7 @@ export default function QuestionBulkUploadPage() {
                         <td className="border border-slate-200 px-2 py-1">-</td>
                         <td className="border border-slate-200 px-2 py-1">-</td>
                         <td className="border border-slate-200 px-2 py-1">-</td>
-                        <td className="border border-slate-200 px-2 py-1">direct question</td>
+                        <td className="border border-slate-200 px-2 py-1">direction</td>
                       </tr>
                       <tr>
                         <td className="border border-slate-200 px-2 py-1">2</td>
@@ -282,7 +282,7 @@ export default function QuestionBulkUploadPage() {
                         <td className="border border-slate-200 px-2 py-1">-</td>
                         <td className="border border-slate-200 px-2 py-1">-</td>
                         <td className="border border-slate-200 px-2 py-1">-</td>
-                        <td className="border border-slate-200 px-2 py-1">similar question</td>
+                        <td className="border border-slate-200 px-2 py-1">similar</td>
                       </tr>
                       <tr>
                         <td className="border border-slate-200 px-2 py-1">3</td>
@@ -306,7 +306,7 @@ export default function QuestionBulkUploadPage() {
                         <td className="border border-slate-200 px-2 py-1">P1</td>
                         <td className="border border-slate-200 px-2 py-1">Rainforest Reading</td>
                         <td className="border border-slate-200 px-2 py-1">Rainforests support rich biodiversity and help regulate climate.</td>
-                        <td className="border border-slate-200 px-2 py-1">passage based</td>
+                        <td className="border border-slate-200 px-2 py-1">reference</td>
                       </tr>
                       <tr>
                         <td className="border border-slate-200 px-2 py-1">4</td>
@@ -333,7 +333,7 @@ export default function QuestionBulkUploadPage() {
                         <td className="border border-slate-200 px-2 py-1">-</td>
                         <td className="border border-slate-200 px-2 py-1">-</td>
                         <td className="border border-slate-200 px-2 py-1">-</td>
-                        <td className="border border-slate-200 px-2 py-1">image only</td>
+                        <td className="border border-slate-200 px-2 py-1">direction</td>
                       </tr>
                     </tbody>
                   </table>

@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import api from "@/lib/api";
 import QuestionBankLayout from "@/features/question-bank/components/QuestionBankLayout";
 import QuestionForm from "@/features/question-bank/components/QuestionForm";
@@ -40,6 +40,8 @@ const normalizeQuestion = (item: any): Question => ({
   subject_id: item.subject_id ?? null,
   chapter_id: item.chapter_id ?? null,
   topic_id: item.topic_id ?? null,
+  folder_id: item.folder_id ?? null,
+  question_group_type: item.question_group_type ?? null,
   difficulty_level: item.difficulty_level ?? "easy",
   marks_positive: Number(item.marks_positive ?? 4),
   marks_negative: Number(item.marks_negative ?? 1),
@@ -63,6 +65,12 @@ const normalizeCurriculum = (items: any[]): CurriculumItem[] =>
 export default function QuestionEditPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const folderId = searchParams.get("folderId") ?? "";
+  const returnPath = useMemo(
+    () => (folderId ? `/question-bank/folders/${folderId}` : "/question-bank"),
+    [folderId]
+  );
   const [question, setQuestion] = useState<Question | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -113,7 +121,7 @@ export default function QuestionEditPage() {
     try {
       const res = await api.put(`/questions/${id}`, payload);
       const updated = res.data ? normalizeQuestion(res.data) : { ...payload, id };
-      navigate(`/question-bank`, { state: { updatedQuestion: updated } });
+      navigate(returnPath, { state: { updatedQuestion: updated } });
       return;
     } catch {
       alert("Failed to update question.");
@@ -124,11 +132,15 @@ export default function QuestionEditPage() {
   return (
     <QuestionBankLayout
       title="Edit Question"
-      description="Update the question details and answers."
+      description={
+        folderId
+          ? "Update the question details while staying inside this folder."
+          : "Update the question details and answers."
+      }
       showBack={false}
       actions={
         <button
-          onClick={() => navigate(`/question-bank`)}
+          onClick={() => navigate(returnPath)}
           className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
         >
           Cancel
@@ -153,7 +165,7 @@ export default function QuestionEditPage() {
           subjects={subjects}
           chapters={chapters}
           topics={topics}
-          onClose={() => navigate(`/question-bank`)}
+          onClose={() => navigate(returnPath)}
           onSave={(payload) => handleSave(payload)}
         />
       ) : (

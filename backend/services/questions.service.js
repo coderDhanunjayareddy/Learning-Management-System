@@ -35,6 +35,7 @@ const VALID_QUESTION_TYPES = [
 const VALID_DIFFICULTY_LEVELS = ['easy', 'medium', 'hard'];
 const VALID_STATUSES = ['draft', 'approved', 'rejected', 'archived'];
 const VALID_SCORING_MODES = ['all_or_nothing', 'partial', 'mixed'];
+const VALID_QUESTION_GROUP_TYPES = ['direction', 'similar', 'previous_year', 'reference'];
 
 const isSuperAdmin = (role) => role === 'super_admin';
 const isPlatformAdmin = (role) => role === 'super_admin' || role === 'content_authorizer';
@@ -250,6 +251,30 @@ const buildQuestionWhere = async ({ user, query, includeArchived = false }) => {
     conditions.push(`q.difficulty_level = ${addParam(difficulty)}`);
   }
 
+  if (query.question_group_type) {
+    const questionGroupType = parseQuestionGroupType(query.question_group_type);
+    if (questionGroupType) {
+      conditions.push(`q.question_group_type = ${addParam(questionGroupType)}`);
+    }
+  }
+
+  if (query.folder_id !== undefined) {
+    const schemaSupport = await getQuestionSchemaSupport();
+    if (!schemaSupport.hasFolderId) {
+      throw new AppError('This database does not support folder assignment on questions yet', 400);
+    }
+    const folderId = parseNullableInt(query.folder_id, 'folder_id');
+    if (folderId) {
+      const scopedFolderId = await ensureBulkFolderAccess({
+        folderId,
+        user,
+        role,
+        clientId,
+      });
+      conditions.push(`q.folder_id = ${addParam(scopedFolderId)}`);
+    }
+  }
+
   const createdBy = parseNullableInt(query.created_by, 'created_by');
   if (createdBy) conditions.push(`q.created_by = ${addParam(createdBy)}`);
 
@@ -307,6 +332,29 @@ const parseExamTagsInput = (value) => {
       .filter((entry) => entry.length > 0);
   }
   throw new AppError('exam_tags must be an array or comma-separated string', 400);
+};
+
+const parseQuestionGroupType = (value) => {
+  if (value === undefined || value === null || value === '') return null;
+  const normalized = String(value)
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+  const aliasMap = {
+    direct_question: 'direction',
+    similar_question: 'similar',
+    similar_questions: 'similar',
+    previous_year_question: 'previous_year',
+    reference_question: 'reference',
+  };
+  const resolved = aliasMap[normalized] ?? normalized;
+  if (!VALID_QUESTION_GROUP_TYPES.includes(resolved)) {
+    throw new AppError(
+      `question_group_type must be one of: ${VALID_QUESTION_GROUP_TYPES.join(', ')}`,
+      400
+    );
+  }
+  return resolved;
 };
 
 const parseOptionsInput = (value) => {
@@ -466,9 +514,10 @@ const BULK_CSV_HEADER_ALIASES = {
   'difficulty level': 'difficulty_level',
   tags: 'exam_tags',
   'exam tags': 'exam_tags',
-  category: 'category',
-  catagory: 'category',
-  comprehensive_subquestions: 'category',
+  question_group_type: 'question_group_type',
+  category: 'question_group_type',
+  catagory: 'question_group_type',
+  comprehensive_subquestions: 'question_group_type',
   'option a': 'option_a',
   'option b': 'option_b',
   'option c': 'option_c',
@@ -590,8 +639,12 @@ const normalizeBulkDefaults = (source) => {
     defaults.exam_tags = source.tags;
   }
 
-  if (source?.category !== undefined && source.category !== '') {
-    defaults.category = source.category;
+  if (source?.question_group_type !== undefined && source.question_group_type !== '') {
+    defaults.question_group_type = source.question_group_type;
+  } else if (source?.category !== undefined && source.category !== '') {
+    defaults.question_group_type = source.category;
+  } else if (source?.catagory !== undefined && source.catagory !== '') {
+    defaults.question_group_type = source.catagory;
   }
 
   if (source?.status !== undefined && source.status !== '') {
@@ -668,10 +721,12 @@ const applyBulkDefaults = (row, defaults) => {
     merged.exam_tags = defaults.exam_tags;
   }
   if (
-    (merged.category === undefined || merged.category === null || merged.category === '') &&
-    defaults.category !== undefined
+    (merged.question_group_type === undefined ||
+      merged.question_group_type === null ||
+      merged.question_group_type === '') &&
+    defaults.question_group_type !== undefined
   ) {
-    merged.category = defaults.category;
+    merged.question_group_type = defaults.question_group_type;
   }
   if (
     (merged.status === undefined || merged.status === null || merged.status === '') &&
@@ -820,10 +875,11 @@ const BULK_DOCX_TABLE_HEADER_ALIASES = {
   status: 'status',
   comprehensive_passage: 'comprehension_passage',
   comprehension_passage: 'comprehension_passage',
-  comprehensive_subquestions: 'category',
+  question_group_type: 'question_group_type',
+  comprehensive_subquestions: 'question_group_type',
   comprehension_questions: 'comprehension_questions',
-  category: 'category',
-  catagory: 'category',
+  category: 'question_group_type',
+  catagory: 'question_group_type',
 };
 
 const BULK_PLACEHOLDER_VALUES = new Set(['-', '--', 'n/a', 'na', 'none', 'nil']);
@@ -1339,9 +1395,9 @@ const normalizeDocxTableRowInput = (rawRow, defaults, rowNumber) => {
       passage_title: toRichHtmlValue(rawRow.passage_title),
       passage_content: toRichHtmlValue(rawRow.passage_content ?? rawRow.comprehension_passage),
       difficulty_level: toPlainBulkText(rawRow.difficulty_level) || 'medium',
-      exam_tags:
-        toPlainBulkText(rawRow.exam_tags || rawRow.tags || rawRow.category || rawRow.catagory) || '',
-      category: toPlainBulkText(rawRow.category || rawRow.catagory) || null,
+      exam_tags: toPlainBulkText(rawRow.exam_tags || rawRow.tags) || '',
+      question_group_type:
+        toPlainBulkText(rawRow.question_group_type || rawRow.category || rawRow.catagory) || null,
       comprehension_passage: passageHtml,
       comprehension_questions: rawRow.comprehension_questions ?? null,
       marks_positive: toPlainBulkText(rawRow.marks_positive),
@@ -1940,7 +1996,7 @@ const finalizeDocxQuestion = (question, defaults, rowNumber) => {
       topic_id: question.topic_id,
       difficulty_level: question.difficulty_level ?? null,
       exam_tags: question.exam_tags || [],
-      category: question.category ?? null,
+      question_group_type: question.question_group_type ?? question.category ?? null,
       marks_positive: question.marks_positive ?? null,
       marks_negative: question.marks_negative ?? null,
       solution: question.solution ?? null,
@@ -2516,6 +2572,27 @@ const buildQuestionInsertPayload = async ({ input, user, role, clientId }) => {
   }
 
   const schemaSupport = await getQuestionSchemaSupport();
+  const questionGroupType = parseQuestionGroupType(
+    input.question_group_type ?? input.category ?? input.catagory
+  );
+  if (questionGroupType && !schemaSupport.hasQuestionGroupType) {
+    throw new AppError('This database does not support question_group_type yet', 400);
+  }
+  let folderId = null;
+  if (input.folder_id !== undefined) {
+    if (!schemaSupport.hasFolderId) {
+      throw new AppError('This database does not support folder assignment on questions yet', 400);
+    }
+    const parsedFolderId = parseNullableInt(input.folder_id, 'folder_id');
+    if (parsedFolderId) {
+      folderId = await ensureBulkFolderAccess({
+        folderId: parsedFolderId,
+        user,
+        role,
+        clientId,
+      });
+    }
+  }
   let comprehensionPassageId = null;
   if (input.comprehension_passage_id !== undefined && input.comprehension_passage_id !== null && input.comprehension_passage_id !== '') {
     if (!schemaSupport.hasComprehensionPassageId || !schemaSupport.hasComprehensionPassageTable) {
@@ -2543,12 +2620,14 @@ const buildQuestionInsertPayload = async ({ input, user, role, clientId }) => {
     solution: input.solution ?? null,
     solution_video_url: input.solution_video_url ?? null,
     comprehension_passage_id: comprehensionPassageId,
+    folder_id: folderId,
     subject_id: subjectId,
     chapter_id: chapterId,
     topic_id: topicId,
     scoring_mode: scoringModeInput,
     difficulty_level: difficulty,
-    exam_tags: parseExamTagsInput(input.exam_tags ?? input.category ?? input.catagory),
+    question_group_type: questionGroupType,
+    exam_tags: parseExamTagsInput(input.exam_tags ?? input.tags),
     marks_positive: parseNumberField(input.marks_positive, 'marks_positive', 4),
     marks_negative: parseNumberField(input.marks_negative, 'marks_negative', 0),
     status,
@@ -2571,7 +2650,7 @@ const getQuestionSchemaSupport = async () => {
       AND table_name = 'questions'
       AND column_name = ANY($1::text[])
     `,
-    [['comprehension_passage', 'comprehension_questions', 'comprehension_passage_id']]
+    [['comprehension_passage', 'comprehension_questions', 'comprehension_passage_id', 'question_group_type', 'folder_id']]
   );
 
   const tableResult = await dbQuery(
@@ -2590,6 +2669,8 @@ const getQuestionSchemaSupport = async () => {
     hasComprehensionPassage: existingColumns.has('comprehension_passage'),
     hasComprehensionQuestions: existingColumns.has('comprehension_questions'),
     hasComprehensionPassageId: existingColumns.has('comprehension_passage_id'),
+    hasQuestionGroupType: existingColumns.has('question_group_type'),
+    hasFolderId: existingColumns.has('folder_id'),
   };
   return questionSchemaSupportCache;
 };
@@ -2785,6 +2866,14 @@ const insertQuestion = async (payload) => {
   if (schemaSupport.hasComprehensionPassageId) {
     columns.push('comprehension_passage_id');
     values.push(payload.comprehension_passage_id);
+  }
+  if (schemaSupport.hasQuestionGroupType) {
+    columns.push('question_group_type');
+    values.push(payload.question_group_type);
+  }
+  if (schemaSupport.hasFolderId) {
+    columns.push('folder_id');
+    values.push(payload.folder_id ?? null);
   }
 
   columns.push(
@@ -3078,6 +3167,28 @@ export const updateQuestion = async (req, res) => {
         throw new AppError('Invalid scoring_mode', 400);
       }
       updates.scoring_mode = req.body.scoring_mode;
+    }
+
+    if (req.body.question_group_type !== undefined) {
+      if (!schemaSupport.hasQuestionGroupType) {
+        throw new AppError('This database does not support question_group_type yet', 400);
+      }
+      updates.question_group_type = parseQuestionGroupType(req.body.question_group_type);
+    }
+
+    if (req.body.folder_id !== undefined) {
+      if (!schemaSupport.hasFolderId) {
+        throw new AppError('This database does not support folder assignment on questions yet', 400);
+      }
+      const folderId = parseNullableInt(req.body.folder_id, 'folder_id');
+      updates.folder_id = folderId
+        ? await ensureBulkFolderAccess({
+          folderId,
+          user: req.user,
+          role,
+          clientId,
+        })
+        : null;
     }
 
     if (req.body.exam_tags !== undefined) {
@@ -3883,6 +3994,52 @@ export const updateQuestionFolder = async (req, res) => {
   }
 };
 
+export const archiveQuestionFolderQuestions = async (req, res) => {
+  try {
+    if (!req.user?.id || !req.user?.role) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const role = req.user.role;
+    if (isTeacher(role)) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const folderId = parseRequiredInt(req.params.id, 'id');
+    const clientId = ensureClientScope(req.user.client_id ?? null, role);
+    const scopedFolderId = await ensureBulkFolderAccess({
+      folderId,
+      user: req.user,
+      role,
+      clientId,
+    });
+
+    const schemaSupport = await getQuestionSchemaSupport();
+    if (!schemaSupport.hasFolderId) {
+      throw new AppError('This database does not support folder assignment on questions yet', 400);
+    }
+
+    const result = await dbQuery(
+      `
+      UPDATE questions
+      SET status = 'archived', updated_at = NOW()
+      WHERE folder_id = $1
+        AND status <> 'archived'
+        AND ($2::int IS NULL OR client_id = $2)
+      RETURNING id
+      `,
+      [scopedFolderId, clientId]
+    );
+
+    res.json({
+      folder_id: scopedFolderId,
+      archived: result.rows.length,
+    });
+  } catch (err) {
+    handleServiceError(res, err, 'Failed to delete folder questions');
+  }
+};
+
 const buildTemplateRow = (cells) =>
   new TableRow({
     children: cells.map(
@@ -4352,7 +4509,7 @@ const buildConverterOutputRow = (row, _index) => {
     row.passage_key ?? '',
     row.passage_title ?? '',
     row.passage_content ?? row.comprehension_passage ?? '',
-    String(row.category ?? ''),
+    String(row.question_group_type ?? row.category ?? ''),
   ];
 };
 
@@ -4394,7 +4551,7 @@ const buildConverterTemplateBuffer = async (rows) => {
       passageKey,
       passageTitle,
       passageContent,
-      category,
+      questionGroupType,
     ] = values;
 
     return new TableRow({
@@ -4418,7 +4575,7 @@ const buildConverterTemplateBuffer = async (rows) => {
         buildPlainCell(passageKey),
         buildRichCell(passageTitle),
         buildRichCell(passageContent),
-        buildPlainCell(category),
+        buildPlainCell(questionGroupType),
       ],
     });
   });

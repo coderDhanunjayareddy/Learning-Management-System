@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import api from "@/lib/api";
 import QuestionBankLayout from "@/features/question-bank/components/QuestionBankLayout";
 import QuestionForm from "@/features/question-bank/components/QuestionForm";
@@ -40,6 +40,8 @@ const normalizeQuestion = (item: any): Question => ({
   subject_id: item.subject_id ?? null,
   chapter_id: item.chapter_id ?? null,
   topic_id: item.topic_id ?? null,
+  folder_id: item.folder_id ?? null,
+  question_group_type: item.question_group_type ?? null,
   difficulty_level: item.difficulty_level ?? "easy",
   marks_positive: Number(item.marks_positive ?? 4),
   marks_negative: Number(item.marks_negative ?? 1),
@@ -62,6 +64,12 @@ const normalizeCurriculum = (items: any[]): CurriculumItem[] =>
 
 export default function QuestionCreatePage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const folderId = searchParams.get("folderId") ?? "";
+  const returnPath = useMemo(
+    () => (folderId ? `/question-bank/folders/${folderId}` : "/question-bank"),
+    [folderId]
+  );
 
   const [programs, setPrograms] = useState<CurriculumItem[]>([]);
   const [grades] = useState<CurriculumItem[]>([]);
@@ -90,10 +98,11 @@ export default function QuestionCreatePage() {
 
   const handleSave = async (payload: Omit<Question, "id">) => {
     try {
-      const res = await api.post("/questions", payload);
+      const requestPayload = folderId ? { ...payload, folder_id: folderId } : payload;
+      const res = await api.post("/questions", requestPayload);
       if (res.data) {
         const created = normalizeQuestion(res.data);
-        navigate("/question-bank", { state: { createdQuestion: created } });
+        navigate(returnPath, { state: { createdQuestion: created } });
         return;
       }
     } catch (error) {
@@ -109,11 +118,15 @@ export default function QuestionCreatePage() {
   return (
     <QuestionBankLayout
       title="Create Question"
-      description="Compose a new question for your assessment library."
+      description={
+        folderId
+          ? "Compose a new question and save it directly into this folder."
+          : "Compose a new question for your assessment library."
+      }
       showBack={false}
       actions={
         <button
-          onClick={() => navigate("/question-bank")}
+          onClick={() => navigate(returnPath)}
           className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
         >
           Cancel
@@ -127,7 +140,7 @@ export default function QuestionCreatePage() {
         subjects={subjects}
         chapters={chapters}
         topics={topics}
-        onClose={() => navigate("/question-bank")}
+        onClose={() => navigate(returnPath)}
         onSave={(payload) => handleSave(payload)}
       />
     </QuestionBankLayout>

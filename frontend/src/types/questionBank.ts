@@ -14,6 +14,8 @@ export type DifficultyLevel = "easy" | "medium" | "hard";
 
 export type QuestionStatus = "draft" | "approved" | "rejected";
 
+export type QuestionGroupType = "direction" | "similar" | "previous_year" | "reference";
+
 export type CorrectAnswer =
   | string
   | string[]
@@ -99,6 +101,8 @@ export interface Question {
   subject_id?: string | number | null;
   chapter_id?: string | number | null;
   topic_id?: string | number | null;
+  folder_id?: string | number | null;
+  question_group_type?: QuestionGroupType | null;
   difficulty_level: DifficultyLevel;
   marks_positive: number;
   marks_negative: number;

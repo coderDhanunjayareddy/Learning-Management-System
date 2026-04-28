@@ -68,6 +68,7 @@ import QuestionSubjectsPage from '@/pages/questions/QuestionSubjectsPage';
 import QuestionSubjectCreatePage from '@/pages/questions/QuestionSubjectCreatePage';
 import QuestionSubjectEditPage from '@/pages/questions/QuestionSubjectEditPage';
 import QuestionFoldersPage from '@/pages/questions/QuestionFoldersPage';
+import QuestionFolderDetailPage from '@/pages/questions/QuestionFolderDetailPage';
 import QuestionFolderCreatePage from '@/pages/questions/QuestionFolderCreatePage';
 import QuestionFolderEditPage from '@/pages/questions/QuestionFolderEditPage';
 import QuestionChaptersPage from '@/pages/questions/QuestionChaptersPage';
@@ -266,6 +267,7 @@ export default function AppRoutes() {
         <Route path="/question-bank/chapters" element={<QuestionChaptersPage />} />
         <Route path="/question-bank/topics" element={<QuestionTopicsPage />} />
         <Route path="/question-bank/folders" element={<QuestionFoldersPage />} />
+        <Route path="/question-bank/folders/:id" element={<QuestionFolderDetailPage />} />
         <Route path="/question-bank/passages" element={<QuestionPassagesPage />} />
       </Route>
 

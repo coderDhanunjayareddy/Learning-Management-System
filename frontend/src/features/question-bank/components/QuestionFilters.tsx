@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { formatSubjectDisplay, type CurriculumItem, type DifficultyLevel, type QuestionStatus, type QuestionType } from "@/types/questionBank";
+import {
+  formatSubjectDisplay,
+  type CurriculumItem,
+  type DifficultyLevel,
+  type QuestionGroupType,
+  type QuestionStatus,
+  type QuestionType,
+} from "@/types/questionBank";
 
 export interface QuestionFiltersState {
   search: string;
@@ -10,6 +17,7 @@ export interface QuestionFiltersState {
   topicId: string;
   difficulty: "" | DifficultyLevel;
   type: "" | QuestionType;
+  questionGroupType: "" | QuestionGroupType;
   status: "" | QuestionStatus;
 }
 
@@ -57,7 +65,7 @@ export default function QuestionFilters({
   }, [searchValue, onChange]);
 
   return (
-    <div className={isVertical ? "space-y-3" : "grid gap-4 md:grid-cols-2 xl:grid-cols-8"}>
+    <div className={isVertical ? "space-y-3" : "grid gap-4 md:grid-cols-2 xl:grid-cols-9"}>
       <div className={isVertical ? "" : "md:col-span-2"}>
         <label className="text-xs font-semibold text-slate-500">Search</label>
         <input
@@ -207,6 +215,25 @@ export default function QuestionFilters({
               <option value="true_false">True/False</option>
             </select>
           </div>
+          <div>
+            <label className="text-xs font-semibold text-slate-500">Category</label>
+            <select
+              value={filters.questionGroupType}
+              onChange={(event) =>
+                onChange({
+                  ...filters,
+                  questionGroupType: event.target.value as QuestionFiltersState["questionGroupType"],
+                })
+              }
+              className="mt-0.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm focus:border-slate-400 focus:outline-none"
+            >
+              <option value="">All</option>
+              <option value="direction">Direction</option>
+              <option value="similar">Similar</option>
+              <option value="previous_year">Previous Year</option>
+              <option value="reference">Reference</option>
+            </select>
+          </div>
         </div>
       ) : (
         <>
@@ -242,6 +269,25 @@ export default function QuestionFilters({
               <option value="match_following">Match the Following</option>
               <option value="fill_in_blank">Fill in the Blank</option>
               <option value="true_false">True/False</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-slate-500">Category</label>
+            <select
+              value={filters.questionGroupType}
+              onChange={(event) =>
+                onChange({
+                  ...filters,
+                  questionGroupType: event.target.value as QuestionFiltersState["questionGroupType"],
+                })
+              }
+              className="mt-0.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm focus:border-slate-400 focus:outline-none"
+            >
+              <option value="">All</option>
+              <option value="direction">Direction</option>
+              <option value="similar">Similar</option>
+              <option value="previous_year">Previous Year</option>
+              <option value="reference">Reference</option>
             </select>
           </div>
         </>
