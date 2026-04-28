@@ -60,6 +60,19 @@ export interface ComprehensionPassage {
   passage_content: RichTextValue;
 }
 
+export type QuestionCategory =
+  | string
+  | string[]
+  | {
+      label?: string;
+      name?: string;
+      value?: string;
+      type?: string;
+      tags?: string[];
+      [key: string]: unknown;
+    }
+  | null;
+
 export interface Question {
   id: number;
   client_id: number | null;
@@ -79,6 +92,7 @@ export interface Question {
   chapter_id: number;
   topic_id: number | null;
   difficulty_level: QuestionDifficulty;
+  category?: QuestionCategory;
   exam_tags?: string[];
   marks_positive: number;
   marks_negative: number;

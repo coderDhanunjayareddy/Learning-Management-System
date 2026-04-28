@@ -6,6 +6,25 @@ import type { Question } from '@/features/questions/types';
 import { useAuth } from '@/app/providers/AuthProvider';
 import { isAdminRole } from '@/features/auth/types';
 
+const formatCategoryLabel = (category: Question["category"]) => {
+  if (category === undefined || category === null) return '';
+  if (typeof category === 'string') return category.trim();
+  if (Array.isArray(category)) {
+    return category.map((entry) => String(entry).trim()).filter(Boolean).join(', ');
+  }
+  if (typeof category === 'object') {
+    return String(
+      category.label ??
+        category.name ??
+        category.value ??
+        category.type ??
+        (Array.isArray(category.tags) ? category.tags.join(', ') : '') ??
+        ''
+    ).trim();
+  }
+  return String(category).trim();
+};
+
 export default function QuestionDetailPage() {
   const { id } = useParams();
   const questionId = Number(id);
@@ -92,6 +111,8 @@ export default function QuestionDetailPage() {
     );
   }
 
+  const categoryLabel = formatCategoryLabel(question.category);
+
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
@@ -133,6 +154,12 @@ export default function QuestionDetailPage() {
             <span className="text-xs font-semibold text-gray-500">Status</span>
             <p className="text-sm text-gray-900">{question.status}</p>
           </div>
+          {categoryLabel ? (
+            <div>
+              <span className="text-xs font-semibold text-gray-500">Category</span>
+              <p className="text-sm text-gray-900">{categoryLabel}</p>
+            </div>
+          ) : null}
           <div>
             <span className="text-xs font-semibold text-gray-500">Marks</span>
             <p className="text-sm text-gray-900">

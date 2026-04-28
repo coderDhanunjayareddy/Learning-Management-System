@@ -61,6 +61,10 @@ export default function QuestionBulkUploadPage() {
   const [selectedFolder, setSelectedFolder] = useState("");
   const [folderOptions, setFolderOptions] = useState<QuestionFolder[]>([]);
   const [uploadErrors, setUploadErrors] = useState<string[]>([]);
+  const [uploadSummary, setUploadSummary] = useState<{
+    type: "error";
+    message: string;
+  } | null>(null);
   const [uploading, setUploading] = useState(false);
 
   const folderFromQuery = useMemo(() => {
@@ -94,6 +98,7 @@ export default function QuestionBulkUploadPage() {
     }
 
     setUploadErrors([]);
+    setUploadSummary(null);
     setUploading(true);
     try {
       const extension = bulkFile.name.split(".").pop()?.toLowerCase();
@@ -106,21 +111,51 @@ export default function QuestionBulkUploadPage() {
           headers: { "Content-Type": "multipart/form-data" },
         });
 
-        if (res.data?.errors?.length) {
-          setUploadErrors(res.data.errors.map((err: { message?: string }) => err.message ?? String(err)));
+        if (res.data?.success === false || res.data?.errors?.length) {
+          setUploadSummary({
+            type: "error",
+            message:
+              typeof res.data?.message === "string"
+                ? res.data.message
+                : "Upload failed. No questions were inserted.",
+          });
+          setUploadErrors(
+            Array.isArray(res.data?.errors)
+              ? res.data.errors.map((err: { message?: string }) => err.message ?? String(err))
+              : []
+          );
         } else {
-          alert(`Uploaded ${res.data?.inserted ?? 0} questions successfully.`);
+          const insertedCount = Number(res.data?.inserted ?? 0);
+          alert(`Uploaded ${insertedCount} question${insertedCount === 1 ? "" : "s"} successfully.`);
           navigate("/question-bank");
         }
       } else {
         alert("CSV/XLSX upload will be supported next. Please upload a .docx file.");
       }
     } catch (error) {
-      const message =
+      const responseData =
         typeof error === "object" && error && "response" in error
-          ? (error as { response?: { data?: { error?: unknown } } }).response?.data?.error
+          ? (error as {
+              response?: {
+                data?: { error?: unknown; message?: unknown; errors?: Array<{ message?: string }> };
+              };
+            }).response?.data
           : null;
-      setUploadErrors([typeof message === "string" ? message : "Failed to upload file."]);
+      const message =
+        typeof responseData?.message === "string"
+          ? responseData.message
+          : typeof responseData?.error === "string"
+            ? responseData.error
+            : "Failed to upload file.";
+      setUploadSummary({
+        type: "error",
+        message,
+      });
+      setUploadErrors(
+        Array.isArray(responseData?.errors) && responseData.errors.length > 0
+          ? responseData.errors.map((err) => err.message ?? String(err))
+          : [message]
+      );
     } finally {
       setUploading(false);
       setBulkFile(null);
@@ -197,6 +232,7 @@ export default function QuestionBulkUploadPage() {
               <ul className="mt-3 list-disc space-y-1 pl-5 text-xs text-slate-600">
                 <li>Type: mcq_single, mcq_multiple, true_false, numerical, short_answer.</li>
                 <li>Question: rich text content is supported, including embedded DOCX images and tables.</li>
+                <li>Equations inside DOCX content are preserved during upload when included in the template cells.</li>
                 <li>Options: separate with semicolons (A;B;C;D) for MCQ.</li>
                 <li>Correct Answer: use option letters (A/B/...) for MCQ, true/false for True/False, number for Numerical, and plain text for Short Answer.</li>
                 <li>Question and option content can be text, image, or text+image. Image-only question/options are accepted.</li>
@@ -204,10 +240,12 @@ export default function QuestionBulkUploadPage() {
                 <li>For linked comprehension sets, keep normal child question types and set Has Comprehension = yes.</li>
                 <li>Use the same Passage Key across all child questions that should share one passage.</li>
                 <li>For passage-based questions, provide Passage Title and Passage Content; all rows with the same Passage Key will share that passage.</li>
-                <li>Category: optional category/tag value (example: algebra, grammar, reading).</li>
+                <li>Category uploads into the question `category` field. Tags upload only from the `Tags` column.</li>
                 <li>Program, Grade, Subject, Chapter, Topic can be provided as IDs or names inside the file.</li>
               </ul>
-              <p className="mt-3 text-xs text-slate-500">If a column is not applicable, leave it empty.</p>
+              <p className="mt-3 text-xs text-slate-500">
+                If a column is not applicable, leave it empty. Uploads are atomic: if one row fails, no questions are inserted.
+              </p>
 
               <div className="mt-4">
                 <div className="text-xs font-semibold text-slate-500">DOCX Template (Dummy Sample)</div>
@@ -362,6 +400,10 @@ export default function QuestionBulkUploadPage() {
             </select>
             <p className="mt-2 text-xs text-slate-500">Files will be linked to the selected folder.</p>
 
+            <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              One invalid row will fail the full file upload. No questions will be inserted until all rows pass validation.
+            </div>
+
             <button
               onClick={handleUpload}
               disabled={uploading}
@@ -370,9 +412,15 @@ export default function QuestionBulkUploadPage() {
               {uploading ? "Uploading..." : "Upload File"}
             </button>
 
+            {uploadSummary && (
+              <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                <p className="font-semibold">{uploadSummary.message}</p>
+              </div>
+            )}
+
             {uploadErrors.length > 0 && (
               <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
-                <p className="font-semibold">Upload errors:</p>
+                <p className="font-semibold">Row errors:</p>
                 <ul className="mt-1 list-disc pl-4">
                   {uploadErrors.map((err, idx) => (
                     <li key={idx}>{err}</li>

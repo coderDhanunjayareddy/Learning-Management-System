@@ -38,6 +38,14 @@ const parsePassageInsertColumns = (sql) => {
 
 const createMockDb = () => {
   const data = {
+    programs: [
+      { id: 401, client_id: 101, name: 'STEM' },
+      { id: 402, client_id: 202, name: 'STEM' },
+    ],
+    grades: [
+      { id: 501, program_id: 401, grade_number: 11 },
+      { id: 502, program_id: 402, grade_number: 11 },
+    ],
     subjects: [
       { id: 1001, client_id: 101, grade_id: 501, program_id: 401, name: 'Physics' },
       { id: 1002, client_id: 202, grade_id: 502, program_id: 402, name: 'Physics' },
@@ -63,6 +71,7 @@ const createMockDb = () => {
     nextQuestionId: 1,
     nextPassageId: 1000,
   };
+  let transactionSnapshot = null;
 
   const enrichQuestion = (question) => {
     const subject = data.subjects.find((item) => item.id === question.subject_id) ?? null;
@@ -121,6 +130,36 @@ const createMockDb = () => {
       const sql = String(text);
       const normalized = sql.replace(/\s+/g, ' ').trim().toLowerCase();
 
+      if (normalized === 'begin') {
+        transactionSnapshot = {
+          questions: structuredClone(data.questions),
+          comprehensionPassages: structuredClone(data.comprehensionPassages),
+          nextQuestionId: data.nextQuestionId,
+          nextPassageId: data.nextPassageId,
+        };
+        return { rows: [] };
+      }
+
+      if (normalized === 'commit') {
+        transactionSnapshot = null;
+        return { rows: [] };
+      }
+
+      if (normalized === 'rollback') {
+        if (transactionSnapshot) {
+          data.questions.splice(0, data.questions.length, ...transactionSnapshot.questions);
+          data.comprehensionPassages.splice(
+            0,
+            data.comprehensionPassages.length,
+            ...transactionSnapshot.comprehensionPassages
+          );
+          data.nextQuestionId = transactionSnapshot.nextQuestionId;
+          data.nextPassageId = transactionSnapshot.nextPassageId;
+          transactionSnapshot = null;
+        }
+        return { rows: [] };
+      }
+
       if (normalized.includes("from information_schema.columns") && normalized.includes("table_name = 'questions'")) {
         return {
           rows: [
@@ -133,6 +172,36 @@ const createMockDb = () => {
 
       if (normalized.includes("from information_schema.tables") && normalized.includes("table_name = 'comprehension_passages'")) {
         return { rows: [{ '?column?': 1 }] };
+      }
+
+      if (normalized.startsWith('select id from programs where id = $1')) {
+        const program = data.programs.find((item) => item.id === Number(params[0]));
+        if (!program) return { rows: [] };
+        if (params[1] !== undefined && Number(program.client_id) !== Number(params[1])) return { rows: [] };
+        return { rows: [{ id: program.id }] };
+      }
+
+      if (
+        normalized.includes('select g.id, g.program_id') &&
+        normalized.includes('from grades g') &&
+        normalized.includes('join programs p on p.id = g.program_id') &&
+        normalized.includes('where g.grade_number = $1')
+      ) {
+        return { rows: [] };
+      }
+
+      if (
+        normalized.includes('select g.id, g.program_id') &&
+        normalized.includes('from grades g') &&
+        normalized.includes('join programs p on p.id = g.program_id') &&
+        normalized.includes('where g.id = $1')
+      ) {
+        const grade = data.grades.find((item) => item.id === Number(params[0]));
+        if (!grade) return { rows: [] };
+        const program = data.programs.find((item) => item.id === Number(grade.program_id));
+        if (!program) return { rows: [] };
+        if (params[1] !== undefined && Number(program.client_id) !== Number(params[1])) return { rows: [] };
+        return { rows: [{ id: grade.id, program_id: grade.program_id }] };
       }
 
       if (normalized.includes('from subjects s left join grades g on g.id = s.grade_id where s.id = $1')) {
@@ -179,6 +248,7 @@ const createMockDb = () => {
           'solution',
           'comprehension_passage',
           'comprehension_questions',
+          'category',
         ]);
 
         const record = { id: data.nextQuestionId++, approved_by: null, approved_at: null };
@@ -299,6 +369,7 @@ const createMockDb = () => {
           'solution',
           'comprehension_passage',
           'comprehension_questions',
+          'category',
         ]);
 
         assignments.forEach((assignment, index) => {
@@ -316,15 +387,24 @@ const createMockDb = () => {
 
       throw new Error(`Unhandled mock query: ${normalized}`);
     },
+    async connect() {
+      return {
+        query: this.query.bind(this),
+        release() {},
+      };
+    },
   };
 };
 
 test('Question Bank flow: create, approve, search, and isolate tenants', async (t) => {
   const originalQuery = pool.query.bind(pool);
+  const originalConnect = pool.connect.bind(pool);
   const mockDb = createMockDb();
   pool.query = mockDb.query.bind(mockDb);
+  pool.connect = mockDb.connect.bind(mockDb);
   t.after(() => {
     pool.query = originalQuery;
+    pool.connect = originalConnect;
   });
 
   const teacherTenantA = { id: 11, role: 'teacher', client_id: 101 };
@@ -464,10 +544,13 @@ test('Question Bank flow: create, approve, search, and isolate tenants', async (
 
 test('Question rejection clears approval fields and remains atomic', async (t) => {
   const originalQuery = pool.query.bind(pool);
+  const originalConnect = pool.connect.bind(pool);
   const mockDb = createMockDb();
   pool.query = mockDb.query.bind(mockDb);
+  pool.connect = mockDb.connect.bind(mockDb);
   t.after(() => {
     pool.query = originalQuery;
+    pool.connect = originalConnect;
   });
 
   const teacherTenantA = { id: 11, role: 'teacher', client_id: 101 };
@@ -527,10 +610,13 @@ test('Question rejection clears approval fields and remains atomic', async (t) =
 
 test('Question scoring_mode persists on create and update', async (t) => {
   const originalQuery = pool.query.bind(pool);
+  const originalConnect = pool.connect.bind(pool);
   const mockDb = createMockDb();
   pool.query = mockDb.query.bind(mockDb);
+  pool.connect = mockDb.connect.bind(mockDb);
   t.after(() => {
     pool.query = originalQuery;
+    pool.connect = originalConnect;
   });
 
   const teacherTenantA = { id: 11, role: 'teacher', client_id: 101 };
@@ -580,10 +666,13 @@ test('Question scoring_mode persists on create and update', async (t) => {
 
 test('Question can link to a comprehension passage and returns passage summary', async (t) => {
   const originalQuery = pool.query.bind(pool);
+  const originalConnect = pool.connect.bind(pool);
   const mockDb = createMockDb();
   pool.query = mockDb.query.bind(mockDb);
+  pool.connect = mockDb.connect.bind(mockDb);
   t.after(() => {
     pool.query = originalQuery;
+    pool.connect = originalConnect;
   });
 
   const teacherTenantA = { id: 11, role: 'teacher', client_id: 101 };
@@ -635,10 +724,13 @@ test('Question can link to a comprehension passage and returns passage summary',
 
 test('Bulk upload can create one linked passage and reuse it across multiple child questions', async (t) => {
   const originalQuery = pool.query.bind(pool);
+  const originalConnect = pool.connect.bind(pool);
   const mockDb = createMockDb();
   pool.query = mockDb.query.bind(mockDb);
+  pool.connect = mockDb.connect.bind(mockDb);
   t.after(() => {
     pool.query = originalQuery;
+    pool.connect = originalConnect;
   });
 
   const teacherTenantA = { id: 11, role: 'teacher', client_id: 101 };

@@ -98,11 +98,6 @@ export default function QuestionSubjectsPage() {
                         Grade {subject.grade_number}
                       </span>
                     )}
-                    {subject.code ? (
-                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
-                        {subject.code}
-                      </span>
-                    ) : null}
                   </div>
                   <div className="mt-1 text-xs text-slate-500">
                     {formatSubjectDisplay(subject, { includeId: true })}

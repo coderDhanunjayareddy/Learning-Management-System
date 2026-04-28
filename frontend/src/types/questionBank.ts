@@ -81,6 +81,19 @@ export interface ComprehensionPassage {
   updated_at?: string;
 }
 
+export type QuestionCategory =
+  | string
+  | string[]
+  | {
+      label?: string;
+      name?: string;
+      value?: string;
+      type?: string;
+      tags?: string[];
+      [key: string]: unknown;
+    }
+  | null;
+
 export interface Question {
   id: string | number;
   question_type: QuestionType;
@@ -102,6 +115,7 @@ export interface Question {
   difficulty_level: DifficultyLevel;
   marks_positive: number;
   marks_negative: number;
+  category?: QuestionCategory;
   exam_tags?: string[];
   status: QuestionStatus;
   created_by?: string;
@@ -133,4 +147,25 @@ export const formatSubjectDisplay = (
   if (gradeLabel) parts.push(`(${gradeLabel})`);
   if (options?.includeId) parts.push(`- ID ${subject.id}`);
   return parts.join(" ");
+};
+
+export const formatQuestionCategory = (category: QuestionCategory) => {
+  if (category === undefined || category === null) return "";
+  if (typeof category === "string") return category.trim();
+  if (Array.isArray(category)) {
+    return category
+      .map((entry) => String(entry).trim())
+      .filter(Boolean)
+      .join(", ");
+  }
+  if (typeof category === "object") {
+    const preferred =
+      category.label ??
+      category.name ??
+      category.value ??
+      category.type ??
+      (Array.isArray(category.tags) ? category.tags.join(", ") : "");
+    return String(preferred ?? "").trim();
+  }
+  return String(category).trim();
 };

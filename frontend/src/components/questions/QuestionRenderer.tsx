@@ -31,6 +31,20 @@ type LinkedPassageLike = {
   passage_content?: RichTextLike;
 };
 
+type QuestionCategoryLike =
+  | string
+  | string[]
+  | {
+      label?: string;
+      name?: string;
+      value?: string;
+      type?: string;
+      tags?: string[];
+      [key: string]: unknown;
+    }
+  | null
+  | undefined;
+
 export interface RenderableQuestion {
   question_type?: string;
   question_text?: RichTextLike;
@@ -43,6 +57,7 @@ export interface RenderableQuestion {
   difficulty_level?: string;
   marks_positive?: number;
   marks_negative?: number;
+  category?: QuestionCategoryLike;
 }
 
 interface QuestionRendererProps {
@@ -235,6 +250,27 @@ const formatCorrectAnswer = (question: RenderableQuestion) => {
   return "Available";
 };
 
+const formatCategoryLabel = (category: QuestionCategoryLike) => {
+  if (category === undefined || category === null) return "";
+  if (typeof category === "string") return category.trim();
+  if (Array.isArray(category)) {
+    return category
+      .map((entry) => String(entry).trim())
+      .filter(Boolean)
+      .join(", ");
+  }
+  if (typeof category === "object") {
+    const preferred =
+      category.label ??
+      category.name ??
+      category.value ??
+      category.type ??
+      (Array.isArray(category.tags) ? category.tags.join(", ") : "");
+    return String(preferred ?? "").trim();
+  }
+  return String(category).trim();
+};
+
 export default function QuestionRenderer({
   question,
   showAnswer = false,
@@ -281,6 +317,7 @@ export default function QuestionRenderer({
     : "N/A";
   const marksPositive = question.marks_positive ?? 0;
   const marksNegative = question.marks_negative ?? 0;
+  const categoryLabel = formatCategoryLabel(question.category);
 
   const renderOptions = () => {
     if (!showOptions) return null;
@@ -403,6 +440,11 @@ export default function QuestionRenderer({
           <span className="rounded-full bg-slate-100 px-2 py-1 font-semibold">
             +{marksPositive} / -{marksNegative}
           </span>
+          {categoryLabel ? (
+            <span className="rounded-full bg-violet-100 px-2 py-1 font-semibold text-violet-700">
+              {categoryLabel}
+            </span>
+          ) : null}
         </div>
       )}
 

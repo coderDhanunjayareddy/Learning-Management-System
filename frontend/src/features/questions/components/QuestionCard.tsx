@@ -40,7 +40,27 @@ const difficultyLabel = (difficulty: Question['difficulty_level']) => {
   return difficulty.charAt(0).toUpperCase() + difficulty.slice(1);
 };
 
+const categoryLabel = (category: Question['category']) => {
+  if (category === undefined || category === null) return '';
+  if (typeof category === 'string') return category.trim();
+  if (Array.isArray(category)) {
+    return category.map((entry) => String(entry).trim()).filter(Boolean).join(', ');
+  }
+  if (typeof category === 'object') {
+    return String(
+      category.label ??
+        category.name ??
+        category.value ??
+        category.type ??
+        (Array.isArray(category.tags) ? category.tags.join(', ') : '') ??
+        ''
+    ).trim();
+  }
+  return String(category).trim();
+};
+
 export default function QuestionCard({ question, onView, onEdit, onDelete }: Props) {
+  const category = categoryLabel(question.category);
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -54,6 +74,11 @@ export default function QuestionCard({ question, onView, onEdit, onDelete }: Pro
           <span className={`rounded-full px-2 py-1 text-xs font-semibold ${statusColor(question.status)}`}>
             {question.status}
           </span>
+          {category ? (
+            <span className="rounded-full bg-violet-100 px-2 py-1 text-xs font-semibold text-violet-700">
+              {category}
+            </span>
+          ) : null}
         </div>
         <div className="flex items-center gap-2 text-xs text-gray-500">
           <span>Subject #{question.subject_id}</span>

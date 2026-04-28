@@ -41,6 +41,7 @@ const normalizeQuestion = (item: any): Question => ({
   difficulty_level: item.difficulty_level ?? "easy",
   marks_positive: Number(item.marks_positive ?? 4),
   marks_negative: Number(item.marks_negative ?? 1),
+  category: item.category ?? null,
   exam_tags: item.exam_tags ?? [],
   status: item.status ?? "draft",
   created_by: item.created_by ?? "Unknown",

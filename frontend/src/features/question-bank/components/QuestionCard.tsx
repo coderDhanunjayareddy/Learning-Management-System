@@ -1,6 +1,6 @@
 import { memo } from "react";
 import QuestionRenderer from "@/components/questions/QuestionRenderer";
-import type { Question } from "@/types/questionBank";
+import { formatQuestionCategory, type Question } from "@/types/questionBank";
 import type { QuestionPermissions } from "@/features/question-bank/utils/questionPermissions";
 
 const statusStyles: Record<string, string> = {
@@ -50,6 +50,7 @@ function QuestionCard({
   onReject,
 }: QuestionCardProps) {
   const isEditable = permissions.canEdit;
+  const categoryLabel = formatQuestionCategory(question.category ?? null);
 
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
@@ -72,6 +73,11 @@ function QuestionCard({
               {question.comprehension_passage_id ? (
                 <span className="rounded-full bg-sky-100 px-2 py-0.5 text-sky-700">
                   Linked Passage
+                </span>
+              ) : null}
+              {categoryLabel ? (
+                <span className="rounded-full bg-violet-100 px-2 py-0.5 text-violet-700">
+                  {categoryLabel}
                 </span>
               ) : null}
             </div>

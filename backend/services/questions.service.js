@@ -1,4 +1,4 @@
-import { query as dbQuery } from '../repositories/db.repository.js';
+import { getClient, query as dbQuery } from '../repositories/db.repository.js';
 import { AppError, handleServiceError } from '../utils/errors.js';
 import AdmZip from 'adm-zip';
 import {
@@ -8,7 +8,6 @@ import {
   parseStringArray,
   parseStringArrayParam,
 } from '../schemas/questions.schema.js';
-import mammoth from 'mammoth';
 import { load as loadHtml } from 'cheerio';
 import {
   Document,
@@ -42,8 +41,12 @@ const isClientAdmin = (role) => role === 'client_admin';
 const isSchoolOwner = (role) => role === 'school_owner';
 const isTeacher = (role) => role === 'teacher';
 
-const fetchUserSchoolIds = async (userId) => {
-  const result = await dbQuery(
+const getQueryRunner = (queryRunner = dbQuery) =>
+  typeof queryRunner === 'function' ? queryRunner : queryRunner.query.bind(queryRunner);
+
+const fetchUserSchoolIds = async (userId, queryRunner = dbQuery) => {
+  const runQuery = getQueryRunner(queryRunner);
+  const result = await runQuery(
     `SELECT school_id FROM school_memberships WHERE user_id = $1 AND status = 'active'`,
     [userId]
   );
@@ -58,9 +61,10 @@ const ensureClientScope = (clientId, role) => {
   return clientId;
 };
 
-const ensureSchoolAccess = async ({ schoolId, role, userId, clientId }) => {
+const ensureSchoolAccess = async ({ schoolId, role, userId, clientId, queryRunner = dbQuery }) => {
+  const runQuery = getQueryRunner(queryRunner);
   if (!schoolId) return null;
-  const school = await dbQuery(`SELECT id, client_id FROM schools WHERE id = $1`, [schoolId]);
+  const school = await runQuery(`SELECT id, client_id FROM schools WHERE id = $1`, [schoolId]);
   if (school.rows.length === 0) {
     throw new AppError('School not found', 404);
   }
@@ -69,7 +73,7 @@ const ensureSchoolAccess = async ({ schoolId, role, userId, clientId }) => {
   }
   if (isPlatformAdmin(role) || isClientAdmin(role)) return schoolId;
 
-  const memberships = await fetchUserSchoolIds(userId);
+  const memberships = await fetchUserSchoolIds(userId, queryRunner);
   if (!memberships.includes(schoolId)) {
     throw new AppError('Access denied for this school', 403);
   }
@@ -83,7 +87,9 @@ const ensureCurriculumScope = async ({
   chapterId,
   topicId,
   clientId,
+  queryRunner = dbQuery,
 }) => {
+  const runQuery = getQueryRunner(queryRunner);
   if (!programId && !gradeId && !subjectId && !chapterId && !topicId) return;
   if (programId && !gradeId) {
     throw new AppError('grade_id is required when program_id is provided', 400);
@@ -97,7 +103,7 @@ const ensureCurriculumScope = async ({
   if (topicId && !chapterId) {
     throw new AppError('chapter_id is required when topic_id is provided', 400);
   }
-  const subjectResult = await dbQuery(
+  const subjectResult = await runQuery(
     `
     SELECT s.id, s.client_id, s.grade_id, g.program_id
     FROM subjects s
@@ -117,7 +123,7 @@ const ensureCurriculumScope = async ({
     throw new AppError('Grade does not belong to the program', 400);
   }
 
-  const chapterResult = await dbQuery(
+  const chapterResult = await runQuery(
     `SELECT c.id, c.subject_id, s.client_id
      FROM chapters c
      JOIN subjects s ON s.id = c.subject_id
@@ -133,7 +139,7 @@ const ensureCurriculumScope = async ({
   }
 
   if (topicId) {
-    const topicResult = await dbQuery(
+    const topicResult = await runQuery(
       `SELECT t.id, t.chapter_id, s.client_id
        FROM topics t
        JOIN chapters c ON c.id = t.chapter_id
@@ -307,6 +313,27 @@ const parseExamTagsInput = (value) => {
       .filter((entry) => entry.length > 0);
   }
   throw new AppError('exam_tags must be an array or comma-separated string', 400);
+};
+
+const parseCategoryInput = (value) => {
+  if (value === undefined || value === null || value === '') return null;
+  if (typeof value === 'object') return value;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    if (
+      (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+      (trimmed.startsWith('[') && trimmed.endsWith(']'))
+    ) {
+      try {
+        return JSON.parse(trimmed);
+      } catch (err) {
+        throw new AppError('category must be valid JSON when provided as an object or array string', 400);
+      }
+    }
+    return trimmed;
+  }
+  return value;
 };
 
 const parseOptionsInput = (value) => {
@@ -1339,8 +1366,7 @@ const normalizeDocxTableRowInput = (rawRow, defaults, rowNumber) => {
       passage_title: toRichHtmlValue(rawRow.passage_title),
       passage_content: toRichHtmlValue(rawRow.passage_content ?? rawRow.comprehension_passage),
       difficulty_level: toPlainBulkText(rawRow.difficulty_level) || 'medium',
-      exam_tags:
-        toPlainBulkText(rawRow.exam_tags || rawRow.tags || rawRow.category || rawRow.catagory) || '',
+      exam_tags: toPlainBulkText(rawRow.exam_tags || rawRow.tags) || '',
       category: toPlainBulkText(rawRow.category || rawRow.catagory) || null,
       comprehension_passage: passageHtml,
       comprehension_questions: rawRow.comprehension_questions ?? null,
@@ -1364,63 +1390,103 @@ const normalizeDocxTableRowInput = (rawRow, defaults, rowNumber) => {
   return prepared;
 };
 
+const loadDocxExtractionContext = (buffer) => {
+  const zip = new AdmZip(buffer);
+  const documentEntry = zip.getEntry('word/document.xml');
+  if (!documentEntry) {
+    throw new AppError('Invalid Word file: document.xml missing', 400);
+  }
+
+  const relsEntry = zip.getEntry('word/_rels/document.xml.rels');
+  const relationshipMap = {};
+  if (relsEntry) {
+    const relsXml = relsEntry.getData().toString('utf8');
+    const relMatches = relsXml.matchAll(/<Relationship[^>]*Id="([^"]+)"[^>]*Target="([^"]+)"[^>]*\/>/g);
+    for (const match of relMatches) {
+      relationshipMap[match[1]] = match[2];
+    }
+  }
+
+  return {
+    zip,
+    relationshipMap,
+    documentXml: documentEntry.getData().toString('utf8'),
+  };
+};
+
+const extractDocxTableCellContent = (cellXml, relationshipMap, zip) => {
+  const paragraphMatches = cellXml.match(/<w:p[\s\S]*?<\/w:p>/g) || [];
+  let html = '';
+  const textParts = [];
+
+  paragraphMatches.forEach((paragraphXml) => {
+    const { paragraphHtml, detectionText } = extractParagraphContent(paragraphXml, relationshipMap, zip);
+    if (paragraphHtml) {
+      html = appendRichHtmlBlock(html, paragraphHtml);
+    }
+    if (detectionText) {
+      textParts.push(detectionText);
+    }
+  });
+
+  return {
+    html: normalizeDocxCellHtml(html),
+    text: normalizeBulkTextValue(textParts.join('\n')),
+  };
+};
+
 const extractDocxTableRows = async (buffer, defaults) => {
-  const result = await mammoth.convertToHtml({ buffer });
-  const html = String(result?.value || '').trim();
-  if (!html.includes('<table')) {
+  const { zip, relationshipMap, documentXml } = loadDocxExtractionContext(buffer);
+  const tableMatches = documentXml.match(/<w:tbl[\s\S]*?<\/w:tbl>/g) || [];
+  if (tableMatches.length === 0) {
     return [];
   }
 
-  const $ = loadHtml(html);
   const rows = [];
+  const richCellKeys = new Set([
+    'question_text',
+    'options',
+    'solution',
+    'comprehension_passage',
+    'passage_title',
+    'passage_content',
+  ]);
 
-  $('table').each((_tableIndex, tableElement) => {
-    const tableRows = $(tableElement).find('tr');
+  tableMatches.forEach((tableXml) => {
+    const tableRows = tableXml.match(/<w:tr[\s\S]*?<\/w:tr>/g) || [];
     if (tableRows.length < 2) return;
 
-    const headers = [];
-    $(tableRows[0])
-      .find('th,td')
-      .each((_headerIndex, headerCell) => {
-        const normalizedKey = normalizeBulkHeaderKey($(headerCell).text());
-        const canonicalKey = BULK_DOCX_TABLE_HEADER_ALIASES[normalizedKey] || normalizedKey;
-        headers.push(canonicalKey);
-      });
+    const headerCells = tableRows[0].match(/<w:tc[\s\S]*?<\/w:tc>/g) || [];
+    const headers = headerCells.map((cellXml) => {
+      const { text } = extractDocxTableCellContent(cellXml, relationshipMap, zip);
+      const normalizedKey = normalizeBulkHeaderKey(text);
+      return BULK_DOCX_TABLE_HEADER_ALIASES[normalizedKey] || normalizedKey;
+    });
 
     if (!headers.includes('question_text')) {
       return;
     }
 
-    tableRows.each((rowIndex, rowElement) => {
-      if (rowIndex === 0) return;
+    tableRows.slice(1).forEach((rowXml, rowIndex) => {
+      const rowNumber = rowIndex + 2;
+      const cellMatches = rowXml.match(/<w:tc[\s\S]*?<\/w:tc>/g) || [];
       const row = {};
 
-      $(rowElement)
-        .find('td,th')
-        .each((cellIndex, cell) => {
-          const key = headers[cellIndex];
-          if (!key) return;
-          const cellHtml = normalizeDocxCellHtml($(cell).html());
-          if (
-            key === 'question_text' ||
-            key === 'options' ||
-            key === 'solution' ||
-            key === 'comprehension_passage'
-          ) {
-            row[key] = cellHtml;
-          } else {
-            row[key] = normalizeBulkTextValue($(cell).text());
-          }
-        });
+      cellMatches.forEach((cellXml, cellIndex) => {
+        const key = headers[cellIndex];
+        if (!key) return;
+        const cellContent = extractDocxTableCellContent(cellXml, relationshipMap, zip);
+        row[key] = richCellKeys.has(key) ? cellContent.html : cellContent.text;
+      });
 
       try {
-        const normalized = normalizeDocxTableRowInput(row, defaults, rowIndex + 1);
+        const normalized = normalizeDocxTableRowInput(row, defaults, rowNumber);
         if (normalized) {
           rows.push(normalized);
         }
       } catch (err) {
         const message = err instanceof AppError ? err.message : 'Failed to parse row';
-        rows.push({ _bulk_error: message, _bulk_row_number: rowIndex + 1 });
+        rows.push({ _bulk_error: message, _bulk_row_number: rowNumber });
       }
     });
   });
@@ -1526,7 +1592,8 @@ const parseGradeNumberToken = (value) => {
   return Number.parseInt(match[1], 10);
 };
 
-const resolveProgramReference = async ({ value, clientId }) => {
+const resolveProgramReference = async ({ value, clientId, queryRunner = dbQuery }) => {
+  const runQuery = getQueryRunner(queryRunner);
   const parsed = parseBulkEntityReference(value);
   if (!parsed.provided) {
     return null;
@@ -1539,7 +1606,7 @@ const resolveProgramReference = async ({ value, clientId }) => {
       idParams.push(clientId);
       idSql += ` AND client_id = $2`;
     }
-    const byId = await dbQuery(idSql, idParams);
+    const byId = await runQuery(idSql, idParams);
     if (byId.rows.length === 0) {
       throw new AppError(`Program not found for value "${value}"`, 404);
     }
@@ -1562,7 +1629,7 @@ const resolveProgramReference = async ({ value, clientId }) => {
   }
   nameSql += ` ORDER BY id LIMIT 2`;
 
-  const byName = await dbQuery(nameSql, nameParams);
+  const byName = await runQuery(nameSql, nameParams);
   if (byName.rows.length === 0) {
     throw new AppError(`Program not found for value "${value}"`, 404);
   }
@@ -1573,7 +1640,8 @@ const resolveProgramReference = async ({ value, clientId }) => {
   return byName.rows[0].id;
 };
 
-const resolveGradeReference = async ({ value, programId, clientId }) => {
+const resolveGradeReference = async ({ value, programId, clientId, queryRunner = dbQuery }) => {
+  const runQuery = getQueryRunner(queryRunner);
   const parsed = parseBulkEntityReference(value);
   if (!parsed.provided) {
     return { id: null, programId: programId ?? null };
@@ -1596,7 +1664,7 @@ const resolveGradeReference = async ({ value, programId, clientId }) => {
       nameSql += ` AND p.client_id = $${nameParams.length}`;
     }
     nameSql += ` ORDER BY g.id LIMIT 2`;
-    return dbQuery(nameSql, nameParams);
+    return runQuery(nameSql, nameParams);
   };
 
   const parsedGradeNumber = parseGradeNumberToken(parsed.text ?? value);
@@ -1625,7 +1693,7 @@ const resolveGradeReference = async ({ value, programId, clientId }) => {
       idParams.push(clientId);
       idSql += ` AND p.client_id = $2`;
     }
-    const byId = await dbQuery(idSql, idParams);
+    const byId = await runQuery(idSql, idParams);
     if (byId.rows.length === 0) {
       throw new AppError(`Grade not found for value "${value}"`, 404);
     }
@@ -1654,7 +1722,15 @@ const resolveGradeReference = async ({ value, programId, clientId }) => {
   return { id: byName.rows[0].id, programId: byName.rows[0].program_id };
 };
 
-const resolveSubjectReference = async ({ value, gradeId, programId, clientId, required = false }) => {
+const resolveSubjectReference = async ({
+  value,
+  gradeId,
+  programId,
+  clientId,
+  required = false,
+  queryRunner = dbQuery,
+}) => {
+  const runQuery = getQueryRunner(queryRunner);
   const parsed = parseBulkEntityReference(value);
   if (!parsed.provided) {
     if (required) {
@@ -1675,7 +1751,7 @@ const resolveSubjectReference = async ({ value, gradeId, programId, clientId, re
       idParams.push(clientId);
       idSql += ` AND s.client_id = $2`;
     }
-    const byId = await dbQuery(idSql, idParams);
+    const byId = await runQuery(idSql, idParams);
     if (byId.rows.length === 0) {
       throw new AppError(`Subject not found for value "${value}"`, 404);
     }
@@ -1710,7 +1786,7 @@ const resolveSubjectReference = async ({ value, gradeId, programId, clientId, re
   }
   nameSql += ` ORDER BY s.id LIMIT 2`;
 
-  const byName = await dbQuery(nameSql, nameParams);
+  const byName = await runQuery(nameSql, nameParams);
   if (byName.rows.length === 0) {
     throw new AppError(`Subject not found for value "${value}"`, 404);
   }
@@ -1728,7 +1804,14 @@ const resolveSubjectReference = async ({ value, gradeId, programId, clientId, re
   return { id: subject.id, gradeId: subject.grade_id ?? gradeId ?? null, programId: subject.program_id ?? programId ?? null };
 };
 
-const resolveChapterReference = async ({ value, subjectId, clientId, required = false }) => {
+const resolveChapterReference = async ({
+  value,
+  subjectId,
+  clientId,
+  required = false,
+  queryRunner = dbQuery,
+}) => {
+  const runQuery = getQueryRunner(queryRunner);
   const parsed = parseBulkEntityReference(value);
   if (!parsed.provided) {
     if (required) {
@@ -1749,7 +1832,7 @@ const resolveChapterReference = async ({ value, subjectId, clientId, required = 
       idParams.push(clientId);
       idSql += ` AND s.client_id = $2`;
     }
-    const byId = await dbQuery(idSql, idParams);
+    const byId = await runQuery(idSql, idParams);
     if (byId.rows.length === 0) {
       throw new AppError(`Chapter not found for value "${value}"`, 404);
     }
@@ -1793,7 +1876,7 @@ const resolveChapterReference = async ({ value, subjectId, clientId, required = 
   }
   nameSql += ` ORDER BY c.id LIMIT 2`;
 
-  const byName = await dbQuery(nameSql, nameParams);
+  const byName = await runQuery(nameSql, nameParams);
   if (byName.rows.length === 0) {
     throw new AppError(`Chapter not found for value "${value}"`, 404);
   }
@@ -1803,7 +1886,8 @@ const resolveChapterReference = async ({ value, subjectId, clientId, required = 
   return { id: byName.rows[0].id, subjectId: byName.rows[0].subject_id };
 };
 
-const resolveTopicReference = async ({ value, chapterId, clientId }) => {
+const resolveTopicReference = async ({ value, chapterId, clientId, queryRunner = dbQuery }) => {
+  const runQuery = getQueryRunner(queryRunner);
   const parsed = parseBulkEntityReference(value);
   if (!parsed.provided) {
     return { id: null, chapterId: chapterId ?? null };
@@ -1822,7 +1906,7 @@ const resolveTopicReference = async ({ value, chapterId, clientId }) => {
       idParams.push(clientId);
       idSql += ` AND s.client_id = $2`;
     }
-    const byId = await dbQuery(idSql, idParams);
+    const byId = await runQuery(idSql, idParams);
     if (byId.rows.length === 0) {
       throw new AppError(`Topic not found for value "${value}"`, 404);
     }
@@ -1868,7 +1952,7 @@ const resolveTopicReference = async ({ value, chapterId, clientId }) => {
   }
   nameSql += ` ORDER BY t.id LIMIT 2`;
 
-  const byName = await dbQuery(nameSql, nameParams);
+  const byName = await runQuery(nameSql, nameParams);
   if (byName.rows.length === 0) {
     throw new AppError(`Topic not found for value "${value}"`, 404);
   }
@@ -1966,23 +2050,7 @@ const finalizeDocxQuestion = (question, defaults, rowNumber) => {
 };
 
 const extractDocxRows = (buffer, defaults) => {
-  const zip = new AdmZip(buffer);
-  const documentEntry = zip.getEntry('word/document.xml');
-  if (!documentEntry) {
-    throw new AppError('Invalid Word file: document.xml missing', 400);
-  }
-
-  const relsEntry = zip.getEntry('word/_rels/document.xml.rels');
-  const relationshipMap = {};
-  if (relsEntry) {
-    const relsXml = relsEntry.getData().toString('utf8');
-    const relMatches = relsXml.matchAll(/<Relationship[^>]*Id="([^"]+)"[^>]*Target="([^"]+)"[^>]*\/>/g);
-    for (const match of relMatches) {
-      relationshipMap[match[1]] = match[2];
-    }
-  }
-
-  const documentXml = documentEntry.getData().toString('utf8');
+  const { zip, relationshipMap, documentXml } = loadDocxExtractionContext(buffer);
   const paragraphMatches = documentXml.match(/<w:p[\s\S]*?<\/w:p>/g) || [];
   if (paragraphMatches.length === 0) {
     throw new AppError('Word file has no readable paragraph content', 400);
@@ -2424,7 +2492,7 @@ const extractBulkRowsFromFile = async (file, defaults) => {
   throw new AppError('Unsupported file type. Allowed: .csv, .docx', 400);
 };
 
-const buildQuestionInsertPayload = async ({ input, user, role, clientId }) => {
+const buildQuestionInsertPayload = async ({ input, user, role, clientId, queryRunner = dbQuery }) => {
   if (
     input.comprehension_passage !== undefined ||
     input.comprehensive_passage !== undefined ||
@@ -2462,11 +2530,13 @@ const buildQuestionInsertPayload = async ({ input, user, role, clientId }) => {
   const resolvedProgramId = await resolveProgramReference({
     value: input.program_id ?? input.program,
     clientId,
+    queryRunner,
   });
   const resolvedGrade = await resolveGradeReference({
     value: input.grade_id ?? input.grade,
     programId: resolvedProgramId,
     clientId,
+    queryRunner,
   });
   const resolvedSubject = await resolveSubjectReference({
     value: input.subject_id ?? input.subject,
@@ -2474,17 +2544,20 @@ const buildQuestionInsertPayload = async ({ input, user, role, clientId }) => {
     programId: resolvedProgramId ?? resolvedGrade.programId,
     clientId,
     required: true,
+    queryRunner,
   });
   const resolvedChapter = await resolveChapterReference({
     value: input.chapter_id ?? input.chapter,
     subjectId: resolvedSubject.id,
     clientId,
     required: true,
+    queryRunner,
   });
   const resolvedTopic = await resolveTopicReference({
     value: input.topic_id ?? input.topic,
     chapterId: resolvedChapter.id,
     clientId,
+    queryRunner,
   });
 
   const programId = resolvedProgramId ?? resolvedGrade.programId ?? resolvedSubject.programId ?? null;
@@ -2493,10 +2566,18 @@ const buildQuestionInsertPayload = async ({ input, user, role, clientId }) => {
   const chapterId = resolvedChapter.id;
   const topicId = resolvedTopic.id;
 
-  await ensureCurriculumScope({ programId, gradeId, subjectId, chapterId, topicId, clientId });
+  await ensureCurriculumScope({
+    programId,
+    gradeId,
+    subjectId,
+    chapterId,
+    topicId,
+    clientId,
+    queryRunner,
+  });
 
   const schoolId = parseNullableInt(input.school_id, 'school_id');
-  await ensureSchoolAccess({ schoolId, role, userId: user.id, clientId });
+  await ensureSchoolAccess({ schoolId, role, userId: user.id, clientId, queryRunner });
 
   const difficulty = input.difficulty_level ? String(input.difficulty_level) : 'medium';
   if (!VALID_DIFFICULTY_LEVELS.includes(difficulty)) {
@@ -2548,7 +2629,8 @@ const buildQuestionInsertPayload = async ({ input, user, role, clientId }) => {
     topic_id: topicId,
     scoring_mode: scoringModeInput,
     difficulty_level: difficulty,
-    exam_tags: parseExamTagsInput(input.exam_tags ?? input.category ?? input.catagory),
+    exam_tags: parseExamTagsInput(input.exam_tags ?? input.tags),
+    category: parseCategoryInput(input.category ?? input.catagory),
     marks_positive: parseNumberField(input.marks_positive, 'marks_positive', 4),
     marks_negative: parseNumberField(input.marks_negative, 'marks_negative', 0),
     status,
@@ -2706,13 +2788,20 @@ const attachComprehensionSummaries = async (rows) => {
   });
 };
 
-const getComprehensionPassageByIdScopedInternal = async ({ id, user, role, clientId }) => {
+const getComprehensionPassageByIdScopedInternal = async ({
+  id,
+  user,
+  role,
+  clientId,
+  queryRunner = dbQuery,
+}) => {
+  const runQuery = getQueryRunner(queryRunner);
   const schemaSupport = await getQuestionSchemaSupport();
   if (!schemaSupport.hasComprehensionPassageTable) {
     throw new AppError('This database does not support comprehension passages yet', 400);
   }
 
-  const result = await dbQuery(`SELECT * FROM comprehension_passages WHERE id = $1`, [id]);
+  const result = await runQuery(`SELECT * FROM comprehension_passages WHERE id = $1`, [id]);
   if (result.rows.length === 0) {
     return { error: { status: 404, body: { error: 'Passage not found' } } };
   }
@@ -2723,7 +2812,7 @@ const getComprehensionPassageByIdScopedInternal = async ({ id, user, role, clien
   }
 
   if (isSchoolOwner(role) || isTeacher(role)) {
-    const schoolIds = await fetchUserSchoolIds(user.id);
+    const schoolIds = await fetchUserSchoolIds(user.id, queryRunner);
     if (passage.school_id && !schoolIds.includes(passage.school_id)) {
       return { error: { status: 403, body: { error: 'Access denied' } } };
     }
@@ -2758,7 +2847,8 @@ const getQuestionByIdScoped = async ({ id, user, role, clientId }) => {
   return { question };
 };
 
-const insertQuestion = async (payload) => {
+const insertQuestion = async (payload, queryRunner = dbQuery) => {
+  const runQuery = getQueryRunner(queryRunner);
   const schemaSupport = await getQuestionSchemaSupport();
   const columns = [
     'client_id',
@@ -2792,6 +2882,7 @@ const insertQuestion = async (payload) => {
     'chapter_id',
     'topic_id',
     'difficulty_level',
+    'category',
     'exam_tags',
     'marks_positive',
     'marks_negative',
@@ -2803,6 +2894,7 @@ const insertQuestion = async (payload) => {
     payload.chapter_id,
     payload.topic_id,
     payload.difficulty_level,
+    toDbJsonParam(payload.category),
     payload.exam_tags,
     payload.marks_positive,
     payload.marks_negative,
@@ -2811,7 +2903,7 @@ const insertQuestion = async (payload) => {
   );
 
   const placeholders = values.map((_, index) => `$${index + 1}`).join(',');
-  const insertResult = await dbQuery(
+  const insertResult = await runQuery(
     `
     INSERT INTO questions (${columns.join(', ')})
     VALUES (${placeholders})
@@ -2821,7 +2913,7 @@ const insertQuestion = async (payload) => {
   );
 
   const insertedId = insertResult.rows[0].id;
-  const fullResult = await dbQuery(
+  const fullResult = await runQuery(
     `
     SELECT q.*, s.grade_id, g.program_id
     FROM questions q
@@ -3083,6 +3175,9 @@ export const updateQuestion = async (req, res) => {
     if (req.body.exam_tags !== undefined) {
       updates.exam_tags = parseStringArray(req.body.exam_tags, 'exam_tags');
     }
+    if (req.body.category !== undefined || req.body.catagory !== undefined) {
+      updates.category = toDbJsonParam(parseCategoryInput(req.body.category ?? req.body.catagory));
+    }
 
     if (req.body.marks_positive !== undefined) updates.marks_positive = req.body.marks_positive;
     if (req.body.marks_negative !== undefined) updates.marks_negative = req.body.marks_negative;
@@ -3191,7 +3286,9 @@ const createComprehensionPassageRecord = async ({
   user,
   role,
   clientId,
+  queryRunner = dbQuery,
 }) => {
+  const runQuery = getQueryRunner(queryRunner);
   const schemaSupport = await getQuestionSchemaSupport();
   if (!schemaSupport.hasComprehensionPassageTable) {
     throw new AppError('This database does not support comprehension passages yet', 400);
@@ -3200,29 +3297,37 @@ const createComprehensionPassageRecord = async ({
   const title = ensureRichTextValue(input?.title, 'title');
   const passageContent = ensureRichTextValue(input?.passage_content, 'passage_content');
   const schoolId = parseNullableInt(input?.school_id, 'school_id');
-  await ensureSchoolAccess({ schoolId, role, userId: user.id, clientId });
+  await ensureSchoolAccess({ schoolId, role, userId: user.id, clientId, queryRunner });
 
-  const programId = await resolveProgramReference({ value: input?.program_id ?? input?.program, clientId });
+  const programId = await resolveProgramReference({
+    value: input?.program_id ?? input?.program,
+    clientId,
+    queryRunner,
+  });
   const gradeResult = await resolveGradeReference({
     value: input?.grade_id ?? input?.grade,
     programId,
     clientId,
+    queryRunner,
   });
   const subjectResult = await resolveSubjectReference({
     value: input?.subject_id ?? input?.subject,
     gradeId: gradeResult.id,
     programId: gradeResult.programId ?? programId,
     clientId,
+    queryRunner,
   });
   const chapterResult = await resolveChapterReference({
     value: input?.chapter_id ?? input?.chapter,
     subjectId: subjectResult.id,
     clientId,
+    queryRunner,
   });
   const topicResult = await resolveTopicReference({
     value: input?.topic_id ?? input?.topic,
     chapterId: chapterResult.id,
     clientId,
+    queryRunner,
   });
 
   const resolvedProgramId = programId ?? gradeResult.programId ?? subjectResult.programId ?? null;
@@ -3238,9 +3343,10 @@ const createComprehensionPassageRecord = async ({
     chapterId: resolvedChapterId,
     topicId: resolvedTopicId,
     clientId,
+    queryRunner,
   });
 
-  const result = await dbQuery(
+  const result = await runQuery(
     `
     INSERT INTO comprehension_passages (
       client_id,
@@ -4462,6 +4568,7 @@ const resolveBulkComprehensionPassageId = async ({
   role,
   clientId,
   cache,
+  queryRunner = dbQuery,
 }) => {
   const shouldLinkPassage =
     Boolean(row.has_comprehension) ||
@@ -4503,6 +4610,7 @@ const resolveBulkComprehensionPassageId = async ({
     user,
     role,
     clientId,
+    queryRunner,
   });
 
   cache.set(cacheKey, Number(passage.id));
@@ -4511,12 +4619,13 @@ const resolveBulkComprehensionPassageId = async ({
 
 let hasQuestionsFolderIdColumn = null;
 
-const checkQuestionsFolderIdColumn = async () => {
+const checkQuestionsFolderIdColumn = async (queryRunner = dbQuery) => {
+  const runQuery = getQueryRunner(queryRunner);
   if (hasQuestionsFolderIdColumn !== null) {
     return hasQuestionsFolderIdColumn;
   }
 
-  const columnResult = await dbQuery(
+  const columnResult = await runQuery(
     `
     SELECT 1
     FROM information_schema.columns
@@ -4531,10 +4640,11 @@ const checkQuestionsFolderIdColumn = async () => {
   return hasQuestionsFolderIdColumn;
 };
 
-const ensureBulkFolderAccess = async ({ folderId, user, role, clientId }) => {
+const ensureBulkFolderAccess = async ({ folderId, user, role, clientId, queryRunner = dbQuery }) => {
+  const runQuery = getQueryRunner(queryRunner);
   if (!folderId) return null;
 
-  const result = await dbQuery(
+  const result = await runQuery(
     `SELECT id, client_id, school_id, is_active FROM question_folders WHERE id = $1 LIMIT 1`,
     [folderId]
   );
@@ -4552,13 +4662,180 @@ const ensureBulkFolderAccess = async ({ folderId, user, role, clientId }) => {
   }
 
   if (isTeacher(role) || isSchoolOwner(role)) {
-    const schoolIds = await fetchUserSchoolIds(user.id);
+    const schoolIds = await fetchUserSchoolIds(user.id, queryRunner);
     if (folder.school_id && !schoolIds.includes(folder.school_id)) {
       throw new AppError('Access denied for folder', 403);
     }
   }
 
   return folder.id;
+};
+
+const sanitizeBulkRowForInsert = (row, comprehensionPassageId) => {
+  const sanitizedRow = {
+    ...row,
+    comprehension_passage_id: comprehensionPassageId ?? undefined,
+  };
+  delete sanitizedRow.comprehension_passage;
+  delete sanitizedRow.comprehensive_passage;
+  delete sanitizedRow.comprehension_questions;
+  delete sanitizedRow.comprehensive_subquestions;
+  delete sanitizedRow.has_comprehension;
+  delete sanitizedRow.passage_key;
+  delete sanitizedRow.passage_title;
+  delete sanitizedRow.passage_content;
+  delete sanitizedRow.use_existing_passage_id;
+  delete sanitizedRow.passage_action;
+  return sanitizedRow;
+};
+
+const buildBulkUploadFailureResponse = ({ total, errors }) => ({
+  success: false,
+  inserted: 0,
+  failed: errors.length,
+  total,
+  totalDetected: total,
+  errors,
+  data: [],
+  message: 'Upload failed. No questions were inserted.',
+});
+
+const prepareBulkInsertPayloads = async ({
+  rows,
+  user,
+  role,
+  clientId,
+  queryRunner,
+}) => {
+  const errors = [];
+  const preparedRows = [];
+  const passageCache = new Map();
+
+  for (let index = 0; index < rows.length; index += 1) {
+    const row = rows[index];
+    const rowNumber = index + 2;
+
+    if (row && typeof row === 'object' && row._bulk_error) {
+      errors.push({
+        row: Number(row._bulk_row_number || rowNumber),
+        message: String(row._bulk_error),
+      });
+      continue;
+    }
+
+    try {
+      const comprehensionPassageId = await resolveBulkComprehensionPassageId({
+        row,
+        user,
+        role,
+        clientId,
+        cache: passageCache,
+        queryRunner,
+      });
+      const payload = await buildQuestionInsertPayload({
+        input: sanitizeBulkRowForInsert(row, comprehensionPassageId),
+        user,
+        role,
+        clientId,
+        queryRunner,
+      });
+      preparedRows.push({ rowNumber, payload });
+    } catch (err) {
+      const message = err instanceof AppError ? err.message : 'Failed to prepare question for insert';
+      errors.push({
+        row: rowNumber,
+        message: `Row ${rowNumber}: ${message}`,
+      });
+    }
+  }
+
+  return { errors, preparedRows };
+};
+
+const executeAtomicBulkInsert = async ({
+  rows,
+  selectedFolderId,
+  canAssignFolder,
+  user,
+  role,
+  clientId,
+}) => {
+  const client = await getClient();
+
+  try {
+    await client.query('BEGIN');
+
+    const { errors, preparedRows } = await prepareBulkInsertPayloads({
+      rows,
+      user,
+      role,
+      clientId,
+      queryRunner: client,
+    });
+
+    if (errors.length > 0) {
+      await client.query('ROLLBACK');
+      return {
+        ok: false,
+        statusCode: 400,
+        body: buildBulkUploadFailureResponse({ total: rows.length, errors }),
+      };
+    }
+
+    const inserted = [];
+    for (const preparedRow of preparedRows) {
+      try {
+        const created = await insertQuestion(preparedRow.payload, client);
+        if (selectedFolderId && canAssignFolder) {
+          await client.query(`UPDATE questions SET folder_id = $1 WHERE id = $2`, [
+            selectedFolderId,
+            created.id,
+          ]);
+        }
+        inserted.push(created);
+      } catch (err) {
+        const message = err instanceof AppError ? err.message : 'Failed to insert question';
+        await client.query('ROLLBACK');
+        return {
+          ok: false,
+          statusCode: 400,
+          body: buildBulkUploadFailureResponse({
+            total: rows.length,
+            errors: [
+              {
+                row: preparedRow.rowNumber,
+                message: `Row ${preparedRow.rowNumber}: ${message}`,
+              },
+            ],
+          }),
+        };
+      }
+    }
+
+    await client.query('COMMIT');
+    return {
+      ok: true,
+      statusCode: 200,
+      body: {
+        success: true,
+        inserted: inserted.length,
+        failed: 0,
+        total: rows.length,
+        totalDetected: rows.length,
+        errors: [],
+        data: inserted,
+      },
+    };
+  } catch (err) {
+    try {
+      await client.query('ROLLBACK');
+    } catch (rollbackErr) {
+      // Ignore rollback failures and surface the original error.
+    }
+    throw err;
+  } finally {
+    client.release();
+  }
 };
 
 export const bulkUploadQuestions = async (req, res) => {
@@ -4595,75 +4872,15 @@ export const bulkUploadQuestions = async (req, res) => {
     if (rows.length === 0) {
       throw new AppError('No valid question rows found in the uploaded file', 400);
     }
-
-    const inserted = [];
-    const errors = [];
-    const passageCache = new Map();
-
-    for (let index = 0; index < rows.length; index += 1) {
-      const row = rows[index];
-      const rowNumber = index + 2;
-
-      if (row && typeof row === 'object' && row._bulk_error) {
-        const parsedRowNumber = Number(row._bulk_row_number || rowNumber);
-        errors.push({
-          row: parsedRowNumber,
-          message: String(row._bulk_error),
-        });
-        continue;
-      }
-
-      try {
-        const comprehensionPassageId = await resolveBulkComprehensionPassageId({
-          row,
-          user: req.user,
-          role,
-          clientId,
-          cache: passageCache,
-        });
-        const sanitizedRow = {
-          ...row,
-          comprehension_passage_id: comprehensionPassageId ?? undefined,
-        };
-        delete sanitizedRow.comprehension_passage;
-        delete sanitizedRow.comprehensive_passage;
-        delete sanitizedRow.comprehension_questions;
-        delete sanitizedRow.comprehensive_subquestions;
-        delete sanitizedRow.has_comprehension;
-        delete sanitizedRow.passage_key;
-        delete sanitizedRow.passage_title;
-        delete sanitizedRow.passage_content;
-        delete sanitizedRow.use_existing_passage_id;
-        delete sanitizedRow.passage_action;
-
-        const payload = await buildQuestionInsertPayload({
-          input: sanitizedRow,
-          user: req.user,
-          role,
-          clientId,
-        });
-        const created = await insertQuestion(payload);
-
-        if (selectedFolderId && canAssignFolder) {
-          await dbQuery(`UPDATE questions SET folder_id = $1 WHERE id = $2`, [selectedFolderId, created.id]);
-        }
-
-        inserted.push(created);
-      } catch (err) {
-        const message = err instanceof AppError ? err.message : 'Failed to insert question';
-        errors.push({
-          row: rowNumber,
-          message: `Row ${rowNumber}: ${message}`,
-        });
-      }
-    }
-
-    return res.json({
-      inserted: inserted.length,
-      total: rows.length,
-      errors,
-      data: inserted,
+    const result = await executeAtomicBulkInsert({
+      rows,
+      selectedFolderId,
+      canAssignFolder,
+      user: req.user,
+      role,
+      clientId,
     });
+    return res.status(result.statusCode).json(result.body);
   } catch (err) {
     handleServiceError(res, err, 'Failed to bulk upload questions');
   }
@@ -4732,76 +4949,15 @@ export const insertConvertedQuestions = async (req, res) => {
       defaults,
     });
 
-    const inserted = [];
-    const errors = [];
-    const passageCache = new Map();
-
-    for (let index = 0; index < rows.length; index += 1) {
-      const row = rows[index];
-      const rowNumber = index + 2;
-
-      if (row && typeof row === 'object' && row._bulk_error) {
-        const parsedRowNumber = Number(row._bulk_row_number || rowNumber);
-        errors.push({
-          row: parsedRowNumber,
-          message: String(row._bulk_error),
-        });
-        continue;
-      }
-
-      try {
-        const comprehensionPassageId = await resolveBulkComprehensionPassageId({
-          row,
-          user: req.user,
-          role,
-          clientId,
-          cache: passageCache,
-        });
-        const sanitizedRow = {
-          ...row,
-          comprehension_passage_id: comprehensionPassageId ?? undefined,
-        };
-        delete sanitizedRow.comprehension_passage;
-        delete sanitizedRow.comprehensive_passage;
-        delete sanitizedRow.comprehension_questions;
-        delete sanitizedRow.comprehensive_subquestions;
-        delete sanitizedRow.has_comprehension;
-        delete sanitizedRow.passage_key;
-        delete sanitizedRow.passage_title;
-        delete sanitizedRow.passage_content;
-        delete sanitizedRow.use_existing_passage_id;
-        delete sanitizedRow.passage_action;
-
-        const payload = await buildQuestionInsertPayload({
-          input: sanitizedRow,
-          user: req.user,
-          role,
-          clientId,
-        });
-        const created = await insertQuestion(payload);
-
-        if (selectedFolderId && canAssignFolder) {
-          await dbQuery(`UPDATE questions SET folder_id = $1 WHERE id = $2`, [selectedFolderId, created.id]);
-        }
-
-        inserted.push(created);
-      } catch (err) {
-        const message = err instanceof AppError ? err.message : 'Failed to insert question';
-        errors.push({
-          row: rowNumber,
-          message: `Row ${rowNumber}: ${message}`,
-        });
-      }
-    }
-
-    return res.json({
-      success: errors.length === 0,
-      inserted: inserted.length,
-      failed: errors.length,
-      totalDetected: rows.length,
-      errors,
-      data: inserted,
+    const result = await executeAtomicBulkInsert({
+      rows,
+      selectedFolderId,
+      canAssignFolder,
+      user: req.user,
+      role,
+      clientId,
     });
+    return res.status(result.statusCode).json(result.body);
   } catch (err) {
     handleServiceError(res, err, 'Failed to convert and insert questions');
   }
