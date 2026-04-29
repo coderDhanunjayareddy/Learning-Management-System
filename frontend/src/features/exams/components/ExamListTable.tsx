@@ -7,6 +7,7 @@ interface ExamListTableProps {
   exams: ExamSummary[];
   onAction: (action: string, exam: ExamSummary) => void;
   permissions: ExamPermissions;
+  onStatusClick?: (exam: ExamSummary) => void;
 }
 
 const normalizeStatus = (value?: string | null): ExamStatus | null => {
@@ -67,7 +68,12 @@ const ActionButton = ({
   </button>
 );
 
-export default function ExamListTable({ exams, onAction, permissions }: ExamListTableProps) {
+export default function ExamListTable({
+  exams,
+  onAction,
+  permissions,
+  onStatusClick,
+}: ExamListTableProps) {
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="overflow-x-auto">
@@ -122,7 +128,18 @@ export default function ExamListTable({ exams, onAction, permissions }: ExamList
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <ExamStatusBadge status={status} />
+                    {status === "draft" && permissions.canPublish && onStatusClick ? (
+                      <button
+                        type="button"
+                        onClick={() => onStatusClick(exam)}
+                        className="rounded-full"
+                        title="Click to publish this exam"
+                      >
+                        <ExamStatusBadge status={status} className="cursor-pointer hover:opacity-85" />
+                      </button>
+                    ) : (
+                      <ExamStatusBadge status={status} />
+                    )}
                   </td>
                   <td className="px-4 py-3 text-xs text-slate-600">
                     {formatWindow(exam.start_datetime, exam.end_datetime)}

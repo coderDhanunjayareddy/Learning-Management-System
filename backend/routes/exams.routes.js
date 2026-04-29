@@ -14,12 +14,14 @@ import {
   updateExamSection,
   deleteExamSection,
   addQuestionToSection,
+  replaceQuestionInSection,
   publishExam,
   getExamAssignedCourses,
   assignExamCourses,
   getExamResults,
   getExamSectionSyllabusOptions,
   configureExamSectionSyllabus,
+  previewExamSectionGeneration,
   generateExamSectionQuestions,
   getExamPreview,
   finalizeExamBlueprint,
@@ -51,11 +53,13 @@ router.put('/exams/:id/sections/:sectionId', checkPermission('exams.update'), up
 router.delete('/exams/:id/sections/:sectionId', checkPermission('exams.update'), deleteExamSection);
 router.get('/exams/:id/sections/:sectionId/syllabus-options', checkPermission('exams.read'), getExamSectionSyllabusOptions);
 router.put('/exams/:id/sections/:sectionId/configure', checkPermission('exams.update'), configureExamSectionSyllabus);
+router.get('/exams/:id/sections/:sectionId/generation-plan', checkPermission('exams.read'), previewExamSectionGeneration);
 router.post('/exams/:id/sections/:sectionId/generate', checkPermission('exams.update'), generateExamSectionQuestions);
 router.get('/exams/:id/preview', checkPermission('exams.read'), getExamPreview);
 router.post('/exams/:id/finalize', checkPermission('exams.update'), finalizeExamBlueprint);
 
 router.post('/exams/:id/sections/:sectionId/questions', checkPermission('exams.update'), addQuestionToSection);
+router.put('/exams/:id/sections/:sectionId/questions/replace', checkPermission('exams.update'), replaceQuestionInSection);
 router.post('/exams/:id/publish', checkPermission('exams.publish'), publishExam);
 router.get('/exams/:id/results', checkPermission('exams.read'), getExamResults);
 router.get('/exams/:id/courses', checkPermission('exams.read'), getExamAssignedCourses);

@@ -40,6 +40,82 @@ const parseOptionalNumber = (value, fieldName) => {
   return parsed;
 };
 
+const normalizeQuestionGroupTypeFromCategory = (category) => {
+  if (category === undefined || category === null) return null;
+
+  const normalizeToken = (value) => {
+    const raw = String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[\s-]+/g, '_');
+    if (!raw) return null;
+    if (QUESTION_GROUP_TYPES.includes(raw)) return raw;
+    if (['direct', 'direction_question', 'direct_question'].includes(raw)) return 'direction';
+    if (['similar_question', 'similar_questions'].includes(raw)) return 'similar';
+    if (
+      ['previous_year_question', 'previous_year_questions', 'previousyear', 'previousyear_question'].includes(raw)
+    ) {
+      return 'previous_year';
+    }
+    if (['reference_question', 'reference_questions'].includes(raw)) return 'reference';
+    return null;
+  };
+
+  if (typeof category === 'string') {
+    return normalizeToken(category);
+  }
+
+  if (Array.isArray(category)) {
+    for (const entry of category) {
+      const normalized = normalizeToken(entry);
+      if (normalized) return normalized;
+    }
+    return null;
+  }
+
+  if (typeof category === 'object') {
+    return (
+      normalizeToken(category.label) ||
+      normalizeToken(category.name) ||
+      normalizeToken(category.value) ||
+      normalizeToken(category.type) ||
+      (Array.isArray(category.tags)
+        ? category.tags.map((entry) => normalizeToken(entry)).find(Boolean) ?? null
+        : null)
+    );
+  }
+
+  return null;
+};
+
+const validateQuestionForExamSection = async ({ exam, questionId }) => {
+  const questionResult = await dbQuery('SELECT * FROM questions WHERE id = $1', [questionId]);
+  if (questionResult.rows.length === 0) {
+    throw new AppError('Question not found', 404);
+  }
+
+  const question = questionResult.rows[0];
+  if (String(question.status).toLowerCase() !== 'approved') {
+    throw new AppError('Only approved questions can be added', 400);
+  }
+  if (String(question.question_type).toLowerCase() === 'comprehensive') {
+    throw new AppError('Legacy comprehensive parent records cannot be added to exams. Add linked child questions instead.', 400);
+  }
+
+  if (question.client_id && Number(question.client_id) !== Number(exam.client_id)) {
+    throw new AppError('Question does not belong to the same client scope as the exam', 403);
+  }
+
+  if (question.school_id && exam.school_id && Number(question.school_id) !== Number(exam.school_id)) {
+    throw new AppError('Question does not belong to the same school scope as the exam', 403);
+  }
+
+  return {
+    ...question,
+    normalized_question_group_type: normalizeQuestionGroupTypeFromCategory(question.category),
+  };
+};
+
 const parsePagination = (query) => {
   const page = Math.max(parseInt(query?.page || '1', 10), 1);
   const pageSize = Math.min(Math.max(parseInt(query?.page_size || '20', 10), 1), 100);
@@ -531,6 +607,14 @@ const groupQuestionsByType = (questions) =>
     return acc;
   }, {});
 
+const createEmptyQuestionGroupCounts = () => ({
+  direction: 0,
+  similar: 0,
+  reference: 0,
+  previous_year: 0,
+  total: 0,
+});
+
 const pickQuestionsForSection = ({ candidates, requiredCount }) => {
   if (candidates.length < requiredCount) {
     throw new AppError('Not enough approved questions available for this section', 400);
@@ -558,6 +642,265 @@ const pickQuestionsForSection = ({ candidates, requiredCount }) => {
   }
 
   return selected;
+};
+
+const fetchSectionGenerationCandidates = async ({ exam, section }) => {
+  const topicResult = await dbQuery(
+    `
+      SELECT t.id, t.name, t.topic_number
+      FROM exam_section_topics est
+      JOIN topics t ON t.id = est.topic_id
+      WHERE est.exam_section_id = $1
+      ORDER BY t.topic_number, t.id
+    `,
+    [section.id]
+  );
+  const topicRows = topicResult.rows.map((row) => ({
+    id: Number(row.id),
+    name: row.name,
+    topic_number: row.topic_number !== null && row.topic_number !== undefined ? Number(row.topic_number) : null,
+  }));
+  const topicIds = topicRows.map((row) => row.id);
+  if (topicIds.length === 0) {
+    throw new AppError('Select topics before generating questions', 400);
+  }
+
+  const duplicateResult = await dbQuery(
+    `
+      SELECT eq.question_id
+      FROM exam_questions eq
+      JOIN exam_sections es ON es.id = eq.section_id
+      WHERE es.exam_id = $1
+        AND es.id <> $2
+    `,
+    [exam.id, section.id]
+  );
+  const excludedQuestionIds = duplicateResult.rows.map((row) => Number(row.question_id));
+
+  const candidateResult = await dbQuery(
+    `
+      SELECT
+        q.id,
+        q.question_type,
+        q.category,
+        q.question_text,
+        q.options,
+        q.correct_answer,
+        q.solution,
+        q.subject_id,
+        q.chapter_id,
+        q.topic_id,
+        q.difficulty_level,
+        q.status,
+        q.created_at
+      FROM questions q
+      JOIN subjects s ON s.id = q.subject_id
+      JOIN grades g ON g.id = s.grade_id
+      WHERE q.status = 'approved'
+        AND q.question_type <> 'comprehensive'
+        AND q.subject_id = $1
+        AND q.topic_id = ANY($2::int[])
+        AND g.program_id = $3
+        AND ($4::int[] IS NULL OR q.id <> ALL($4::int[]))
+      ORDER BY q.created_at DESC, q.id DESC
+    `,
+    [
+      Number(section.selected_subject_id),
+      topicIds,
+      Number(exam.program_id),
+      excludedQuestionIds.length > 0 ? excludedQuestionIds : null,
+    ]
+  );
+
+  const candidates = candidateResult.rows
+    .map((row) => ({
+      ...row,
+      id: Number(row.id),
+      topic_id: row.topic_id ? Number(row.topic_id) : null,
+      question_group_type: normalizeQuestionGroupTypeFromCategory(row.category),
+    }))
+    .filter((row) => row.question_group_type);
+
+  return {
+    topicRows,
+    candidates,
+  };
+};
+
+const buildSectionGenerationPlan = ({ section, topicRows, candidates, selectedQuestions }) => {
+  const topicAllocations = new Map();
+  for (const topic of topicRows) {
+    topicAllocations.set(topic.id, {
+      topic_id: topic.id,
+      topic_name: topic.name,
+      topic_number: topic.topic_number,
+      ...createEmptyQuestionGroupCounts(),
+    });
+  }
+
+  const totals = createEmptyQuestionGroupCounts();
+  for (const question of selectedQuestions) {
+    const topicId = Number(question.topic_id);
+    const groupType = question.question_group_type;
+    if (!topicAllocations.has(topicId)) continue;
+    const allocation = topicAllocations.get(topicId);
+    allocation[groupType] += 1;
+    allocation.total += 1;
+    totals[groupType] += 1;
+    totals.total += 1;
+  }
+
+  const availableCounts = createEmptyQuestionGroupCounts();
+  for (const question of candidates) {
+    const groupType = question.question_group_type;
+    availableCounts[groupType] += 1;
+    availableCounts.total += 1;
+  }
+
+  return {
+    section_id: Number(section.id),
+    section_title: section.title,
+    required_question_count: Number(section.required_question_count || 0),
+    total_planned_questions: selectedQuestions.length,
+    available_question_count: candidates.length,
+    topics: Array.from(topicAllocations.values()),
+    totals,
+    available_counts: availableCounts,
+  };
+};
+
+const normalizePlanTopicsInput = (topicsInput) => {
+  if (!Array.isArray(topicsInput) || topicsInput.length === 0) {
+    throw new AppError('generation_plan.topics must contain at least one row', 400);
+  }
+
+  return topicsInput.map((topic, index) => {
+    const topicId = parseRequiredInt(topic?.topic_id, `generation_plan.topics[${index}].topic_id`);
+    const row = {
+      topic_id: topicId,
+      direction: parseOptionalNumber(topic?.direction, `generation_plan.topics[${index}].direction`) ?? 0,
+      similar: parseOptionalNumber(topic?.similar, `generation_plan.topics[${index}].similar`) ?? 0,
+      reference: parseOptionalNumber(topic?.reference, `generation_plan.topics[${index}].reference`) ?? 0,
+      previous_year:
+        parseOptionalNumber(topic?.previous_year, `generation_plan.topics[${index}].previous_year`) ?? 0,
+    };
+
+    for (const groupType of QUESTION_GROUP_TYPES) {
+      const value = row[groupType];
+      if (!Number.isInteger(value) || value < 0) {
+        throw new AppError(`generation_plan.topics[${index}].${groupType} must be a non-negative integer`, 400);
+      }
+    }
+
+    return row;
+  });
+};
+
+const pickQuestionsForSectionByPlan = ({ candidates, requiredCount, topicRows, planTopics }) => {
+  const allowedTopicIds = new Set(topicRows.map((topic) => Number(topic.id)));
+  const topicPlanMap = new Map();
+  let totalRequested = 0;
+
+  for (const row of planTopics) {
+    if (!allowedTopicIds.has(Number(row.topic_id))) {
+      throw new AppError('Generation plan includes a topic outside the configured syllabus', 400);
+    }
+    const plannedCounts = createEmptyQuestionGroupCounts();
+    for (const groupType of QUESTION_GROUP_TYPES) {
+      plannedCounts[groupType] = Number(row[groupType] || 0);
+      plannedCounts.total += plannedCounts[groupType];
+    }
+    totalRequested += plannedCounts.total;
+    topicPlanMap.set(Number(row.topic_id), plannedCounts);
+  }
+
+  if (totalRequested !== requiredCount) {
+    throw new AppError(`Generation plan must total exactly ${requiredCount} questions`, 400);
+  }
+
+  const candidateBuckets = new Map();
+  for (const candidate of candidates) {
+    const topicId = Number(candidate.topic_id);
+    const groupType = candidate.question_group_type;
+    if (!topicPlanMap.has(topicId)) continue;
+    if (!candidateBuckets.has(topicId)) {
+      candidateBuckets.set(topicId, {
+        direction: [],
+        similar: [],
+        reference: [],
+        previous_year: [],
+      });
+    }
+    candidateBuckets.get(topicId)[groupType].push(candidate);
+  }
+
+  const selectedQuestions = [];
+  for (const topic of topicRows) {
+    const topicId = Number(topic.id);
+    const plannedCounts = topicPlanMap.get(topicId) ?? createEmptyQuestionGroupCounts();
+    const buckets = candidateBuckets.get(topicId) ?? {
+      direction: [],
+      similar: [],
+      reference: [],
+      previous_year: [],
+    };
+
+    for (const groupType of QUESTION_GROUP_TYPES) {
+      const requiredForGroup = plannedCounts[groupType] || 0;
+      if (buckets[groupType].length < requiredForGroup) {
+        throw new AppError(
+          `Not enough approved ${groupType.replace('_', ' ')} questions available for topic "${topic.name}"`,
+          400
+        );
+      }
+      selectedQuestions.push(...buckets[groupType].slice(0, requiredForGroup));
+    }
+  }
+
+  if (selectedQuestions.length !== requiredCount) {
+    throw new AppError('Generation plan could not be fulfilled with the available questions', 400);
+  }
+
+  return selectedQuestions;
+};
+
+const resolveSectionGenerationPlan = async ({ exam, section, planOverride = null }) => {
+  if (!exam.program_id) {
+    throw new AppError('Exam program is not configured', 400);
+  }
+  if (!section.selected_subject_id) {
+    throw new AppError('Section subject is not configured', 400);
+  }
+
+  const { topicRows, candidates } = await fetchSectionGenerationCandidates({ exam, section });
+  const requiredQuestionCount = Number(section.required_question_count || 0);
+  if (requiredQuestionCount <= 0) {
+    throw new AppError('Section required question count is invalid', 400);
+  }
+
+  const normalizedPlanTopics = planOverride ? normalizePlanTopicsInput(planOverride.topics) : null;
+
+  const selectedQuestions = normalizedPlanTopics
+    ? pickQuestionsForSectionByPlan({
+        candidates: [...candidates],
+        requiredCount: requiredQuestionCount,
+        topicRows,
+        planTopics: normalizedPlanTopics,
+      })
+    : pickQuestionsForSection({
+        candidates: [...candidates],
+        requiredCount: requiredQuestionCount,
+      });
+
+  return {
+    selectedQuestions,
+    plan: buildSectionGenerationPlan({
+      section,
+      topicRows,
+      candidates,
+      selectedQuestions,
+    }),
+  };
 };
 
 const hydrateSectionRows = async (sectionRows) => {
@@ -799,26 +1142,7 @@ export const addQuestionToSection = async (req, res) => {
     const exam = await getExamByIdForAccess({ examId, user: req.user });
     ensureExamEditable(exam);
 
-    const questionResult = await dbQuery('SELECT * FROM questions WHERE id = $1', [questionId]);
-    if (questionResult.rows.length === 0) {
-      throw new AppError('Question not found', 404);
-    }
-
-    const question = questionResult.rows[0];
-    if (String(question.status).toLowerCase() !== 'approved') {
-      throw new AppError('Only approved questions can be added', 400);
-    }
-    if (String(question.question_type).toLowerCase() === 'comprehensive') {
-      throw new AppError('Legacy comprehensive parent records cannot be added to exams. Add linked child questions instead.', 400);
-    }
-
-    if (question.client_id && Number(question.client_id) !== Number(exam.client_id)) {
-      throw new AppError('Question does not belong to the same client scope as the exam', 403);
-    }
-
-    if (question.school_id && exam.school_id && Number(question.school_id) !== Number(exam.school_id)) {
-      throw new AppError('Question does not belong to the same school scope as the exam', 403);
-    }
+    const question = await validateQuestionForExamSection({ exam, questionId });
 
     const duplicateCheck = await dbQuery(
       'SELECT 1 FROM exam_questions WHERE section_id = $1 AND question_id = $2',
@@ -855,15 +1179,77 @@ export const addQuestionToSection = async (req, res) => {
     }
 
     const insertResult = await dbQuery(
-      `INSERT INTO exam_questions (section_id, question_id, order_index)
-       VALUES ($1, $2, $3)
+      `INSERT INTO exam_questions (section_id, question_id, order_index, question_group_type)
+       VALUES ($1, $2, $3, $4)
        RETURNING *`,
-      [sectionId, questionId, orderIndex]
+      [sectionId, questionId, orderIndex, question.normalized_question_group_type]
     );
 
     res.status(201).json(insertResult.rows[0]);
   } catch (err) {
     handleServiceError(res, err, 'Failed to add question to section');
+  }
+};
+
+export const replaceQuestionInSection = async (req, res) => {
+  try {
+    if (!req.user?.id || !req.user?.role) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { id: examId, sectionId } = req.params;
+    const currentQuestionId = parseRequiredInt(req.body?.current_question_id, 'current_question_id');
+    const newQuestionId = parseRequiredInt(req.body?.new_question_id, 'new_question_id');
+
+    const section = await getSectionByIdForAccess({ examId, sectionId, user: req.user });
+    const exam = await getExamByIdForAccess({ examId, user: req.user });
+    ensureExamEditable(exam);
+
+    const existingResult = await dbQuery(
+      `SELECT * FROM exam_questions WHERE section_id = $1 AND question_id = $2 LIMIT 1`,
+      [section.id, currentQuestionId]
+    );
+    if (existingResult.rows.length === 0) {
+      throw new AppError('Current question does not exist in this section', 404);
+    }
+
+    if (currentQuestionId === newQuestionId) {
+      return res.json(existingResult.rows[0]);
+    }
+
+    const replacementQuestion = await validateQuestionForExamSection({ exam, questionId: newQuestionId });
+
+    const duplicateCheck = await dbQuery(
+      `
+        SELECT 1
+        FROM exam_questions eq
+        JOIN exam_sections es ON es.id = eq.section_id
+        WHERE es.exam_id = $1
+          AND eq.question_id = $2
+        LIMIT 1
+      `,
+      [exam.id, newQuestionId]
+    );
+    if (duplicateCheck.rows.length > 0) {
+      throw new AppError('Question already exists in this exam', 409);
+    }
+
+    const updateResult = await dbQuery(
+      `
+        UPDATE exam_questions
+        SET question_id = $1,
+            question_group_type = $2,
+            generated_from_topic_selection = FALSE
+        WHERE section_id = $3
+          AND question_id = $4
+        RETURNING *
+      `,
+      [newQuestionId, replacementQuestion.normalized_question_group_type, section.id, currentQuestionId]
+    );
+
+    res.json(updateResult.rows[0]);
+  } catch (err) {
+    handleServiceError(res, err, 'Failed to replace question in section');
   }
 };
 
@@ -2118,6 +2504,28 @@ export const configureExamSectionSyllabus = async (req, res) => {
   }
 };
 
+export const previewExamSectionGeneration = async (req, res) => {
+  try {
+    if (!req.user?.id || !req.user?.role) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const exam = await getExamByIdForAccess({ examId: req.params.id, user: req.user });
+    ensureExamEditable(exam);
+
+    const section = await getSectionByIdForAccess({
+      examId: req.params.id,
+      sectionId: req.params.sectionId,
+      user: req.user,
+    });
+
+    const { plan } = await resolveSectionGenerationPlan({ exam, section });
+    res.json(plan);
+  } catch (err) {
+    handleServiceError(res, err, 'Failed to preview section generation');
+  }
+};
+
 export const generateExamSectionQuestions = async (req, res) => {
   try {
     if (!req.user?.id || !req.user?.role) {
@@ -2133,83 +2541,15 @@ export const generateExamSectionQuestions = async (req, res) => {
       user: req.user,
     });
 
-    if (!exam.program_id) {
-      throw new AppError('Exam program is not configured', 400);
-    }
-    if (!section.selected_subject_id) {
-      throw new AppError('Section subject is not configured', 400);
-    }
+    const planOverride =
+      req.body?.generation_plan && typeof req.body.generation_plan === 'object'
+        ? req.body.generation_plan
+        : null;
 
-    const topicResult = await dbQuery(
-      `SELECT topic_id FROM exam_section_topics WHERE exam_section_id = $1 ORDER BY topic_id`,
-      [section.id]
-    );
-    const topicIds = topicResult.rows.map((row) => Number(row.topic_id));
-    if (topicIds.length === 0) {
-      throw new AppError('Select topics before generating questions', 400);
-    }
-
-    const duplicateResult = await dbQuery(
-      `
-        SELECT eq.question_id
-        FROM exam_questions eq
-        JOIN exam_sections es ON es.id = eq.section_id
-        WHERE es.exam_id = $1
-          AND es.id <> $2
-      `,
-      [exam.id, section.id]
-    );
-    const excludedQuestionIds = duplicateResult.rows.map((row) => Number(row.question_id));
-
-    const candidateResult = await dbQuery(
-      `
-        SELECT
-          q.id,
-          q.question_type,
-          q.question_group_type,
-          q.question_text,
-          q.options,
-          q.correct_answer,
-          q.solution,
-          q.subject_id,
-          q.chapter_id,
-          q.topic_id,
-          q.difficulty_level,
-          q.status,
-          q.created_at
-        FROM questions q
-        JOIN subjects s ON s.id = q.subject_id
-        JOIN grades g ON g.id = s.grade_id
-        WHERE q.status = 'approved'
-          AND q.question_type <> 'comprehensive'
-          AND q.question_group_type IS NOT NULL
-          AND q.subject_id = $1
-          AND q.topic_id = ANY($2::int[])
-          AND g.program_id = $3
-          AND ($4::int[] IS NULL OR q.id <> ALL($4::int[]))
-        ORDER BY q.created_at DESC, q.id DESC
-      `,
-      [
-        Number(section.selected_subject_id),
-        topicIds,
-        Number(exam.program_id),
-        excludedQuestionIds.length > 0 ? excludedQuestionIds : null,
-      ]
-    );
-
-    const candidates = candidateResult.rows.map((row) => ({
-      ...row,
-      id: Number(row.id),
-    }));
-
-    const requiredQuestionCount = Number(section.required_question_count || 0);
-    if (requiredQuestionCount <= 0) {
-      throw new AppError('Section required question count is invalid', 400);
-    }
-
-    const selectedQuestions = pickQuestionsForSection({
-      candidates,
-      requiredCount: requiredQuestionCount,
+    const { selectedQuestions } = await resolveSectionGenerationPlan({
+      exam,
+      section,
+      planOverride,
     });
 
     const tx = await getClient();

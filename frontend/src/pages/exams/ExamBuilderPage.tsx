@@ -1,13 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import axios from "axios";
 import ExamShell from "@/features/exams/components/ExamShell";
 import ExamStatusBadge from "@/components/ui/ExamStatusBadge";
+import QuestionRenderer from "@/components/questions/QuestionRenderer";
 import {
   configureExamSectionSyllabus,
   fetchExamById,
   fetchExamPreview,
+  fetchExamSectionGenerationPlan,
   fetchExamSectionSyllabusOptions,
   finalizeBlueprintExam,
   generateExamSectionQuestions,
@@ -15,6 +17,7 @@ import {
 import type {
   CurriculumOption,
   ExamBuilderSection,
+  ExamSectionGenerationPlan,
   ExamPreviewPayload,
   GeneratedExamQuestion,
   QuestionGroupType,
@@ -29,7 +32,9 @@ type SectionEditorState = {
   topics: CurriculumOption[];
   loadingOptions: boolean;
   savingConfig: boolean;
+  previewingPlan: boolean;
   generating: boolean;
+  generationPlan: ExamSectionGenerationPlan | null;
 };
 
 const QUESTION_GROUP_LABELS: Record<QuestionGroupType, string> = {
@@ -48,7 +53,9 @@ const createDefaultEditorState = (): SectionEditorState => ({
   topics: [],
   loadingOptions: false,
   savingConfig: false,
+  previewingPlan: false,
   generating: false,
+  generationPlan: null,
 });
 
 const readApiErrorMessage = (error: unknown, fallback: string) => {
@@ -64,24 +71,16 @@ const formatDateTime = (value?: string | null) => {
   return parsed.toLocaleString();
 };
 
-const toHtmlString = (value: unknown) => {
-  if (!value) return "";
-  if (typeof value === "string") return value;
-  if (typeof value === "object" && value !== null) {
-    const html = (value as { html?: string }).html;
-    const text = (value as { text?: string }).text;
-    if (typeof html === "string" && html.trim()) return html;
-    if (typeof text === "string" && text.trim()) return text;
-  }
-  return "";
-};
-
 const SectionQuestionTable = ({
+  sectionId,
   title,
   questions,
+  onEditQuestion,
 }: {
+  sectionId: number;
   title: string;
   questions: GeneratedExamQuestion[];
+  onEditQuestion: (sectionId: number, question: GeneratedExamQuestion) => void;
 }) => (
   <div className="rounded-2xl border border-slate-200 bg-white">
     <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
@@ -95,8 +94,6 @@ const SectionQuestionTable = ({
     ) : (
       <div className="divide-y divide-slate-100">
         {questions.map((question) => {
-          const prompt = toHtmlString(question.question_text);
-          const solution = toHtmlString(question.solution);
           return (
             <div key={`${question.question_id}-${question.order_index}`} className="px-4 py-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -114,21 +111,26 @@ const SectionQuestionTable = ({
                       </span>
                     )}
                   </div>
-                  <div
-                    className="prose prose-sm mt-3 max-w-none text-slate-700"
-                    dangerouslySetInnerHTML={{ __html: prompt || "<p>Question preview unavailable.</p>" }}
-                  />
-                  {solution && (
-                    <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                        Solution
-                      </div>
-                      <div
-                        className="prose prose-sm mt-2 max-w-none text-slate-600"
-                        dangerouslySetInnerHTML={{ __html: solution }}
-                      />
-                    </div>
-                  )}
+                  <div className="mt-3">
+                    <QuestionRenderer
+                      question={question}
+                      showMeta={false}
+                      showOptions
+                      showAnswer
+                      showSolution
+                      showComprehension
+                      contentClassName="text-sm font-semibold text-slate-900"
+                    />
+                  </div>
+                </div>
+                <div className="shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => onEditQuestion(sectionId, question)}
+                    className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                  >
+                    Edit Question
+                  </button>
                 </div>
               </div>
             </div>
@@ -136,6 +138,133 @@ const SectionQuestionTable = ({
         })}
       </div>
     )}
+  </div>
+);
+
+const GenerationPlanTable = ({
+  plan,
+  onPlanChange,
+  onCancel,
+  onConfirm,
+  loading,
+}: {
+  plan: ExamSectionGenerationPlan;
+  onPlanChange: (nextPlan: ExamSectionGenerationPlan) => void;
+  onCancel: () => void;
+  onConfirm: () => void;
+  loading: boolean;
+}) => (
+  <div className="rounded-2xl border border-sky-200 bg-sky-50/70 p-4">
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <h4 className="text-sm font-semibold text-slate-800">Generation Confirmation</h4>
+        <p className="mt-1 text-xs text-slate-600">
+          Review the planned topic-wise allocation before generating this section.
+        </p>
+      </div>
+      <div className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700">
+        Planned {plan.total_planned_questions}/{plan.required_question_count}
+      </div>
+    </div>
+
+    <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200 bg-white">
+      <table className="min-w-full divide-y divide-slate-200 text-sm">
+        <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+          <tr>
+            <th className="px-3 py-2">Topic</th>
+            <th className="px-3 py-2">Direct Questions</th>
+            <th className="px-3 py-2">Similar Questions</th>
+            <th className="px-3 py-2">Reference Questions</th>
+            <th className="px-3 py-2">Previous Year Questions</th>
+            <th className="px-3 py-2">Total</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100 text-slate-700">
+          {plan.topics.map((topic) => (
+            <tr key={topic.topic_id}>
+              <td className="px-3 py-2 font-medium">
+                {topic.topic_name}
+                {topic.topic_number !== null && topic.topic_number !== undefined ? (
+                  <span className="ml-2 text-xs text-slate-400">#{topic.topic_number}</span>
+                ) : null}
+              </td>
+              {(["direction", "similar", "reference", "previous_year"] as const).map((groupType) => (
+                <td key={groupType} className="px-3 py-2">
+                  <input
+                    type="number"
+                    min={0}
+                    value={topic[groupType]}
+                    onChange={(event) => {
+                      const nextValue = Math.max(0, Number(event.target.value || 0));
+                      const nextTopics = plan.topics.map((item) =>
+                        item.topic_id === topic.topic_id ? { ...item, [groupType]: nextValue } : item
+                      );
+                      const totals = {
+                        direction: nextTopics.reduce((sum, item) => sum + item.direction, 0),
+                        similar: nextTopics.reduce((sum, item) => sum + item.similar, 0),
+                        reference: nextTopics.reduce((sum, item) => sum + item.reference, 0),
+                        previous_year: nextTopics.reduce((sum, item) => sum + item.previous_year, 0),
+                        total: 0,
+                      };
+                      totals.total =
+                        totals.direction + totals.similar + totals.reference + totals.previous_year;
+                      onPlanChange({
+                        ...plan,
+                        topics: nextTopics.map((item) => ({
+                          ...item,
+                          total: item.direction + item.similar + item.reference + item.previous_year,
+                        })),
+                        totals,
+                        total_planned_questions: totals.total,
+                      });
+                    }}
+                    className="w-20 rounded-lg border border-slate-200 px-2 py-1 text-sm focus:border-slate-400 focus:outline-none"
+                  />
+                </td>
+              ))}
+              <td className="px-3 py-2 font-semibold">{topic.total}</td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot className="border-t border-slate-200 bg-slate-50 text-sm font-semibold text-slate-800">
+          <tr>
+            <td className="px-3 py-2">Total</td>
+            <td className="px-3 py-2">{plan.totals.direction}</td>
+            <td className="px-3 py-2">{plan.totals.similar}</td>
+            <td className="px-3 py-2">{plan.totals.reference}</td>
+            <td className="px-3 py-2">{plan.totals.previous_year}</td>
+            <td className="px-3 py-2">{plan.totals.total}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+
+    <div className="mt-3 text-xs text-slate-600">
+      Available approved questions in the selected syllabus: {plan.available_question_count}. Available by category:
+      {" "}
+      D {plan.available_counts.direction}, S {plan.available_counts.similar}, R {plan.available_counts.reference}, PY {plan.available_counts.previous_year}.
+    </div>
+    <div className={`mt-2 text-xs font-semibold ${plan.total_planned_questions === plan.required_question_count ? "text-emerald-700" : "text-rose-700"}`}>
+      Planned total must equal blueprint count: {plan.total_planned_questions}/{plan.required_question_count}
+    </div>
+
+    <div className="mt-4 flex flex-wrap gap-2">
+      <button
+        type="button"
+        onClick={onCancel}
+        className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+      >
+        Cancel
+      </button>
+      <button
+        type="button"
+        onClick={onConfirm}
+        disabled={loading || plan.total_planned_questions !== plan.required_question_count}
+        className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {loading ? "Generating..." : "Confirm & Generate"}
+      </button>
+    </div>
   </div>
 );
 
@@ -201,6 +330,12 @@ export default function ExamBuilderPage() {
     });
   }, [preview]);
 
+  const handleEditGeneratedQuestion = (sectionId: number, question: GeneratedExamQuestion) => {
+    navigate(
+      `/exams/${examId}/sections/${sectionId}/questions?replaceQuestionId=${question.question_id}&orderIndex=${question.order_index}`
+    );
+  };
+
   const loadSectionOptions = async (section: ExamBuilderSection, nextSubjectId?: string, nextChapterIds?: string[]) => {
     setEditors((prev) => ({
       ...prev,
@@ -258,15 +393,16 @@ export default function ExamBuilderPage() {
   const handleSubjectChange = async (section: ExamBuilderSection, subjectId: string) => {
     setEditors((prev) => ({
       ...prev,
-      [section.id]: {
-        ...(prev[section.id] ?? createDefaultEditorState()),
-        subjectId,
-        selectedChapterIds: [],
-        selectedTopicIds: [],
-        chapters: [],
-        topics: [],
-      },
-    }));
+        [section.id]: {
+          ...(prev[section.id] ?? createDefaultEditorState()),
+          subjectId,
+          selectedChapterIds: [],
+          selectedTopicIds: [],
+          chapters: [],
+          topics: [],
+          generationPlan: null,
+        },
+      }));
 
     if (subjectId) {
       await loadSectionOptions(section, subjectId, []);
@@ -290,6 +426,7 @@ export default function ExamBuilderPage() {
         ...(prev[section.id] ?? createDefaultEditorState()),
         selectedChapterIds: nextChapterIds,
         selectedTopicIds: validTopicIds,
+        generationPlan: null,
       },
     }));
 
@@ -308,6 +445,7 @@ export default function ExamBuilderPage() {
           selectedTopicIds: checked
             ? [...current.selectedTopicIds, topicId]
             : current.selectedTopicIds.filter((idValue) => idValue !== topicId),
+          generationPlan: null,
         },
       };
     });
@@ -333,6 +471,7 @@ export default function ExamBuilderPage() {
       [section.id]: {
         ...editor,
         savingConfig: true,
+        generationPlan: null,
       },
     }));
 
@@ -362,12 +501,63 @@ export default function ExamBuilderPage() {
       ...prev,
       [section.id]: {
         ...(prev[section.id] ?? createDefaultEditorState()),
+        previewingPlan: true,
+      },
+    }));
+
+    try {
+      const plan = await fetchExamSectionGenerationPlan(examId, section.id);
+      setEditors((prev) => ({
+        ...prev,
+        [section.id]: {
+          ...(prev[section.id] ?? createDefaultEditorState()),
+          previewingPlan: false,
+          generationPlan: plan,
+        },
+      }));
+    } catch (err) {
+      toast.error(readApiErrorMessage(err, "Failed to prepare generation preview."));
+      setEditors((prev) => ({
+        ...prev,
+        [section.id]: {
+          ...(prev[section.id] ?? createDefaultEditorState()),
+          previewingPlan: false,
+        },
+      }));
+    }
+  };
+
+  const handleConfirmGenerateSection = async (section: ExamBuilderSection) => {
+    const editor = editors[section.id] ?? createDefaultEditorState();
+    if (!editor.generationPlan) {
+      toast.error("Prepare the generation confirmation table first.");
+      return;
+    }
+    if (editor.generationPlan.total_planned_questions !== editor.generationPlan.required_question_count) {
+      toast.error("Planned total must exactly match the blueprint count.");
+      return;
+    }
+
+    setEditors((prev) => ({
+      ...prev,
+      [section.id]: {
+        ...(prev[section.id] ?? createDefaultEditorState()),
         generating: true,
       },
     }));
 
     try {
-      await generateExamSectionQuestions(examId, section.id);
+      await generateExamSectionQuestions(examId, section.id, {
+        generation_plan: {
+          topics: editor.generationPlan.topics.map((topic) => ({
+            topic_id: topic.topic_id,
+            direction: topic.direction,
+            similar: topic.similar,
+            reference: topic.reference,
+            previous_year: topic.previous_year,
+          })),
+        },
+      });
       toast.success(`${section.title} generated successfully.`);
       await loadPreview();
     } catch (err) {
@@ -378,6 +568,7 @@ export default function ExamBuilderPage() {
         [section.id]: {
           ...(prev[section.id] ?? createDefaultEditorState()),
           generating: false,
+          generationPlan: null,
         },
       }));
     }
@@ -617,10 +808,16 @@ export default function ExamBuilderPage() {
                         <button
                           type="button"
                           onClick={() => void handleGenerateSection(section)}
-                          disabled={editor.generating}
+                          disabled={editor.generating || editor.previewingPlan}
                           className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
                         >
-                          {editor.generating ? "Generating..." : section.question_count ? "Regenerate Section" : "Generate Section"}
+                          {editor.previewingPlan
+                            ? "Preparing Preview..."
+                            : editor.generating
+                              ? "Generating..."
+                              : section.question_count
+                                ? "Regenerate Section"
+                                : "Generate Section"}
                         </button>
                       </div>
                     </div>
@@ -672,12 +869,40 @@ export default function ExamBuilderPage() {
                         </div>
                       </div>
 
+                      {editor.generationPlan && (
+                        <GenerationPlanTable
+                          plan={editor.generationPlan}
+                          onPlanChange={(nextPlan) =>
+                            setEditors((prev) => ({
+                              ...prev,
+                              [section.id]: {
+                                ...(prev[section.id] ?? createDefaultEditorState()),
+                                generationPlan: nextPlan,
+                              },
+                            }))
+                          }
+                          loading={editor.generating}
+                          onCancel={() =>
+                            setEditors((prev) => ({
+                              ...prev,
+                              [section.id]: {
+                                ...(prev[section.id] ?? createDefaultEditorState()),
+                                generationPlan: null,
+                              },
+                            }))
+                          }
+                          onConfirm={() => void handleConfirmGenerateSection(section)}
+                        />
+                      )}
+
                       <div className="grid gap-4">
                         {(Object.keys(QUESTION_GROUP_LABELS) as QuestionGroupType[]).map((groupType) => (
                           <SectionQuestionTable
+                            sectionId={section.id}
                             key={`${section.id}-${groupType}`}
                             title={QUESTION_GROUP_LABELS[groupType]}
                             questions={section.question_groups?.[groupType] ?? []}
+                            onEditQuestion={handleEditGeneratedQuestion}
                           />
                         ))}
                       </div>

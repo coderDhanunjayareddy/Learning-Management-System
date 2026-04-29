@@ -2,15 +2,19 @@ import { useEffect, useRef } from "react";
 import { typesetMathJax } from "@/components/ui/mathjax";
 import { sanitizeHtml } from "@/utils/htmlSanitizer";
 
-type RichTextLike = { html?: string | null } | string | null | undefined;
+export type RichTextLike =
+  | { html?: string | null; text?: string | null }
+  | string
+  | null
+  | undefined;
 
-type QuestionOptionLike = {
+export type QuestionOptionLike = {
   id?: string | number;
   text?: RichTextLike;
   is_correct?: boolean;
 };
 
-type MatchFollowingOptionsLike = {
+export type MatchFollowingOptionsLike = {
   left?: QuestionOptionLike[];
   right?: QuestionOptionLike[];
 };
@@ -54,7 +58,7 @@ export interface RenderableQuestion {
   comprehension?: LinkedPassageLike | null;
   comprehension_passage?: RichTextLike | null;
   comprehension_questions?: ComprehensiveQuestionLike[] | null;
-  difficulty_level?: string;
+  difficulty_level?: string | null;
   marks_positive?: number;
   marks_negative?: number;
   category?: QuestionCategoryLike;
@@ -87,7 +91,10 @@ const getHtml = (value: RichTextLike) => {
   if (!value) return "";
   if (typeof value === "string") return value;
   if (typeof value === "object" && "html" in value) {
-    return String(value.html ?? "");
+    return String(value.html ?? value.text ?? "");
+  }
+  if (typeof value === "object" && "text" in value) {
+    return String(value.text ?? "");
   }
   return "";
 };

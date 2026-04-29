@@ -1,3 +1,9 @@
+import type {
+  MatchFollowingOptionsLike,
+  QuestionOptionLike,
+  RichTextLike,
+} from "@/components/questions/QuestionRenderer";
+
 export type ExamStatus = "draft" | "active" | "completed";
 
 export type BlueprintStatus = "active" | "inactive" | "archived";
@@ -30,10 +36,10 @@ export interface GeneratedExamQuestion {
   order_index: number;
   question_group_type: QuestionGroupType | null;
   question_type: string;
-  question_text: { html?: string; text?: string } | string | null;
-  options?: unknown;
+  question_text: RichTextLike;
+  options?: QuestionOptionLike[] | MatchFollowingOptionsLike | null;
   correct_answer?: unknown;
-  solution?: { html?: string; text?: string } | string | null;
+  solution?: RichTextLike;
   subject_id?: number | null;
   chapter_id?: number | null;
   topic_id?: number | null;
@@ -82,6 +88,40 @@ export interface ExamSectionSyllabusOptions {
   subjects: CurriculumOption[];
   chapters: CurriculumOption[];
   topics: CurriculumOption[];
+}
+
+export interface ExamSectionGenerationPlanTopicRow {
+  topic_id: number;
+  topic_name: string;
+  topic_number?: number | null;
+  direction: number;
+  similar: number;
+  reference: number;
+  previous_year: number;
+  total: number;
+}
+
+export interface ExamSectionGenerationPlan {
+  section_id: number;
+  section_title: string;
+  required_question_count: number;
+  total_planned_questions: number;
+  available_question_count: number;
+  topics: ExamSectionGenerationPlanTopicRow[];
+  totals: {
+    direction: number;
+    similar: number;
+    reference: number;
+    previous_year: number;
+    total: number;
+  };
+  available_counts: {
+    direction: number;
+    similar: number;
+    reference: number;
+    previous_year: number;
+    total: number;
+  };
 }
 
 export interface ExamPreviewPayload {
