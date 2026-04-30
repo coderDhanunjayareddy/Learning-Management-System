@@ -660,8 +660,6 @@ const groupQuestionsByType = (questions) =>
     return acc;
   }, {});
 
-<<<<<<< Updated upstream
-=======
 const createEmptyQuestionGroupCounts = () => ({
   direction: 0,
   similar: 0,
@@ -715,7 +713,6 @@ const buildEvenTopicDistributionPlan = ({ topicRows, section }) => {
   return topicPlans;
 };
 
->>>>>>> Stashed changes
 const pickQuestionsForSection = ({ candidates, requiredCount }) => {
   if (candidates.length < requiredCount) {
     throw new AppError('Not enough approved questions available for this section', 400);
@@ -745,8 +742,6 @@ const pickQuestionsForSection = ({ candidates, requiredCount }) => {
   return selected;
 };
 
-<<<<<<< Updated upstream
-=======
 const fetchSectionGenerationCandidates = async ({ exam, section }) => {
   const topicResult = await dbQuery(
     `
@@ -987,15 +982,15 @@ const resolveSectionGenerationPlan = async ({ exam, section, planOverride = null
 
   const selectedQuestions = normalizedPlanTopics
     ? pickQuestionsForSectionByPlan({
-        candidates: [...candidates],
-        requiredCount: requiredQuestionCount,
-        topicRows,
-        planTopics: normalizedPlanTopics,
-      })
+      candidates: [...candidates],
+      requiredCount: requiredQuestionCount,
+      topicRows,
+      planTopics: normalizedPlanTopics,
+    })
     : pickQuestionsForSection({
-        candidates: [...candidates],
-        requiredCount: requiredQuestionCount,
-      });
+      candidates: [...candidates],
+      requiredCount: requiredQuestionCount,
+    });
 
   return {
     selectedQuestions,
@@ -1008,7 +1003,6 @@ const resolveSectionGenerationPlan = async ({ exam, section, planOverride = null
   };
 };
 
->>>>>>> Stashed changes
 const hydrateSectionRows = async (sectionRows) => {
   if (sectionRows.length === 0) return [];
 
@@ -1311,11 +1305,7 @@ export const addQuestionToSection = async (req, res) => {
       `INSERT INTO exam_questions (section_id, question_id, order_index)
        VALUES ($1, $2, $3)
        RETURNING *`,
-<<<<<<< Updated upstream
-      [sectionId, questionId, orderIndex]
-=======
-       [section.id, questionId, orderIndex, question.normalized_question_group_type]
->>>>>>> Stashed changes
+      [section.id, questionId, orderIndex, question.normalized_question_group_type]
     );
 
     res.status(201).json(insertResult.rows[0]);
@@ -1324,8 +1314,6 @@ export const addQuestionToSection = async (req, res) => {
   }
 };
 
-<<<<<<< Updated upstream
-=======
 const reindexSectionQuestionOrder = async (tx, sectionId) => {
   await tx.query(
     `
@@ -1533,7 +1521,6 @@ export const replaceQuestionInSection = async (req, res) => {
   }
 };
 
->>>>>>> Stashed changes
 export const publishExam = async (req, res) => {
   try {
     if (!req.user?.id || !req.user?.role) {
