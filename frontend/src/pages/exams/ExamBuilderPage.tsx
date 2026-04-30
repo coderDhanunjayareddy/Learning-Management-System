@@ -1,19 +1,17 @@
-<<<<<<< Updated upstream
-import { useEffect, useMemo, useState } from "react";
-=======
 import { startTransition, useCallback, useDeferredValue, useEffect, useRef, useState } from "react";
->>>>>>> Stashed changes
 import { useNavigate, useParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import axios from "axios";
 import {
   RiAddLine,
   RiAlertLine,
+  RiArrowLeftLine,
   RiArrowDownSLine,
   RiArrowRightUpLine,
   RiBookMarkedLine,
   RiCheckLine,
   RiCloseLine,
+  RiDraftLine,
   RiDeleteBinLine,
   RiFolderChartLine,
   RiLoader4Line,
@@ -22,10 +20,7 @@ import {
 import api from "@/lib/api";
 import ExamShell from "@/features/exams/components/ExamShell";
 import ExamStatusBadge from "@/components/ui/ExamStatusBadge";
-<<<<<<< Updated upstream
-=======
 import QuestionRenderer, { type RenderableQuestion } from "@/components/questions/QuestionRenderer";
->>>>>>> Stashed changes
 import {
   addQuestionToSection,
   clearExamSectionQuestionGroup,
@@ -40,10 +35,7 @@ import {
 import type {
   CurriculumOption,
   ExamBuilderSection,
-<<<<<<< Updated upstream
-=======
   ExamStatus,
->>>>>>> Stashed changes
   ExamPreviewPayload,
   GeneratedExamQuestion,
   QuestionGroupType,
@@ -60,22 +52,30 @@ type TopicAllocationRow = {
   total: number;
 };
 
+type AllocationTotals = {
+  direction: number;
+  similar: number;
+  previous_year: number;
+  reference: number;
+  total: number;
+};
+
+type SectionDistributionTargets = AllocationTotals & {
+  isExplicit: boolean;
+};
+
 type SectionEditorState = {
   subjectId: string;
   selectedChapterIds: string[];
+  selectedTopicIds: string[];
   subjects: CurriculumOption[];
   chapters: CurriculumOption[];
   topics: CurriculumOption[];
   loadingOptions: boolean;
-<<<<<<< Updated upstream
-  savingConfig: boolean;
-  generating: boolean;
-=======
   generating: boolean;
   deletingGroup: QuestionGroupType | null;
   deletingQuestionId: number | null;
   allocationRows: TopicAllocationRow[];
->>>>>>> Stashed changes
 };
 
 type PickerQuestion = RenderableQuestion & {
@@ -96,6 +96,21 @@ type PickerState = {
   selectedQuestionIds: string[];
   questions: PickerQuestion[];
 };
+
+type ApiErrorPayload = {
+  error?: string;
+  message?: string;
+};
+
+type RenderableQuestionFields = Pick<
+  RenderableQuestion,
+  | "question_text"
+  | "options"
+  | "solution"
+  | "comprehension"
+  | "comprehension_passage"
+  | "comprehension_questions"
+>;
 
 const QUESTION_GROUP_ORDER: QuestionGroupType[] = [
   "direction",
@@ -121,14 +136,11 @@ const QUESTION_GROUP_HELP: Record<QuestionGroupType, string> = {
 const createDefaultEditorState = (): SectionEditorState => ({
   subjectId: "",
   selectedChapterIds: [],
+  selectedTopicIds: [],
   subjects: [],
   chapters: [],
   topics: [],
   loadingOptions: false,
-<<<<<<< Updated upstream
-  savingConfig: false,
-  generating: false,
-=======
   generating: false,
   deletingGroup: null,
   deletingQuestionId: null,
@@ -146,12 +158,11 @@ const createDefaultPickerState = (): PickerState => ({
   selectedTopicId: "",
   selectedQuestionIds: [],
   questions: [],
->>>>>>> Stashed changes
 });
 
 const readApiErrorMessage = (error: unknown, fallback: string) => {
   if (!axios.isAxiosError(error)) return fallback;
-  const data = error.response?.data as { error?: string; message?: string } | undefined;
+  const data = error.response?.data as ApiErrorPayload | undefined;
   return data?.error || data?.message || fallback;
 };
 
@@ -162,44 +173,6 @@ const formatDateTime = (value?: string | null) => {
   return parsed.toLocaleString();
 };
 
-<<<<<<< Updated upstream
-const toHtmlString = (value: unknown) => {
-  if (!value) return "";
-  if (typeof value === "string") return value;
-  if (typeof value === "object" && value !== null) {
-    const html = (value as { html?: string }).html;
-    const text = (value as { text?: string }).text;
-    if (typeof html === "string" && html.trim()) return html;
-    if (typeof text === "string" && text.trim()) return text;
-  }
-  return "";
-};
-
-const SectionQuestionTable = ({
-  title,
-  questions,
-}: {
-  title: string;
-  questions: GeneratedExamQuestion[];
-}) => (
-  <div className="rounded-2xl border border-slate-200 bg-white">
-    <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-      <h4 className="text-sm font-semibold text-slate-800">{title}</h4>
-      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
-        {questions.length}
-      </span>
-    </div>
-    {questions.length === 0 ? (
-      <div className="px-4 py-5 text-sm text-slate-500">No generated questions in this group.</div>
-    ) : (
-      <div className="divide-y divide-slate-100">
-        {questions.map((question) => {
-          const prompt = toHtmlString(question.question_text);
-          const solution = toHtmlString(question.solution);
-          return (
-            <div key={`${question.question_id}-${question.order_index}`} className="px-4 py-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-=======
 const calculateRowTotal = (row: Omit<TopicAllocationRow, "total"> | TopicAllocationRow) =>
   row.direction + row.similar + row.previous_year + row.reference;
 
@@ -212,7 +185,7 @@ const createEmptyAllocationCounts = () => ({
   reference: 0,
 });
 
-const getSectionDistributionTargets = (section: ExamBuilderSection) => {
+const getSectionDistributionTargets = (section: ExamBuilderSection): SectionDistributionTargets => {
   const targets = {
     direction: Number(section.direction_question_count ?? 0),
     similar: Number(section.similar_question_count ?? 0),
@@ -228,6 +201,36 @@ const getSectionDistributionTargets = (section: ExamBuilderSection) => {
     total,
     isExplicit:
       total > 0 && total === Number(section.required_question_count ?? 0),
+  };
+};
+
+const getAllocationValidation = (
+  rows: TopicAllocationRow[],
+  section: ExamBuilderSection
+) => {
+  const totals = calculateAllocationTotals(rows);
+  const targets = getSectionDistributionTargets(section);
+  const exceededGroups = QUESTION_GROUP_ORDER.filter(
+    (groupType) => targets.isExplicit && totals[groupType] > targets[groupType]
+  );
+  const mismatchedGroups = QUESTION_GROUP_ORDER.filter(
+    (groupType) => targets.isExplicit && totals[groupType] !== targets[groupType]
+  );
+  const exceedsRequiredTotal = totals.total > Number(section.required_question_count ?? 0);
+  const matchesRequiredTotal = totals.total === Number(section.required_question_count ?? 0);
+  const hasError = exceedsRequiredTotal || exceededGroups.length > 0;
+  const isReady =
+    matchesRequiredTotal && (!targets.isExplicit || mismatchedGroups.length === 0);
+
+  return {
+    totals,
+    targets,
+    exceededGroups,
+    mismatchedGroups,
+    exceedsRequiredTotal,
+    matchesRequiredTotal,
+    hasError,
+    isReady,
   };
 };
 
@@ -297,11 +300,13 @@ const buildAllocationRows = (
 
     return leftNumber - rightNumber || left.id - right.id;
   });
-  const existingByTopicId = new Map(existingRows.map((row) => [row.topicId, row]));
+  const existingByTopicId = new Map<string, TopicAllocationRow>(
+    existingRows.map((row: TopicAllocationRow) => [row.topicId, row])
+  );
   const generatedSeed = buildQuestionGroupSeed(section);
   const autoSeed = distributeCountsAcrossTopics(sortedTopics, section);
 
-  return sortedTopics.map((topic) => {
+  return sortedTopics.map((topic: CurriculumOption) => {
     const topicId = String(topic.id);
     const existing = existingByTopicId.get(topicId);
     const seed =
@@ -323,9 +328,15 @@ const buildAllocationRows = (
   });
 };
 
-const calculateAllocationTotals = (rows: TopicAllocationRow[]) =>
+const filterTopicsBySelectedIds = (topics: CurriculumOption[], selectedTopicIds: string[]) => {
+  if (selectedTopicIds.length === 0) return topics;
+  const selectedIds = new Set(selectedTopicIds);
+  return topics.filter((topic) => selectedIds.has(String(topic.id)));
+};
+
+const calculateAllocationTotals = (rows: TopicAllocationRow[]): AllocationTotals =>
   rows.reduce(
-    (totals, row) => ({
+    (totals: AllocationTotals, row: TopicAllocationRow) => ({
       direction: totals.direction + row.direction,
       similar: totals.similar + row.similar,
       previous_year: totals.previous_year + row.previous_year,
@@ -391,23 +402,51 @@ const normalizeQuestionGroupTypeFromCategory = (category: unknown): QuestionGrou
   return null;
 };
 
+const asRecord = (value: unknown): Record<string, unknown> =>
+  value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+
+const toRenderableField = <K extends keyof RenderableQuestionFields>(
+  source: Record<string, unknown>,
+  key: K,
+  fallback: RenderableQuestionFields[K]
+): RenderableQuestionFields[K] => {
+  const value = source[key];
+  return (value ?? fallback) as RenderableQuestionFields[K];
+};
+
 const normalizePickerQuestion = (item: unknown): PickerQuestion => {
-  const source = item as Record<string, unknown>;
+  const source = asRecord(item);
   return {
     id: Number(source.id ?? source.question_id),
     question_type: typeof source.question_type === "string" ? source.question_type : "mcq_single",
-    question_text: (source.question_text ?? "") as RenderableQuestion["question_text"],
-    options: (source.options ?? null) as RenderableQuestion["options"],
+    question_text: toRenderableField(source, "question_text", ""),
+    options: toRenderableField(source, "options", null),
     correct_answer: source.correct_answer ?? null,
-    solution: (source.solution ?? null) as RenderableQuestion["solution"],
+    solution: toRenderableField(source, "solution", null),
     difficulty_level:
-      typeof source.difficulty_level === "string" ? source.difficulty_level : null,
+      typeof source.difficulty_level === "string" ? source.difficulty_level : undefined,
     topic_id: source.topic_id ? Number(source.topic_id) : null,
     category: source.category,
-    comprehension: (source.comprehension ?? null) as RenderableQuestion["comprehension"],
-    comprehension_passage: (source.comprehension_passage ?? null) as RenderableQuestion["comprehension_passage"],
-    comprehension_questions:
-      (source.comprehension_questions ?? null) as RenderableQuestion["comprehension_questions"],
+    comprehension: toRenderableField(source, "comprehension", null),
+    comprehension_passage: toRenderableField(source, "comprehension_passage", null),
+    comprehension_questions: toRenderableField(source, "comprehension_questions", null),
+  };
+};
+
+const normalizeGeneratedQuestion = (question: GeneratedExamQuestion): RenderableQuestion => {
+  const source = asRecord(question);
+  return {
+    question_type: typeof question.question_type === "string" ? question.question_type : "mcq_single",
+    question_text: toRenderableField(source, "question_text", ""),
+    options: toRenderableField(source, "options", null),
+    correct_answer: question.correct_answer ?? null,
+    solution: toRenderableField(source, "solution", null),
+    difficulty_level:
+      typeof question.difficulty_level === "string" ? question.difficulty_level : undefined,
+    category: question.question_group_type,
+    comprehension: toRenderableField(source, "comprehension", null),
+    comprehension_passage: toRenderableField(source, "comprehension_passage", null),
+    comprehension_questions: toRenderableField(source, "comprehension_questions", null),
   };
 };
 
@@ -561,18 +600,27 @@ const hasSameNumericIds = (left: number[] = [], right: number[] = []) => {
 
 function TopicAllocationTable({
   rows,
-  requiredQuestionCount,
+  section,
   disabled,
   onChange,
 }: {
   rows: TopicAllocationRow[];
-  requiredQuestionCount: number;
+  section: ExamBuilderSection;
   disabled: boolean;
   onChange: (topicId: string, groupType: QuestionGroupType, value: number) => void;
 }) {
-  const totals = calculateAllocationTotals(rows);
-  const hasOverflow = totals.total > requiredQuestionCount;
-  const isExactMatch = totals.total === requiredQuestionCount;
+  const validation = getAllocationValidation(rows, section);
+  const requiredQuestionCount = Number(section.required_question_count ?? 0);
+  const {
+    totals,
+    targets,
+    exceededGroups,
+    mismatchedGroups,
+    exceedsRequiredTotal,
+    matchesRequiredTotal,
+    hasError,
+    isReady,
+  } = validation;
 
   return (
     <div className="rounded-[28px] border border-slate-200 bg-white shadow-sm">
@@ -584,9 +632,9 @@ function TopicAllocationTable({
           </p>
         </div>
         <div
-          className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${hasOverflow
+          className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${hasError
               ? "bg-rose-50 text-rose-700"
-              : isExactMatch
+              : isReady
                 ? "bg-emerald-50 text-emerald-700"
                 : "bg-amber-50 text-amber-700"
             }`}
@@ -606,10 +654,16 @@ function TopicAllocationTable({
             <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
               <tr>
                 <th className="px-4 py-3">Topics</th>
-                <th className="px-4 py-3">Direct Question</th>
-                <th className="px-4 py-3">Similar Question</th>
-                <th className="px-4 py-3">Previous Year Question</th>
-                <th className="px-4 py-3">Reference Question</th>
+                {QUESTION_GROUP_ORDER.map((groupType) => (
+                  <th key={groupType} className="px-4 py-3">
+                    <div>{QUESTION_GROUP_LABELS[groupType]}</div>
+                    {targets.isExplicit ? (
+                      <div className="mt-1 text-[10px] font-medium normal-case tracking-normal text-slate-400">
+                        Target {targets[groupType]}
+                      </div>
+                    ) : null}
+                  </th>
+                ))}
                 <th className="px-4 py-3">Total</th>
               </tr>
             </thead>
@@ -645,10 +699,26 @@ function TopicAllocationTable({
             <tfoot className="border-t border-slate-200 bg-slate-50 text-sm font-semibold text-slate-900">
               <tr>
                 <td className="px-4 py-3">Total</td>
-                <td className="px-4 py-3">{totals.direction}</td>
-                <td className="px-4 py-3">{totals.similar}</td>
-                <td className="px-4 py-3">{totals.previous_year}</td>
-                <td className="px-4 py-3">{totals.reference}</td>
+                {QUESTION_GROUP_ORDER.map((groupType) => {
+                  const exceedsGroup = exceededGroups.includes(groupType);
+                  const mismatchedGroup = mismatchedGroups.includes(groupType);
+                  return (
+                    <td
+                      key={groupType}
+                      className={`px-4 py-3 ${exceedsGroup
+                          ? "text-rose-700"
+                          : mismatchedGroup
+                            ? "text-amber-700"
+                            : ""
+                        }`}
+                    >
+                      {totals[groupType]}
+                      {targets.isExplicit ? (
+                        <span className="ml-1 text-xs font-medium text-slate-400">/ {targets[groupType]}</span>
+                      ) : null}
+                    </td>
+                  );
+                })}
                 <td className="px-4 py-3">{totals.total}</td>
               </tr>
             </tfoot>
@@ -657,19 +727,35 @@ function TopicAllocationTable({
       )}
 
       <div className="border-t border-slate-200 px-5 py-4">
-        {hasOverflow ? (
+        {hasError ? (
           <div className="flex items-center gap-2 text-sm font-medium text-rose-700">
             <RiAlertLine className="h-4 w-4" />
-            Planned total exceeds the required question count for this section.
+            {exceedsRequiredTotal
+              ? "Planned total exceeds the required question count for this section."
+              : `Blueprint category limit exceeded for ${exceededGroups
+                .map((groupType) => QUESTION_GROUP_LABELS[groupType])
+                .join(", ")}.`}
           </div>
-        ) : isExactMatch ? (
+        ) : isReady ? (
           <div className="text-sm font-medium text-emerald-700">
-            Planned total exactly matches the section requirement.
+            {targets.isExplicit
+              ? "Topic allocation exactly matches the blueprint category counts."
+              : "Planned total exactly matches the section requirement."}
           </div>
         ) : (
-          <div className="text-sm font-medium text-amber-700">
-            Add {requiredQuestionCount - totals.total} more question
-            {requiredQuestionCount - totals.total === 1 ? "" : "s"} to complete this section.
+          <div className="space-y-1 text-sm font-medium text-amber-700">
+            {!matchesRequiredTotal ? (
+              <div>
+                Add {requiredQuestionCount - totals.total} more question
+                {requiredQuestionCount - totals.total === 1 ? "" : "s"} to complete this section.
+              </div>
+            ) : null}
+            {targets.isExplicit && mismatchedGroups.length > 0 ? (
+              <div>
+                Match the blueprint counts for{" "}
+                {mismatchedGroups.map((groupType) => QUESTION_GROUP_LABELS[groupType]).join(", ")}.
+              </div>
+            ) : null}
           </div>
         )}
       </div>
@@ -740,7 +826,6 @@ function QuestionGroupPreview({
           {questions.map((question) => (
             <div key={`${groupType}-${question.question_id}`} className="px-5 py-5">
               <div className="flex flex-wrap items-start justify-between gap-4">
->>>>>>> Stashed changes
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
@@ -760,36 +845,10 @@ function QuestionGroupPreview({
                       </span>
                     ) : null}
                   </div>
-<<<<<<< Updated upstream
-                  <div
-                    className="prose prose-sm mt-3 max-w-none text-slate-700"
-                    dangerouslySetInnerHTML={{ __html: prompt || "<p>Question preview unavailable.</p>" }}
-                  />
-                  {solution && (
-                    <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                        Solution
-                      </div>
-                      <div
-                        className="prose prose-sm mt-2 max-w-none text-slate-600"
-                        dangerouslySetInnerHTML={{ __html: solution }}
-                      />
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    )}
-  </div>
-);
-=======
 
                   <div className="mt-4">
                     <QuestionRenderer
-                      question={question}
+                      question={normalizeGeneratedQuestion(question)}
                       showMeta={false}
                       showOptions
                       showAnswer
@@ -1011,7 +1070,6 @@ function QuestionPickerModal({
     </div>
   );
 }
->>>>>>> Stashed changes
 
 export default function ExamBuilderPage() {
   const navigate = useNavigate();
@@ -1078,15 +1136,21 @@ export default function ExamBuilderPage() {
           (topic) =>
             selectedChapterIds.length === 0 || selectedChapterIds.includes(String(topic.chapter_id ?? ""))
         );
+        const selectedTopicIds =
+          current.selectedTopicIds.length > 0
+            ? current.selectedTopicIds
+            : (section.topic_ids ?? initialTopics.map((topic) => topic.id)).map(String);
+        const filteredTopics = filterTopicsBySelectedIds(initialTopics, selectedTopicIds);
 
         next[section.id] = {
           ...current,
           subjectId,
           selectedChapterIds,
+          selectedTopicIds,
           allocationRows:
             current.allocationRows.length > 0
               ? current.allocationRows
-              : buildAllocationRows(initialTopics, section),
+              : buildAllocationRows(filteredTopics, section),
         };
       }
 
@@ -1094,11 +1158,6 @@ export default function ExamBuilderPage() {
     });
   }, [preview]);
 
-<<<<<<< Updated upstream
-  const loadSectionOptions = async (section: ExamBuilderSection, nextSubjectId?: string, nextChapterIds?: string[]) => {
-    setEditors((prev) => ({
-      ...prev,
-=======
   const activeSection =
     preview?.sections.find((section) => section.id === activeSectionId) ?? preview?.sections[0] ?? null;
 
@@ -1112,7 +1171,6 @@ export default function ExamBuilderPage() {
   ) => {
     setEditors((previous) => ({
       ...previous,
->>>>>>> Stashed changes
       [section.id]: {
         ...(previous[section.id] ?? createDefaultEditorState()),
         loadingOptions: true,
@@ -1128,18 +1186,30 @@ export default function ExamBuilderPage() {
       setEditors((previous) => {
         const current = previous[section.id] ?? createDefaultEditorState();
         const nextTopics = payload.topics ?? [];
+        const selectedTopicIds =
+          nextChapterIds.length === 0
+            ? []
+            : preserveCounts && current.selectedTopicIds.length > 0
+              ? current.selectedTopicIds.filter((topicId) =>
+                nextTopics.some((topic) => String(topic.id) === topicId)
+              )
+              : nextTopics.map((topic) => String(topic.id));
+        const effectiveSelectedTopicIds =
+          selectedTopicIds.length > 0 ? selectedTopicIds : nextTopics.map((topic) => String(topic.id));
+        const filteredTopics = filterTopicsBySelectedIds(nextTopics, effectiveSelectedTopicIds);
         return {
           ...previous,
           [section.id]: {
             ...current,
             subjectId: nextSubjectId,
             selectedChapterIds: nextChapterIds,
+            selectedTopicIds: effectiveSelectedTopicIds,
             subjects: payload.subjects ?? [],
             chapters: payload.chapters ?? [],
             topics: nextTopics,
             loadingOptions: false,
             allocationRows: nextChapterIds.length > 0
-              ? buildAllocationRows(nextTopics, section, preserveCounts ? current.allocationRows : [])
+              ? buildAllocationRows(filteredTopics, section, preserveCounts ? current.allocationRows : [])
               : [],
           },
         };
@@ -1165,26 +1235,8 @@ export default function ExamBuilderPage() {
         ? editor.selectedChapterIds
         : (activeSection.chapter_ids ?? []).map(String);
 
-<<<<<<< Updated upstream
-  const handleSubjectChange = async (section: ExamBuilderSection, subjectId: string) => {
-    setEditors((prev) => ({
-      ...prev,
-      [section.id]: {
-        ...(prev[section.id] ?? createDefaultEditorState()),
-        subjectId,
-        selectedChapterIds: [],
-        selectedTopicIds: [],
-        chapters: [],
-        topics: [],
-      },
-    }));
-
-    if (subjectId) {
-      await loadSectionOptions(section, subjectId, []);
-=======
     if (editor.subjects.length === 0 && !editor.loadingOptions) {
       void loadSectionOptions(activeSection, subjectId, chapterIds, true);
->>>>>>> Stashed changes
     }
   }, [activeEditor, activeSection, loadSectionOptions]);
 
@@ -1198,18 +1250,13 @@ export default function ExamBuilderPage() {
     setEditors((previous) => ({
       ...previous,
       [section.id]: {
-<<<<<<< Updated upstream
-        ...(prev[section.id] ?? createDefaultEditorState()),
-        selectedChapterIds: nextChapterIds,
-        selectedTopicIds: validTopicIds,
-=======
         ...(previous[section.id] ?? createDefaultEditorState()),
         subjectId,
         selectedChapterIds: [],
+        selectedTopicIds: [],
         chapters: [],
         topics: [],
         allocationRows: [],
->>>>>>> Stashed changes
       },
     }));
 
@@ -1225,6 +1272,7 @@ export default function ExamBuilderPage() {
       [section.id]: {
         ...(previous[section.id] ?? createDefaultEditorState()),
         selectedChapterIds: chapterIds,
+        selectedTopicIds: [],
         topics: [],
         allocationRows: [],
       },
@@ -1233,6 +1281,24 @@ export default function ExamBuilderPage() {
     if (editor.subjectId && chapterIds.length > 0) {
       await loadSectionOptions(section, editor.subjectId, chapterIds, false);
     }
+  };
+
+  const handleTopicChange = (section: ExamBuilderSection, topicIds: string[]) => {
+    setEditors((previous) => {
+      const current = previous[section.id] ?? createDefaultEditorState();
+      const nextSelectedTopicIds =
+        topicIds.length > 0 ? topicIds : current.topics.map((topic) => String(topic.id));
+      const filteredTopics = filterTopicsBySelectedIds(current.topics, nextSelectedTopicIds);
+
+      return {
+        ...previous,
+        [section.id]: {
+          ...current,
+          selectedTopicIds: nextSelectedTopicIds,
+          allocationRows: buildAllocationRows(filteredTopics, section, current.allocationRows),
+        },
+      };
+    });
   };
 
   const handleAllocationChange = (sectionId: number, topicId: string, groupType: QuestionGroupType, value: number) => {
@@ -1251,13 +1317,7 @@ export default function ExamBuilderPage() {
         ...previous,
         [sectionId]: {
           ...current,
-<<<<<<< Updated upstream
-          selectedTopicIds: checked
-            ? [...current.selectedTopicIds, topicId]
-            : current.selectedTopicIds.filter((idValue) => idValue !== topicId),
-=======
           allocationRows: nextRows,
->>>>>>> Stashed changes
         },
       };
     });
@@ -1266,7 +1326,8 @@ export default function ExamBuilderPage() {
   const handleGenerateSection = async (section: ExamBuilderSection) => {
     const editor = editors[section.id] ?? createDefaultEditorState();
     const requiredQuestionCount = Number(section.required_question_count ?? 0);
-    const totals = calculateAllocationTotals(editor.allocationRows);
+    const validation = getAllocationValidation(editor.allocationRows, section);
+    const { totals, targets, exceedsRequiredTotal, exceededGroups, mismatchedGroups, isReady } = validation;
 
     if (!editor.subjectId) {
       toast.error("Select a subject for this section.");
@@ -1280,7 +1341,27 @@ export default function ExamBuilderPage() {
       toast.error("No topics are available for the selected chapters.");
       return;
     }
-    if (totals.total !== requiredQuestionCount) {
+    if (exceedsRequiredTotal) {
+      toast.error("Planned total exceeds the blueprint requirement for this section.");
+      return;
+    }
+    if (exceededGroups.length > 0) {
+      toast.error(
+        `Blueprint category limit exceeded for ${exceededGroups
+          .map((groupType) => QUESTION_GROUP_LABELS[groupType])
+          .join(", ")}.`
+      );
+      return;
+    }
+    if (targets.isExplicit && mismatchedGroups.length > 0) {
+      toast.error(
+        `Match the blueprint counts for ${mismatchedGroups
+          .map((groupType) => QUESTION_GROUP_LABELS[groupType])
+          .join(", ")} before generating.`
+      );
+      return;
+    }
+    if (!isReady || totals.total !== requiredQuestionCount) {
       toast.error("Planned total must exactly match the section question count.");
       return;
     }
@@ -1295,49 +1376,12 @@ export default function ExamBuilderPage() {
     setEditors((previous) => ({
       ...previous,
       [section.id]: {
-<<<<<<< Updated upstream
-        ...editor,
-        savingConfig: true,
-      },
-    }));
-
-    try {
-      await configureExamSectionSyllabus(examId, section.id, {
-        subject_id: Number(editor.subjectId),
-        chapter_ids: editor.selectedChapterIds.map(Number),
-        topic_ids: editor.selectedTopicIds.map(Number),
-      });
-      toast.success(`${section.title} syllabus saved.`);
-      await loadPreview();
-    } catch (err) {
-      toast.error(readApiErrorMessage(err, "Failed to save section syllabus."));
-    } finally {
-      setEditors((prev) => ({
-        ...prev,
-        [section.id]: {
-          ...(prev[section.id] ?? createDefaultEditorState()),
-          savingConfig: false,
-        },
-      }));
-    }
-  };
-
-  const handleGenerateSection = async (section: ExamBuilderSection) => {
-    setEditors((prev) => ({
-      ...prev,
-      [section.id]: {
-        ...(prev[section.id] ?? createDefaultEditorState()),
-=======
         ...(previous[section.id] ?? createDefaultEditorState()),
->>>>>>> Stashed changes
         generating: true,
       },
     }));
 
     try {
-<<<<<<< Updated upstream
-      await generateExamSectionQuestions(examId, section.id);
-=======
       if (shouldReconfigure) {
         await configureExamSectionSyllabus(examId, section.id, {
           subject_id: Number(editor.subjectId),
@@ -1358,7 +1402,6 @@ export default function ExamBuilderPage() {
         },
       });
 
->>>>>>> Stashed changes
       toast.success(`${section.title} generated successfully.`);
       await loadPreview();
     } catch (err) {
@@ -1604,7 +1647,11 @@ export default function ExamBuilderPage() {
   const completedSections =
     preview?.sections.filter((section) => section.completion_status === "completed").length ?? 0;
 
-  const activeTotals = activeEditor ? calculateAllocationTotals(activeEditor.allocationRows) : null;
+  const activeAllocationValidation =
+    activeSection && activeEditor
+      ? getAllocationValidation(activeEditor.allocationRows, activeSection)
+      : null;
+  const activeTotals = activeAllocationValidation?.totals ?? null;
   const activeTopicsById = new Map(
     (activeEditor?.allocationRows ?? []).map((row) => [row.topicId, row.topicName])
   );
@@ -1615,15 +1662,25 @@ export default function ExamBuilderPage() {
         title="Exam Builder"
         description="Build each section, generate questions, review every part, and save the final exam."
         headerAction={
-          <button
-            type="button"
-            onClick={handleFinalize}
-            disabled={!preview?.all_sections_completed || finalizing}
-            className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {finalizing ? <RiLoader4Line className="h-4 w-4 animate-spin" /> : <RiArrowRightUpLine className="h-4 w-4" />}
-            {finalizing ? "Saving..." : "Save Exam"}
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={() => navigate("/exams")}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+            >
+              <RiArrowLeftLine className="h-4 w-4" />
+              Back to Exam List
+            </button>
+            <button
+              type="button"
+              onClick={handleFinalize}
+              disabled={!preview?.all_sections_completed || finalizing}
+              className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {finalizing ? <RiLoader4Line className="h-4 w-4 animate-spin" /> : <RiArrowRightUpLine className="h-4 w-4" />}
+              {finalizing ? "Saving..." : "Save Exam"}
+            </button>
+          </>
         }
       >
         {loading ? (
@@ -1640,54 +1697,80 @@ export default function ExamBuilderPage() {
           </div>
         ) : (
           <div className="space-y-6">
-            <section className="rounded-[32px] border border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(148,163,184,0.12),_transparent_38%),linear-gradient(180deg,_#ffffff,_#f8fafc)] p-6 shadow-sm">
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div>
-                  <div className="flex flex-wrap items-center gap-3">
-                    <h2 className="text-2xl font-semibold tracking-tight text-slate-950">{preview.exam.title}</h2>
+            <section className="sticky top-4 z-20 rounded-[18px] border border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(148,163,184,0.09),_transparent_32%),linear-gradient(180deg,_rgba(255,255,255,0.98),_rgba(248,250,252,0.96))] px-4 py-3 shadow-sm backdrop-blur">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="text-base font-semibold tracking-tight text-slate-950">{preview.exam.title}</h2>
                     <ExamStatusBadge status={normalizeExamStatus(preview.exam.status)} />
                   </div>
-                  <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-slate-500">
-                    <span className="inline-flex items-center gap-2 rounded-full bg-white/80 px-3 py-1">
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white/80 px-2.5 py-1">
                       <RiBookMarkedLine className="h-4 w-4 text-slate-400" />
                       Blueprint: {preview.blueprint?.name ?? "--"}
                     </span>
-                    <span className="inline-flex items-center gap-2 rounded-full bg-white/80 px-3 py-1">
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white/80 px-2.5 py-1">
+                      <RiDraftLine className="h-4 w-4 text-slate-400" />
+                      Sections: {preview.sections.length}
+                    </span>
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white/80 px-2.5 py-1">
                       <RiFolderChartLine className="h-4 w-4 text-slate-400" />
                       Program: {preview.exam.program_id ?? "--"}
                     </span>
-                    <span className="inline-flex items-center gap-2 rounded-full bg-white/80 px-3 py-1">
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white/80 px-2.5 py-1">
                       <RiSparklingLine className="h-4 w-4 text-slate-400" />
                       Window: {formatDateTime(preview.exam.start_datetime)} to {formatDateTime(preview.exam.end_datetime)}
                     </span>
                   </div>
                 </div>
 
-                <div className="rounded-[24px] border border-slate-200 bg-white/90 px-5 py-4 shadow-sm">
-                  <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-                    Section Progress
+                <div className="rounded-[14px] border border-slate-200 bg-white/90 px-3 py-2 shadow-sm">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-400">
+                    Progress
                   </div>
-                  <div className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">
-                    {completedSections}/{preview.totals.section_count}
+                  <div className="mt-0.5 flex items-baseline gap-2">
+                    <span className="text-lg font-semibold tracking-tight text-slate-950">
+                      {completedSections}/{preview.totals.section_count}
+                    </span>
+                    <span className="text-xs text-slate-500">
+                      {preview.totals.question_count}/{preview.totals.required_question_count} ready
+                    </span>
                   </div>
-                  <div className="mt-1 text-sm text-slate-500">
-                    completed • {preview.totals.question_count}/{preview.totals.required_question_count} questions ready
+                </div>
+              </div>
+
+              <div className="mt-3 border-t border-slate-200/80 pt-2.5">
+                <div className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
+                  <RiDraftLine className="h-4 w-4" />
+                  Sections
+                </div>
+                <div className="overflow-x-auto">
+                  <div className="flex min-w-max gap-2">
+                    {preview.sections.map((section) => {
+                      const isActive = activeSection?.id === section.id;
+
+                      return (
+                        <button
+                          key={`sticky-section-${section.id}`}
+                          type="button"
+                          onClick={() => startTransition(() => setActiveSectionId(section.id))}
+                          className={`min-w-[150px] rounded-[14px] border px-3 py-2 text-left transition ${isActive
+                              ? "border-slate-900 bg-slate-900 text-white shadow-lg shadow-slate-900/10"
+                              : "border-slate-200 bg-slate-50 text-slate-900 hover:border-slate-300 hover:bg-white"
+                            }`}
+                        >
+                          <div className="text-sm font-semibold">{section.title}</div>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
             </section>
 
-            <section className="rounded-[30px] border border-slate-200 bg-white p-3 shadow-sm">
-              <div className="mb-3 px-3 pt-2">
-                <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-                  Sections
-                </div>
-                <p className="mt-1 text-sm text-slate-500">
-                  Switch between sections to configure topic allocation and review generated parts.
-                </p>
-              </div>
+            <section className="hidden rounded-[22px] border border-slate-200 bg-white p-3 shadow-sm">
               <div className="overflow-x-auto">
-                <div className="flex min-w-max gap-3 px-3 pb-3">
+                <div className="flex min-w-max gap-2.5 px-3 py-1">
                   {preview.sections.map((section, index) => {
                     const isActive = activeSection?.id === section.id;
                     const ready = Number(section.question_count ?? 0) === Number(section.required_question_count ?? 0);
@@ -1697,7 +1780,7 @@ export default function ExamBuilderPage() {
                         key={section.id}
                         type="button"
                         onClick={() => startTransition(() => setActiveSectionId(section.id))}
-                        className={`min-w-[250px] rounded-[24px] border px-4 py-4 text-left transition ${isActive
+                        className={`min-w-[210px] rounded-[18px] border px-3.5 py-3 text-left transition ${isActive
                             ? "border-slate-900 bg-slate-900 text-white shadow-lg shadow-slate-900/10"
                             : "border-slate-200 bg-slate-50 text-slate-900 hover:border-slate-300 hover:bg-white"
                           }`}
@@ -1705,8 +1788,8 @@ export default function ExamBuilderPage() {
                         <div className="text-[11px] font-semibold uppercase tracking-[0.24em] opacity-70">
                           Section {index + 1}
                         </div>
-                        <div className="mt-2 text-base font-semibold">{section.title}</div>
-                        <div className={`mt-3 inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${isActive
+                        <div className="mt-1.5 text-sm font-semibold">{section.title}</div>
+                        <div className={`mt-2 inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${isActive
                             ? "bg-white/10 text-white"
                             : ready
                               ? "bg-emerald-50 text-emerald-700"
@@ -1723,11 +1806,11 @@ export default function ExamBuilderPage() {
 
             {activeSection && activeEditor ? (
               <div className="space-y-6">
-                <section className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
+                <section className="rounded-[26px] border border-slate-200 bg-white p-5 shadow-sm">
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div>
                       <div className="flex flex-wrap items-center gap-3">
-                        <h3 className="text-2xl font-semibold tracking-tight text-slate-950">{activeSection.title}</h3>
+                        <h3 className="text-xl font-semibold tracking-tight text-slate-950">{activeSection.title}</h3>
                         <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
                           Requires {activeSection.required_question_count ?? 0}
                         </span>
@@ -1739,7 +1822,7 @@ export default function ExamBuilderPage() {
                         Select the subject and chapters, define the topic-wise question mix, generate the section, then review each part below.
                       </p>
                     </div>
-                    <div className="rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
+                    <div className="rounded-[18px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
                       <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                         Generated
                       </div>
@@ -1749,7 +1832,7 @@ export default function ExamBuilderPage() {
                     </div>
                   </div>
 
-                  <div className="mt-6 grid gap-4 md:grid-cols-2">
+                  <div className="mt-6 grid gap-4 md:grid-cols-3">
                     <SelectionDropdown
                       label="Subject"
                       placeholder="Select subject"
@@ -1778,65 +1861,35 @@ export default function ExamBuilderPage() {
                       }))}
                       onChange={(nextValues) => void handleChapterChange(activeSection, nextValues)}
                     />
+
+                    <SelectionDropdown
+                      label="Topic"
+                      placeholder="Select one or more topics"
+                      multiple
+                      disabled={activeEditor.topics.length === 0}
+                      values={activeEditor.selectedTopicIds}
+                      options={activeEditor.topics.map((topic) => ({
+                        value: String(topic.id),
+                        label: topic.name,
+                        meta:
+                          topic.topic_number !== undefined && topic.topic_number !== null
+                            ? `Topic #${topic.topic_number}`
+                            : undefined,
+                      }))}
+                      onChange={(nextValues) => handleTopicChange(activeSection, nextValues)}
+                    />
                   </div>
 
-<<<<<<< Updated upstream
-                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                        <h4 className="text-sm font-semibold text-slate-800">Topics</h4>
-                        <div className="mt-3 max-h-64 space-y-2 overflow-y-auto pr-1">
-                          {groupedTopics.length === 0 ? (
-                            <div className="text-sm text-slate-500">Select chapters to load topics.</div>
-                          ) : (
-                            groupedTopics.map((topic) => {
-                              const checked = editor.selectedTopicIds.includes(String(topic.id));
-                              return (
-                                <label key={topic.id} className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
-                                  <input
-                                    type="checkbox"
-                                    checked={checked}
-                                    onChange={(event) =>
-                                      handleTopicToggle(section.id, String(topic.id), event.target.checked)
-                                    }
-                                    className="mt-1"
-                                  />
-                                  <span>{topic.name}</span>
-                                </label>
-                              );
-                            })
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          onClick={() => void handleConfigureSection(section)}
-                          disabled={editor.savingConfig}
-                          className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          {editor.savingConfig ? "Saving..." : "Save Syllabus"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void handleGenerateSection(section)}
-                          disabled={editor.generating}
-                          className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          {editor.generating ? "Generating..." : section.question_count ? "Regenerate Section" : "Generate Section"}
-                        </button>
-                      </div>
-=======
                   {activeEditor.loadingOptions ? (
                     <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-500">
                       Loading section syllabus...
->>>>>>> Stashed changes
                     </div>
                   ) : null}
 
                   <div className="mt-6">
                     <TopicAllocationTable
                       rows={activeEditor.allocationRows}
-                      requiredQuestionCount={Number(activeSection.required_question_count ?? 0)}
+                      section={activeSection}
                       disabled={activeEditor.generating}
                       onChange={(topicId, groupType, value) =>
                         handleAllocationChange(activeSection.id, topicId, groupType, value)
@@ -1844,17 +1897,6 @@ export default function ExamBuilderPage() {
                     />
                   </div>
 
-<<<<<<< Updated upstream
-                      <div className="grid gap-4">
-                        {(Object.keys(QUESTION_GROUP_LABELS) as QuestionGroupType[]).map((groupType) => (
-                          <SectionQuestionTable
-                            key={`${section.id}-${groupType}`}
-                            title={QUESTION_GROUP_LABELS[groupType]}
-                            questions={section.question_groups?.[groupType] ?? []}
-                          />
-                        ))}
-                      </div>
-=======
                   <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-[24px] border border-slate-200 bg-slate-50 px-5 py-4">
                     <div>
                       <div className="text-sm font-semibold text-slate-900">Generate Section</div>
@@ -1869,7 +1911,7 @@ export default function ExamBuilderPage() {
                         activeEditor.generating ||
                         activeEditor.loadingOptions ||
                         activeEditor.allocationRows.length === 0 ||
-                        activeTotals?.total !== Number(activeSection.required_question_count ?? 0)
+                        !activeAllocationValidation?.isReady
                       }
                       className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
                     >
@@ -1890,7 +1932,6 @@ export default function ExamBuilderPage() {
                       <p className="mt-1 text-sm text-slate-500">
                         Review every part, remove questions, clear a full part, or add approved questions manually.
                       </p>
->>>>>>> Stashed changes
                     </div>
                   </div>
 

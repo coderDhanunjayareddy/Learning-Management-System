@@ -6,6 +6,63 @@ import { getAttemptResultPayloadByAttemptId } from './student.service.js';
 const VALID_EXAM_STATUSES = ['draft', 'published', 'active', 'completed'];
 const VALID_BLUEPRINT_STATUSES = ['active', 'inactive', 'archived'];
 const QUESTION_GROUP_TYPES = ['direction', 'similar', 'previous_year', 'reference'];
+
+const normalizeQuestionGroupTypeFromCategory = (category) => {
+  const normalizeToken = (value) => {
+    const normalized = String(value ?? '')
+      .trim()
+      .toLowerCase()
+      .replace(/[\s-]+/g, '_');
+
+    if (!normalized) return null;
+    if (QUESTION_GROUP_TYPES.includes(normalized)) return normalized;
+    if (['direct', 'direction_question', 'direct_question'].includes(normalized)) {
+      return 'direction';
+    }
+    if (['similar_question', 'similar_questions'].includes(normalized)) {
+      return 'similar';
+    }
+    if (
+      [
+        'previous_year_question',
+        'previous_year_questions',
+        'previousyear',
+        'previousyear_question',
+      ].includes(normalized)
+    ) {
+      return 'previous_year';
+    }
+    if (['reference_question', 'reference_questions'].includes(normalized)) {
+      return 'reference';
+    }
+    return null;
+  };
+
+  if (typeof category === 'string') return normalizeToken(category);
+
+  if (Array.isArray(category)) {
+    for (const entry of category) {
+      const match = normalizeToken(entry);
+      if (match) return match;
+    }
+    return null;
+  }
+
+  if (category && typeof category === 'object') {
+    return (
+      normalizeToken(category.label) ||
+      normalizeToken(category.name) ||
+      normalizeToken(category.value) ||
+      normalizeToken(category.type) ||
+      (Array.isArray(category.tags)
+        ? category.tags.map((entry) => normalizeToken(entry)).find(Boolean) ?? null
+        : null)
+    );
+  }
+
+  return null;
+};
+
 let examResultColumnsEnsured = false;
 let examInstructionsColumnKnown = null;
 let blueprintDistributionColumnsKnown = null;
@@ -894,27 +951,58 @@ const normalizePlanTopicsInput = (topicsInput) => {
   });
 };
 
+const validatePlanTopicsAgainstSection = ({ section, planTopics, requiredCount }) => {
+  const totals = createEmptyQuestionGroupCounts();
+
+  for (const row of planTopics) {
+    for (const groupType of QUESTION_GROUP_TYPES) {
+      totals[groupType] += Number(row[groupType] || 0);
+      totals.total += Number(row[groupType] || 0);
+    }
+  }
+
+  if (totals.total !== requiredCount) {
+    throw new AppError(`Generation plan must total exactly ${requiredCount} questions`, 400);
+  }
+
+  const targets = getSectionDistributionTargets(section);
+  if (!targets.isExplicit) {
+    return { totals, targets };
+  }
+
+  for (const groupType of QUESTION_GROUP_TYPES) {
+    if (totals[groupType] > targets[groupType]) {
+      throw new AppError(
+        `${groupType.replace(/_/g, ' ')} count exceeds the blueprint limit for this section`,
+        400
+      );
+    }
+    if (totals[groupType] !== targets[groupType]) {
+      throw new AppError(
+        `${groupType.replace(/_/g, ' ')} count must exactly match the blueprint requirement for this section`,
+        400
+      );
+    }
+  }
+
+  return { totals, targets };
+};
+
 const pickQuestionsForSectionByPlan = ({ candidates, requiredCount, topicRows, planTopics }) => {
   const allowedTopicIds = new Set(topicRows.map((topic) => Number(topic.id)));
   const topicPlanMap = new Map();
-  let totalRequested = 0;
 
   for (const row of planTopics) {
     if (!allowedTopicIds.has(Number(row.topic_id))) {
       throw new AppError('Generation plan includes a topic outside the configured syllabus', 400);
     }
     const plannedCounts = createEmptyQuestionGroupCounts();
-    for (const groupType of QUESTION_GROUP_TYPES) {
-      plannedCounts[groupType] = Number(row[groupType] || 0);
-      plannedCounts.total += plannedCounts[groupType];
+      for (const groupType of QUESTION_GROUP_TYPES) {
+        plannedCounts[groupType] = Number(row[groupType] || 0);
+        plannedCounts.total += plannedCounts[groupType];
+      }
+      topicPlanMap.set(Number(row.topic_id), plannedCounts);
     }
-    totalRequested += plannedCounts.total;
-    topicPlanMap.set(Number(row.topic_id), plannedCounts);
-  }
-
-  if (totalRequested !== requiredCount) {
-    throw new AppError(`Generation plan must total exactly ${requiredCount} questions`, 400);
-  }
 
   const candidateBuckets = new Map();
   for (const candidate of candidates) {
@@ -979,6 +1067,14 @@ const resolveSectionGenerationPlan = async ({ exam, section, planOverride = null
   const normalizedPlanTopics = planOverride
     ? normalizePlanTopicsInput(planOverride.topics)
     : buildEvenTopicDistributionPlan({ topicRows, section });
+
+  if (normalizedPlanTopics) {
+    validatePlanTopicsAgainstSection({
+      section,
+      planTopics: normalizedPlanTopics,
+      requiredCount: requiredQuestionCount,
+    });
+  }
 
   const selectedQuestions = normalizedPlanTopics
     ? pickQuestionsForSectionByPlan({
@@ -2896,83 +2992,11 @@ export const generateExamSectionQuestions = async (req, res) => {
       user: req.user,
     });
 
-    if (!exam.program_id) {
-      throw new AppError('Exam program is not configured', 400);
-    }
-    if (!section.selected_subject_id) {
-      throw new AppError('Section subject is not configured', 400);
-    }
-
-    const topicResult = await dbQuery(
-      `SELECT topic_id FROM exam_section_topics WHERE exam_section_id = $1 ORDER BY topic_id`,
-      [section.id]
-    );
-    const topicIds = topicResult.rows.map((row) => Number(row.topic_id));
-    if (topicIds.length === 0) {
-      throw new AppError('Select topics before generating questions', 400);
-    }
-
-    const duplicateResult = await dbQuery(
-      `
-        SELECT eq.question_id
-        FROM exam_questions eq
-        JOIN exam_sections es ON es.id = eq.section_id
-        WHERE es.exam_id = $1
-          AND es.id <> $2
-      `,
-      [exam.id, section.id]
-    );
-    const excludedQuestionIds = duplicateResult.rows.map((row) => Number(row.question_id));
-
-    const candidateResult = await dbQuery(
-      `
-        SELECT
-          q.id,
-          q.question_type,
-          q.question_group_type,
-          q.question_text,
-          q.options,
-          q.correct_answer,
-          q.solution,
-          q.subject_id,
-          q.chapter_id,
-          q.topic_id,
-          q.difficulty_level,
-          q.status,
-          q.created_at
-        FROM questions q
-        JOIN subjects s ON s.id = q.subject_id
-        JOIN grades g ON g.id = s.grade_id
-        WHERE q.status = 'approved'
-          AND q.question_type <> 'comprehensive'
-          AND q.question_group_type IS NOT NULL
-          AND q.subject_id = $1
-          AND q.topic_id = ANY($2::int[])
-          AND g.program_id = $3
-          AND ($4::int[] IS NULL OR q.id <> ALL($4::int[]))
-        ORDER BY q.created_at DESC, q.id DESC
-      `,
-      [
-        Number(section.selected_subject_id),
-        topicIds,
-        Number(exam.program_id),
-        excludedQuestionIds.length > 0 ? excludedQuestionIds : null,
-      ]
-    );
-
-    const candidates = candidateResult.rows.map((row) => ({
-      ...row,
-      id: Number(row.id),
-    }));
-
-    const requiredQuestionCount = Number(section.required_question_count || 0);
-    if (requiredQuestionCount <= 0) {
-      throw new AppError('Section required question count is invalid', 400);
-    }
-
-    const selectedQuestions = pickQuestionsForSection({
-      candidates,
-      requiredCount: requiredQuestionCount,
+    const planOverride = req.body?.generation_plan ?? null;
+    const { selectedQuestions } = await resolveSectionGenerationPlan({
+      exam,
+      section,
+      planOverride,
     });
 
     const tx = await getClient();

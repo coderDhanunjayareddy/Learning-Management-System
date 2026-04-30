@@ -8,6 +8,8 @@ import type {
   ExamBuilderSection,
   ExamPreviewPayload,
   ExamSectionSyllabusOptions,
+  ExamSectionGenerationPlan,
+  ExamSectionGenerationPlanInput,
   CurriculumOption,
 } from '../types';
 
@@ -113,8 +115,6 @@ export const addQuestionToSection = async (
   await api.post(`/exams/${examId}/sections/${sectionId}/questions`, payload);
 };
 
-<<<<<<< Updated upstream
-=======
 export const removeQuestionFromExamSection = async (
   examId: number,
   sectionId: number,
@@ -144,7 +144,6 @@ export const replaceQuestionInSection = async (
   await api.put(`/exams/${examId}/sections/${sectionId}/questions/replace`, payload);
 };
 
->>>>>>> Stashed changes
 // ============================================
 // EXAM PUBLISHING
 // ============================================
@@ -241,11 +240,22 @@ export const configureExamSectionSyllabus = async (
   return res.data as ExamBuilderSection;
 };
 
-export const generateExamSectionQuestions = async (
+export const fetchExamSectionGenerationPlan = async (
   examId: number,
   sectionId: number
+): Promise<ExamSectionGenerationPlan> => {
+  const res = await api.get(`/exams/${examId}/sections/${sectionId}/generation-plan`);
+  return (res.data?.generation_plan ?? res.data) as ExamSectionGenerationPlan;
+};
+
+export const generateExamSectionQuestions = async (
+  examId: number,
+  sectionId: number,
+  payload?: {
+    generation_plan?: ExamSectionGenerationPlanInput;
+  }
 ): Promise<ExamBuilderSection> => {
-  const res = await api.post(`/exams/${examId}/sections/${sectionId}/generate`);
+  const res = await api.post(`/exams/${examId}/sections/${sectionId}/generate`, payload ?? {});
   return res.data as ExamBuilderSection;
 };
 

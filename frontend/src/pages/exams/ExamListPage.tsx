@@ -186,6 +186,8 @@ export default function ExamListPage() {
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   const [editingExamId, setEditingExamId] = useState<number | null>(null);
+  const [publishExamTarget, setPublishExamTarget] = useState<ExamSummary | null>(null);
+  const [publishSaving, setPublishSaving] = useState(false);
   const [editForm, setEditForm] = useState<ExamEditForm>({
     title: "",
     description: "",
@@ -481,6 +483,37 @@ export default function ExamListPage() {
     }
   };
 
+  const closePublishModal = () => {
+    if (publishSaving) return;
+    setPublishExamTarget(null);
+  };
+
+  const publishExamById = async (exam: ExamSummary) => {
+    if (!examPermissions.canPublish) {
+      toast.error("You don't have permission to publish exams.");
+      return;
+    }
+
+    const examId = resolveExamId(exam.id);
+    if (!examId) {
+      toast.error("Invalid exam id.");
+      return;
+    }
+
+    setPublishSaving(true);
+    try {
+      await api.post(`/exams/${examId}/publish`);
+      toast.success("Exam published successfully.");
+      setPublishExamTarget(null);
+      await loadExams();
+    } catch (err: unknown) {
+      const message = readApiErrorMessage(err, "Failed to publish exam.");
+      toast.error(message);
+    } finally {
+      setPublishSaving(false);
+    }
+  };
+
   const handleAction = (action: string, exam: ExamSummary) => {
     if (action === "builder") {
       if (!examPermissions.canUpdate) {
@@ -514,8 +547,8 @@ export default function ExamListPage() {
       return;
     }
 
-    if (action === "live" && !examPermissions.canPublish) {
-      toast.error("You don't have permission to publish exams.");
+    if (action === "publish") {
+      setPublishExamTarget(exam);
       return;
     }
 
@@ -824,6 +857,36 @@ export default function ExamListPage() {
                 disabled={editSaving || editLoading}
               >
                 {editSaving ? "Saving..." : "Save Changes"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {publishExamTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4">
+          <div className="w-full max-w-md rounded-[28px] bg-white p-6 shadow-2xl">
+            <h3 className="text-2xl font-semibold tracking-tight text-slate-950">Publish Exam?</h3>
+            <p className="mt-4 text-base leading-7 text-slate-600">
+              Publish <span className="font-semibold text-slate-900">{publishExamTarget.title}</span> so it becomes live like the course publish flow.
+            </p>
+
+            <div className="mt-8 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={closePublishModal}
+                className="rounded-xl px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100"
+                disabled={publishSaving}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void publishExamById(publishExamTarget)}
+                className="rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={publishSaving}
+              >
+                {publishSaving ? "Publishing..." : "Yes, Publish"}
               </button>
             </div>
           </div>
