@@ -371,6 +371,20 @@ export default function ExamCreatePage() {
                               {section.required_question_count} questions
                             </span>
                           </div>
+                          <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
+                            <span className="rounded-full bg-slate-100 px-2 py-1 font-semibold text-slate-700">
+                              D {section.direction_question_count}
+                            </span>
+                            <span className="rounded-full bg-slate-100 px-2 py-1 font-semibold text-slate-700">
+                              S {section.similar_question_count}
+                            </span>
+                            <span className="rounded-full bg-slate-100 px-2 py-1 font-semibold text-slate-700">
+                              PY {section.previous_year_question_count}
+                            </span>
+                            <span className="rounded-full bg-slate-100 px-2 py-1 font-semibold text-slate-700">
+                              R {section.reference_question_count}
+                            </span>
+                          </div>
                         </div>
                       ))}
                   </div>

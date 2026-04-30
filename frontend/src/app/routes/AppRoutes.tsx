@@ -83,6 +83,7 @@ import QuestionPassageEditPage from '@/pages/questions/QuestionPassageEditPage';
 import ExamListPage from '@/pages/exams/ExamListPage';
 import ExamCreatePage from '@/pages/exams/ExamCreatePage';
 import ExamBuilderPage from '@/pages/exams/ExamBuilderPage';
+import ExamPaperPreviewPage from '@/pages/exams/ExamPaperPreviewPage';
 import ExamSectionQuestionsPage from '@/pages/exams/ExamSectionQuestionsPage';
 import BlueprintsPage from '@/pages/exams/BlueprintsPage';
 
@@ -373,6 +374,7 @@ export default function AppRoutes() {
         }
       >
         <Route path="/exams/:id/builder" element={<ExamBuilderPage />} />
+        <Route path="/exams/:id/paper-preview" element={<ExamPaperPreviewPage />} />
         <Route path="/exams/:id/sections/:sectionId/questions" element={<ExamSectionQuestionsPage />} />
       </Route>
 

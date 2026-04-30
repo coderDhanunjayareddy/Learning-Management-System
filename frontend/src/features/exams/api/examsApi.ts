@@ -8,7 +8,7 @@ import type {
   ExamBuilderSection,
   ExamPreviewPayload,
   ExamSectionSyllabusOptions,
-  ExamSectionGenerationPlan,
+  ExamSectionGenerationPlanInput,
   CurriculumOption,
 } from '../types';
 
@@ -114,6 +114,24 @@ export const addQuestionToSection = async (
   await api.post(`/exams/${examId}/sections/${sectionId}/questions`, payload);
 };
 
+export const removeQuestionFromExamSection = async (
+  examId: number,
+  sectionId: number,
+  questionId: number
+): Promise<ExamBuilderSection> => {
+  const res = await api.delete(`/exams/${examId}/sections/${sectionId}/questions/${questionId}`);
+  return res.data as ExamBuilderSection;
+};
+
+export const clearExamSectionQuestionGroup = async (
+  examId: number,
+  sectionId: number,
+  groupType: "direction" | "similar" | "previous_year" | "reference"
+): Promise<ExamBuilderSection> => {
+  const res = await api.delete(`/exams/${examId}/sections/${sectionId}/questions/group/${groupType}`);
+  return res.data as ExamBuilderSection;
+};
+
 export interface ReplaceQuestionPayload {
   current_question_id: number;
   new_question_id: number;
@@ -123,8 +141,9 @@ export const replaceQuestionInSection = async (
   examId: number,
   sectionId: number,
   payload: ReplaceQuestionPayload
-): Promise<void> => {
-  await api.put(`/exams/${examId}/sections/${sectionId}/questions/replace`, payload);
+): Promise<ExamBuilderSection> => {
+  const res = await api.put(`/exams/${examId}/sections/${sectionId}/questions/replace`, payload);
+  return res.data as ExamBuilderSection;
 };
 
 // ============================================
@@ -149,6 +168,10 @@ export interface BlueprintPayload {
   sections: Array<{
     section_name: string;
     required_question_count: number;
+    direction_question_count: number;
+    similar_question_count: number;
+    previous_year_question_count: number;
+    reference_question_count: number;
     display_order: number;
   }>;
 }
@@ -219,27 +242,11 @@ export const configureExamSectionSyllabus = async (
   return res.data as ExamBuilderSection;
 };
 
-export const fetchExamSectionGenerationPlan = async (
-  examId: number,
-  sectionId: number
-): Promise<ExamSectionGenerationPlan> => {
-  const res = await api.get(`/exams/${examId}/sections/${sectionId}/generation-plan`);
-  return res.data as ExamSectionGenerationPlan;
-};
-
 export const generateExamSectionQuestions = async (
   examId: number,
   sectionId: number,
   payload?: {
-    generation_plan?: {
-      topics: Array<{
-        topic_id: number;
-        direction: number;
-        similar: number;
-        reference: number;
-        previous_year: number;
-      }>;
-    };
+    generation_plan?: ExamSectionGenerationPlanInput;
   }
 ): Promise<ExamBuilderSection> => {
   const res = await api.post(`/exams/${examId}/sections/${sectionId}/generate`, payload ?? {});

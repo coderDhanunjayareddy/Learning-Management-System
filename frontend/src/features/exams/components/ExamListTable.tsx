@@ -40,6 +40,7 @@ const getActionState = (status: ExamStatus | null, permissions: ExamPermissions)
   return {
     canEdit: permissions.canUpdate && isDraft,
     canBuilder: permissions.canUpdate && isDraft,
+    canPublish: permissions.canPublish && isDraft,
     canResults: isCompleted,
     canDelete: permissions.canDelete,
   };
@@ -128,14 +129,17 @@ export default function ExamListTable({
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    {status === "draft" && permissions.canPublish && onStatusClick ? (
+                    {actionState.canPublish ? (
                       <button
                         type="button"
-                        onClick={() => onStatusClick(exam)}
-                        className="rounded-full"
+                        onClick={() => onAction("publish", exam)}
                         title="Click to publish this exam"
+                        className="rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
                       >
-                        <ExamStatusBadge status={status} className="cursor-pointer hover:opacity-85" />
+                        <ExamStatusBadge
+                          status={status}
+                          className="cursor-pointer transition hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700"
+                        />
                       </button>
                     ) : (
                       <ExamStatusBadge status={status} />

@@ -14,6 +14,10 @@ type BlueprintSectionDraft = {
   id: string;
   section_name: string;
   required_question_count: string;
+  direction_question_count: string;
+  similar_question_count: string;
+  previous_year_question_count: string;
+  reference_question_count: string;
 };
 
 type BlueprintFormState = {
@@ -26,6 +30,10 @@ const createSectionDraft = (index: number): BlueprintSectionDraft => ({
   id: `section-${Date.now()}-${index}`,
   section_name: "",
   required_question_count: "",
+  direction_question_count: "",
+  similar_question_count: "",
+  previous_year_question_count: "",
+  reference_question_count: "",
 });
 
 const createInitialForm = (): BlueprintFormState => ({
@@ -38,6 +46,11 @@ const readApiErrorMessage = (error: unknown, fallback: string) => {
   if (!axios.isAxiosError(error)) return fallback;
   const data = error.response?.data as { error?: string; message?: string } | undefined;
   return data?.error || data?.message || fallback;
+};
+
+const readDraftCount = (value: string) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
 };
 
 export default function BlueprintsPage() {
@@ -75,6 +88,13 @@ export default function BlueprintsPage() {
     [form.sections]
   );
 
+  const updateSection = (sectionId: string, updater: (section: BlueprintSectionDraft) => BlueprintSectionDraft) => {
+    setForm((prev) => ({
+      ...prev,
+      sections: prev.sections.map((section) => (section.id === sectionId ? updater(section) : section)),
+    }));
+  };
+
   const resetForm = () => {
     setForm(createInitialForm());
     setEditingId(null);
@@ -111,6 +131,10 @@ export default function BlueprintsPage() {
     for (const section of form.sections) {
       const sectionName = section.section_name.trim();
       const requiredQuestionCount = Number(section.required_question_count);
+      const directionQuestionCount = readDraftCount(section.direction_question_count);
+      const similarQuestionCount = readDraftCount(section.similar_question_count);
+      const previousYearQuestionCount = readDraftCount(section.previous_year_question_count);
+      const referenceQuestionCount = readDraftCount(section.reference_question_count);
       if (!sectionName) {
         toast.error("Each section needs a name.");
         return false;
@@ -122,6 +146,26 @@ export default function BlueprintsPage() {
       seenNames.add(sectionName.toLowerCase());
       if (!Number.isInteger(requiredQuestionCount) || requiredQuestionCount <= 0) {
         toast.error("Each section needs a valid question count greater than 0.");
+        return false;
+      }
+      const groupValues = [
+        directionQuestionCount,
+        similarQuestionCount,
+        previousYearQuestionCount,
+        referenceQuestionCount,
+      ];
+      if (groupValues.some((value) => !Number.isInteger(value) || value < 0)) {
+        toast.error("Section distribution counts must be non-negative integers.");
+        return false;
+      }
+      if (
+        directionQuestionCount +
+          similarQuestionCount +
+          previousYearQuestionCount +
+          referenceQuestionCount !==
+        requiredQuestionCount
+      ) {
+        toast.error(`Section "${sectionName}" distribution must exactly match its total question count.`);
         return false;
       }
     }
@@ -140,6 +184,10 @@ export default function BlueprintsPage() {
         sections: form.sections.map((section, index) => ({
           section_name: section.section_name.trim(),
           required_question_count: Number(section.required_question_count),
+          direction_question_count: readDraftCount(section.direction_question_count),
+          similar_question_count: readDraftCount(section.similar_question_count),
+          previous_year_question_count: readDraftCount(section.previous_year_question_count),
+          reference_question_count: readDraftCount(section.reference_question_count),
           display_order: index + 1,
         })),
       };
@@ -175,6 +223,10 @@ export default function BlueprintsPage() {
             id: `existing-${section.id}-${index}`,
             section_name: section.section_name,
             required_question_count: String(section.required_question_count),
+            direction_question_count: String(section.direction_question_count ?? 0),
+            similar_question_count: String(section.similar_question_count ?? 0),
+            previous_year_question_count: String(section.previous_year_question_count ?? 0),
+            reference_question_count: String(section.reference_question_count ?? 0),
           }))
           : [createSectionDraft(0)],
     });
@@ -250,7 +302,7 @@ export default function BlueprintsPage() {
                 <div>
                   <h3 className="text-sm font-semibold text-slate-800">Sections</h3>
                   <p className="mt-1 text-xs text-slate-500">
-                    Use custom section names. Subjects are chosen later during exam generation.
+                    Use custom section names and define exactly how many questions should come from each question group.
                   </p>
                 </div>
                 <button
@@ -283,13 +335,9 @@ export default function BlueprintsPage() {
                         type="text"
                         value={section.section_name}
                         onChange={(event) =>
-                          setForm((prev) => ({
-                            ...prev,
-                            sections: prev.sections.map((item) =>
-                              item.id === section.id
-                                ? { ...item, section_name: event.target.value }
-                                : item
-                            ),
+                          updateSection(section.id, (current) => ({
+                            ...current,
+                            section_name: event.target.value,
                           }))
                         }
                         placeholder="Section name"
@@ -300,18 +348,92 @@ export default function BlueprintsPage() {
                         min={1}
                         value={section.required_question_count}
                         onChange={(event) =>
-                          setForm((prev) => ({
-                            ...prev,
-                            sections: prev.sections.map((item) =>
-                              item.id === section.id
-                                ? { ...item, required_question_count: event.target.value }
-                                : item
-                            ),
+                          updateSection(section.id, (current) => ({
+                            ...current,
+                            required_question_count: event.target.value,
                           }))
                         }
                         placeholder="Count"
                         className="rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
                       />
+                    </div>
+                    <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                      <input
+                        type="number"
+                        min={0}
+                        value={section.direction_question_count}
+                        onChange={(event) =>
+                          updateSection(section.id, (current) => ({
+                            ...current,
+                            direction_question_count: event.target.value,
+                          }))
+                        }
+                        placeholder="Direct"
+                        className="rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+                      />
+                      <input
+                        type="number"
+                        min={0}
+                        value={section.similar_question_count}
+                        onChange={(event) =>
+                          updateSection(section.id, (current) => ({
+                            ...current,
+                            similar_question_count: event.target.value,
+                          }))
+                        }
+                        placeholder="Similar"
+                        className="rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+                      />
+                      <input
+                        type="number"
+                        min={0}
+                        value={section.previous_year_question_count}
+                        onChange={(event) =>
+                          updateSection(section.id, (current) => ({
+                            ...current,
+                            previous_year_question_count: event.target.value,
+                          }))
+                        }
+                        placeholder="Previous Year"
+                        className="rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+                      />
+                      <input
+                        type="number"
+                        min={0}
+                        value={section.reference_question_count}
+                        onChange={(event) =>
+                          updateSection(section.id, (current) => ({
+                            ...current,
+                            reference_question_count: event.target.value,
+                          }))
+                        }
+                        placeholder="Reference"
+                        className="rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+                      />
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
+                      <span className="font-semibold text-slate-600">
+                        Distributed total:{" "}
+                        <span className="text-slate-900">
+                          {readDraftCount(section.direction_question_count) +
+                            readDraftCount(section.similar_question_count) +
+                            readDraftCount(section.previous_year_question_count) +
+                            readDraftCount(section.reference_question_count)}
+                        </span>
+                      </span>
+                      <span
+                        className={`font-semibold ${
+                          readDraftCount(section.direction_question_count) +
+                            readDraftCount(section.similar_question_count) +
+                            readDraftCount(section.previous_year_question_count) +
+                            readDraftCount(section.reference_question_count) ===
+                          readDraftCount(section.required_question_count)
+                            ? "text-emerald-700"
+                            : "text-rose-700"
+                        }`}
+                      >
+                        Must match total section questions
+                      </span>
                     </div>
                   </div>
                 ))}
@@ -407,6 +529,20 @@ export default function BlueprintsPage() {
                           <div className="mt-1 text-xs text-slate-500">
                             Requires exactly {section.required_question_count} question
                             {section.required_question_count === 1 ? "" : "s"}
+                          </div>
+                          <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
+                            <span className="rounded-full bg-white px-2 py-1 font-semibold text-slate-700">
+                              D {section.direction_question_count}
+                            </span>
+                            <span className="rounded-full bg-white px-2 py-1 font-semibold text-slate-700">
+                              S {section.similar_question_count}
+                            </span>
+                            <span className="rounded-full bg-white px-2 py-1 font-semibold text-slate-700">
+                              PY {section.previous_year_question_count}
+                            </span>
+                            <span className="rounded-full bg-white px-2 py-1 font-semibold text-slate-700">
+                              R {section.reference_question_count}
+                            </span>
                           </div>
                         </div>
                       ))}

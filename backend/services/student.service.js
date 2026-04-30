@@ -1940,7 +1940,7 @@ export const startAttemptExpiryCron = (intervalMs = Number(process.env.EXAM_ATTE
 
   const cronEnabled = parseCronBoolean(
     process.env.EXAM_ATTEMPT_SWEEP_ENABLED,
-    process.env.NODE_ENV !== 'production'
+    false
   );
   if (!cronEnabled) {
     console.log('Attempt expiry cron disabled');
@@ -1950,7 +1950,7 @@ export const startAttemptExpiryCron = (intervalMs = Number(process.env.EXAM_ATTE
   const normalizedInterval = Number.isFinite(intervalMs) && intervalMs >= 5000 ? Math.floor(intervalMs) : 30000;
   const runOnStart = parseCronBoolean(
     process.env.EXAM_ATTEMPT_SWEEP_RUN_ON_START,
-    process.env.NODE_ENV !== 'production'
+    false
   );
   const batchSize = Number.parseInt(process.env.EXAM_ATTEMPT_SWEEP_BATCH_SIZE || '25', 10);
   const normalizedBatchSize = Number.isFinite(batchSize) && batchSize > 0 ? batchSize : 25;

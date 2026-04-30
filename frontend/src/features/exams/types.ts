@@ -9,11 +9,66 @@ export type ExamStatus = "draft" | "active" | "completed";
 export type BlueprintStatus = "active" | "inactive" | "archived";
 export type QuestionGroupType = "direction" | "similar" | "previous_year" | "reference";
 
+export interface GeneratedQuestionOption {
+  id?: string | number;
+  text?: { html?: string | null; text?: string | null } | string | null;
+  is_correct?: boolean;
+}
+
+export interface GeneratedMatchFollowingOptions {
+  left?: GeneratedQuestionOption[];
+  right?: GeneratedQuestionOption[];
+}
+
+export interface ExamSectionGenerationPlanTopic {
+  topic_id: number;
+  topic_name?: string;
+  topic_number?: number | null;
+  direction: number;
+  similar: number;
+  previous_year: number;
+  reference: number;
+  total?: number;
+}
+
+export interface ExamSectionGenerationPlanInput {
+  topics: Array<{
+    topic_id: number;
+    direction: number;
+    similar: number;
+    previous_year: number;
+    reference: number;
+  }>;
+}
+
+export interface ExamSectionGenerationPlanTotals {
+  direction: number;
+  similar: number;
+  previous_year: number;
+  reference: number;
+  total: number;
+}
+
+export interface ExamSectionGenerationPlan {
+  section_id?: number;
+  section_title?: string;
+  required_question_count?: number;
+  total_planned_questions?: number;
+  available_question_count?: number;
+  topics: ExamSectionGenerationPlanTopic[];
+  totals: ExamSectionGenerationPlanTotals;
+  available_counts: ExamSectionGenerationPlanTotals;
+}
+
 export interface BlueprintSection {
   id: number;
   blueprint_id?: number;
   section_name: string;
   required_question_count: number;
+  direction_question_count: number;
+  similar_question_count: number;
+  previous_year_question_count: number;
+  reference_question_count: number;
   display_order: number;
 }
 
@@ -36,14 +91,14 @@ export interface GeneratedExamQuestion {
   order_index: number;
   question_group_type: QuestionGroupType | null;
   question_type: string;
-  question_text: RichTextLike;
-  options?: QuestionOptionLike[] | MatchFollowingOptionsLike | null;
+  question_text: { html?: string; text?: string } | string | null;
+  options?: GeneratedQuestionOption[] | GeneratedMatchFollowingOptions | null;
   correct_answer?: unknown;
   solution?: RichTextLike;
   subject_id?: number | null;
   chapter_id?: number | null;
   topic_id?: number | null;
-  difficulty_level?: string | null;
+  difficulty_level?: string;
   status?: string | null;
 }
 
@@ -58,6 +113,10 @@ export interface ExamBuilderSection {
   question_count?: number | null;
   blueprint_section_id?: number | null;
   required_question_count?: number | null;
+  direction_question_count?: number | null;
+  similar_question_count?: number | null;
+  previous_year_question_count?: number | null;
+  reference_question_count?: number | null;
   selected_subject_id?: number | null;
   selected_subject_name?: string | null;
   completion_status?: "pending" | "configured" | "generated" | "completed" | string;

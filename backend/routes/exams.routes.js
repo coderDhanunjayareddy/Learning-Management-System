@@ -14,6 +14,8 @@ import {
   updateExamSection,
   deleteExamSection,
   addQuestionToSection,
+  removeQuestionFromSection,
+  clearQuestionGroupFromSection,
   replaceQuestionInSection,
   publishExam,
   getExamAssignedCourses,
@@ -59,6 +61,8 @@ router.get('/exams/:id/preview', checkPermission('exams.read'), getExamPreview);
 router.post('/exams/:id/finalize', checkPermission('exams.update'), finalizeExamBlueprint);
 
 router.post('/exams/:id/sections/:sectionId/questions', checkPermission('exams.update'), addQuestionToSection);
+router.delete('/exams/:id/sections/:sectionId/questions/:questionId', checkPermission('exams.update'), removeQuestionFromSection);
+router.delete('/exams/:id/sections/:sectionId/questions/group/:groupType', checkPermission('exams.update'), clearQuestionGroupFromSection);
 router.put('/exams/:id/sections/:sectionId/questions/replace', checkPermission('exams.update'), replaceQuestionInSection);
 router.post('/exams/:id/publish', checkPermission('exams.publish'), publishExam);
 router.get('/exams/:id/results', checkPermission('exams.read'), getExamResults);
