@@ -8,6 +8,10 @@ export interface BlueprintSection {
   blueprint_id?: number;
   section_name: string;
   required_question_count: number;
+  direction_question_count: number;
+  similar_question_count: number;
+  previous_year_question_count: number;
+  reference_question_count: number;
   display_order: number;
 }
 
@@ -52,6 +56,10 @@ export interface ExamBuilderSection {
   question_count?: number | null;
   blueprint_section_id?: number | null;
   required_question_count?: number | null;
+  direction_question_count?: number | null;
+  similar_question_count?: number | null;
+  previous_year_question_count?: number | null;
+  reference_question_count?: number | null;
   selected_subject_id?: number | null;
   selected_subject_name?: string | null;
   completion_status?: "pending" | "configured" | "generated" | "completed" | string;

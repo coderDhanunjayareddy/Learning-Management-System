@@ -14,6 +14,12 @@ import {
   updateExamSection,
   deleteExamSection,
   addQuestionToSection,
+<<<<<<< Updated upstream
+=======
+  removeQuestionFromSection,
+  clearQuestionGroupFromSection,
+  replaceQuestionInSection,
+>>>>>>> Stashed changes
   publishExam,
   getExamAssignedCourses,
   assignExamCourses,
@@ -56,6 +62,12 @@ router.get('/exams/:id/preview', checkPermission('exams.read'), getExamPreview);
 router.post('/exams/:id/finalize', checkPermission('exams.update'), finalizeExamBlueprint);
 
 router.post('/exams/:id/sections/:sectionId/questions', checkPermission('exams.update'), addQuestionToSection);
+<<<<<<< Updated upstream
+=======
+router.delete('/exams/:id/sections/:sectionId/questions/:questionId', checkPermission('exams.update'), removeQuestionFromSection);
+router.delete('/exams/:id/sections/:sectionId/questions/group/:groupType', checkPermission('exams.update'), clearQuestionGroupFromSection);
+router.put('/exams/:id/sections/:sectionId/questions/replace', checkPermission('exams.update'), replaceQuestionInSection);
+>>>>>>> Stashed changes
 router.post('/exams/:id/publish', checkPermission('exams.publish'), publishExam);
 router.get('/exams/:id/results', checkPermission('exams.read'), getExamResults);
 router.get('/exams/:id/courses', checkPermission('exams.read'), getExamAssignedCourses);

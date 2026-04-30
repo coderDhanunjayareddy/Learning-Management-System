@@ -8,6 +8,8 @@ const VALID_BLUEPRINT_STATUSES = ['active', 'inactive', 'archived'];
 const QUESTION_GROUP_TYPES = ['direction', 'similar', 'previous_year', 'reference'];
 let examResultColumnsEnsured = false;
 let examInstructionsColumnKnown = null;
+let blueprintDistributionColumnsKnown = null;
+let examSectionDistributionColumnsKnown = null;
 
 const isSuperAdmin = (role) => role === 'super_admin';
 const isPlatformAdmin = (role) => role === 'super_admin' || role === 'content_authorizer';
@@ -75,6 +77,50 @@ const hasExamInstructionsColumn = async () => {
 
   examInstructionsColumnKnown = result.rows.length > 0;
   return examInstructionsColumnKnown;
+};
+
+const hasBlueprintDistributionColumns = async () => {
+  if (blueprintDistributionColumnsKnown !== null) return blueprintDistributionColumnsKnown;
+
+  const result = await dbQuery(
+    `
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'blueprint_sections'
+        AND column_name IN (
+          'direction_question_count',
+          'similar_question_count',
+          'previous_year_question_count',
+          'reference_question_count'
+        )
+    `
+  );
+
+  blueprintDistributionColumnsKnown = result.rows.length === 4;
+  return blueprintDistributionColumnsKnown;
+};
+
+const hasExamSectionDistributionColumns = async () => {
+  if (examSectionDistributionColumnsKnown !== null) return examSectionDistributionColumnsKnown;
+
+  const result = await dbQuery(
+    `
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'exam_sections'
+        AND column_name IN (
+          'direction_question_count',
+          'similar_question_count',
+          'previous_year_question_count',
+          'reference_question_count'
+        )
+    `
+  );
+
+  examSectionDistributionColumnsKnown = result.rows.length === 4;
+  return examSectionDistributionColumnsKnown;
 };
 
 const ensureClientScope = (clientId, role) => {
@@ -303,13 +349,24 @@ const parsePositiveIntArray = (value, fieldName) => {
   return deduped;
 };
 
-const parseBlueprintSectionsInput = (sections) => {
+const parseNonNegativeInteger = (value, fieldName) => {
+  const parsed = parseOptionalNumber(value, fieldName);
+  if (parsed === null) return 0;
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    throw new AppError(`${fieldName} must be a non-negative integer`, 400);
+  }
+  return parsed;
+};
+
+const parseBlueprintSectionsInput = async (sections) => {
   if (!Array.isArray(sections) || sections.length === 0) {
     throw new AppError('sections must be a non-empty array', 400);
   }
 
   const seenNames = new Set();
   const seenOrders = new Set();
+  const supportsDistributionColumns = await hasBlueprintDistributionColumns();
+
   return sections.map((section, index) => {
     const sectionName = requireString(section?.section_name ?? section?.sectionName, `sections[${index}].section_name`);
     const normalizedName = sectionName.toLowerCase();
@@ -326,6 +383,58 @@ const parseBlueprintSectionsInput = (sections) => {
       throw new AppError(`sections[${index}].required_question_count must be greater than 0`, 400);
     }
 
+    const rawDirectionQuestionCount =
+      section?.direction_question_count ?? section?.directionQuestionCount;
+    const rawSimilarQuestionCount =
+      section?.similar_question_count ?? section?.similarQuestionCount;
+    const rawPreviousYearQuestionCount =
+      section?.previous_year_question_count ?? section?.previousYearQuestionCount;
+    const rawReferenceQuestionCount =
+      section?.reference_question_count ?? section?.referenceQuestionCount;
+    const hasExplicitDistribution =
+      rawDirectionQuestionCount !== undefined ||
+      rawSimilarQuestionCount !== undefined ||
+      rawPreviousYearQuestionCount !== undefined ||
+      rawReferenceQuestionCount !== undefined;
+
+    const directionQuestionCount = hasExplicitDistribution
+      ? parseNonNegativeInteger(rawDirectionQuestionCount, `sections[${index}].direction_question_count`)
+      : requiredQuestionCount;
+    const similarQuestionCount = hasExplicitDistribution
+      ? parseNonNegativeInteger(rawSimilarQuestionCount, `sections[${index}].similar_question_count`)
+      : 0;
+    const previousYearQuestionCount = hasExplicitDistribution
+      ? parseNonNegativeInteger(rawPreviousYearQuestionCount, `sections[${index}].previous_year_question_count`)
+      : 0;
+    const referenceQuestionCount = hasExplicitDistribution
+      ? parseNonNegativeInteger(rawReferenceQuestionCount, `sections[${index}].reference_question_count`)
+      : 0;
+
+    const distributedTotal =
+      directionQuestionCount +
+      similarQuestionCount +
+      previousYearQuestionCount +
+      referenceQuestionCount;
+    if (distributedTotal !== requiredQuestionCount) {
+      throw new AppError(
+        `sections[${index}] distribution must total exactly required_question_count`,
+        400
+      );
+    }
+
+    if (
+      !supportsDistributionColumns &&
+      (directionQuestionCount !== requiredQuestionCount ||
+        similarQuestionCount !== 0 ||
+        previousYearQuestionCount !== 0 ||
+        referenceQuestionCount !== 0)
+    ) {
+      throw new AppError(
+        'Blueprint distribution fields require the latest database migration. Run exam_blueprint_distribution_migration_20260429.sql first.',
+        400
+      );
+    }
+
     const displayOrder = section?.display_order !== undefined
       ? parseRequiredInt(section.display_order, `sections[${index}].display_order`)
       : index + 1;
@@ -340,6 +449,10 @@ const parseBlueprintSectionsInput = (sections) => {
     return {
       section_name: sectionName,
       required_question_count: requiredQuestionCount,
+      direction_question_count: directionQuestionCount,
+      similar_question_count: similarQuestionCount,
+      previous_year_question_count: previousYearQuestionCount,
+      reference_question_count: referenceQuestionCount,
       display_order: displayOrder,
     };
   });
@@ -366,17 +479,33 @@ const ensureProgramAccess = async ({ programId, user, clientId }) => {
 };
 
 const ensureBlueprintAccessible = async ({ blueprintId, user, clientId }) => {
+  const supportsDistributionColumns = await hasBlueprintDistributionColumns();
+  const distributionSelect = supportsDistributionColumns
+    ? `
+                    'direction_question_count', bs.direction_question_count,
+                    'similar_question_count', bs.similar_question_count,
+                    'previous_year_question_count', bs.previous_year_question_count,
+                    'reference_question_count', bs.reference_question_count,
+    `
+    : `
+                    'direction_question_count', bs.required_question_count,
+                    'similar_question_count', 0,
+                    'previous_year_question_count', 0,
+                    'reference_question_count', 0,
+    `;
+
   const result = await dbQuery(
     `
       SELECT b.*,
              COALESCE(
-               JSON_AGG(
-                 JSON_BUILD_OBJECT(
-                   'id', bs.id,
-                   'section_name', bs.section_name,
-                   'required_question_count', bs.required_question_count,
-                   'display_order', bs.display_order
-                 )
+                JSON_AGG(
+                  JSON_BUILD_OBJECT(
+                    'id', bs.id,
+                    'section_name', bs.section_name,
+                    'required_question_count', bs.required_question_count,
+                    ${distributionSelect}
+                    'display_order', bs.display_order
+                  )
                  ORDER BY bs.display_order, bs.id
                ) FILTER (WHERE bs.id IS NOT NULL),
                '[]'::json
@@ -531,6 +660,62 @@ const groupQuestionsByType = (questions) =>
     return acc;
   }, {});
 
+<<<<<<< Updated upstream
+=======
+const createEmptyQuestionGroupCounts = () => ({
+  direction: 0,
+  similar: 0,
+  reference: 0,
+  previous_year: 0,
+  total: 0,
+});
+
+const getSectionDistributionTargets = (section) => {
+  const targets = {
+    direction: Number(section.direction_question_count || 0),
+    similar: Number(section.similar_question_count || 0),
+    previous_year: Number(section.previous_year_question_count || 0),
+    reference: Number(section.reference_question_count || 0),
+  };
+
+  const total =
+    targets.direction + targets.similar + targets.previous_year + targets.reference;
+
+  return {
+    ...targets,
+    total,
+    isExplicit:
+      total > 0 && total === Number(section.required_question_count || 0),
+  };
+};
+
+const buildEvenTopicDistributionPlan = ({ topicRows, section }) => {
+  const targets = getSectionDistributionTargets(section);
+  if (!targets.isExplicit || topicRows.length === 0) return null;
+
+  const topicPlans = topicRows.map((topic) => ({
+    topic_id: Number(topic.id),
+    direction: 0,
+    similar: 0,
+    previous_year: 0,
+    reference: 0,
+  }));
+
+  for (const groupType of QUESTION_GROUP_TYPES) {
+    const targetCount = Number(targets[groupType] || 0);
+    if (targetCount === 0) continue;
+
+    const baseCount = Math.floor(targetCount / topicPlans.length);
+    const remainder = targetCount % topicPlans.length;
+    for (let index = 0; index < topicPlans.length; index += 1) {
+      topicPlans[index][groupType] = baseCount + (index < remainder ? 1 : 0);
+    }
+  }
+
+  return topicPlans;
+};
+
+>>>>>>> Stashed changes
 const pickQuestionsForSection = ({ candidates, requiredCount }) => {
   if (candidates.length < requiredCount) {
     throw new AppError('Not enough approved questions available for this section', 400);
@@ -560,6 +745,270 @@ const pickQuestionsForSection = ({ candidates, requiredCount }) => {
   return selected;
 };
 
+<<<<<<< Updated upstream
+=======
+const fetchSectionGenerationCandidates = async ({ exam, section }) => {
+  const topicResult = await dbQuery(
+    `
+      SELECT t.id, t.name, t.topic_number
+      FROM exam_section_topics est
+      JOIN topics t ON t.id = est.topic_id
+      WHERE est.exam_section_id = $1
+      ORDER BY t.topic_number, t.id
+    `,
+    [section.id]
+  );
+  const topicRows = topicResult.rows.map((row) => ({
+    id: Number(row.id),
+    name: row.name,
+    topic_number: row.topic_number !== null && row.topic_number !== undefined ? Number(row.topic_number) : null,
+  }));
+  const topicIds = topicRows.map((row) => row.id);
+  if (topicIds.length === 0) {
+    throw new AppError('Select topics before generating questions', 400);
+  }
+
+  const duplicateResult = await dbQuery(
+    `
+      SELECT eq.question_id
+      FROM exam_questions eq
+      JOIN exam_sections es ON es.id = eq.section_id
+      WHERE es.exam_id = $1
+        AND es.id <> $2
+    `,
+    [exam.id, section.id]
+  );
+  const excludedQuestionIds = duplicateResult.rows.map((row) => Number(row.question_id));
+
+  const candidateResult = await dbQuery(
+    `
+      SELECT
+        q.id,
+        q.question_type,
+        q.category,
+        q.question_text,
+        q.options,
+        q.correct_answer,
+        q.solution,
+        q.subject_id,
+        q.chapter_id,
+        q.topic_id,
+        q.difficulty_level,
+        q.status,
+        q.created_at
+      FROM questions q
+      JOIN subjects s ON s.id = q.subject_id
+      JOIN grades g ON g.id = s.grade_id
+      WHERE q.status = 'approved'
+        AND q.question_type <> 'comprehensive'
+        AND q.subject_id = $1
+        AND q.topic_id = ANY($2::int[])
+        AND g.program_id = $3
+        AND ($4::int[] IS NULL OR q.id <> ALL($4::int[]))
+      ORDER BY q.created_at DESC, q.id DESC
+    `,
+    [
+      Number(section.selected_subject_id),
+      topicIds,
+      Number(exam.program_id),
+      excludedQuestionIds.length > 0 ? excludedQuestionIds : null,
+    ]
+  );
+
+  const candidates = candidateResult.rows
+    .map((row) => ({
+      ...row,
+      id: Number(row.id),
+      topic_id: row.topic_id ? Number(row.topic_id) : null,
+      question_group_type: normalizeQuestionGroupTypeFromCategory(row.category),
+    }))
+    .filter((row) => row.question_group_type);
+
+  return {
+    topicRows,
+    candidates,
+  };
+};
+
+const buildSectionGenerationPlan = ({ section, topicRows, candidates, selectedQuestions }) => {
+  const topicAllocations = new Map();
+  for (const topic of topicRows) {
+    topicAllocations.set(topic.id, {
+      topic_id: topic.id,
+      topic_name: topic.name,
+      topic_number: topic.topic_number,
+      ...createEmptyQuestionGroupCounts(),
+    });
+  }
+
+  const totals = createEmptyQuestionGroupCounts();
+  for (const question of selectedQuestions) {
+    const topicId = Number(question.topic_id);
+    const groupType = question.question_group_type;
+    if (!topicAllocations.has(topicId)) continue;
+    const allocation = topicAllocations.get(topicId);
+    allocation[groupType] += 1;
+    allocation.total += 1;
+    totals[groupType] += 1;
+    totals.total += 1;
+  }
+
+  const availableCounts = createEmptyQuestionGroupCounts();
+  for (const question of candidates) {
+    const groupType = question.question_group_type;
+    availableCounts[groupType] += 1;
+    availableCounts.total += 1;
+  }
+
+  return {
+    section_id: Number(section.id),
+    section_title: section.title,
+    required_question_count: Number(section.required_question_count || 0),
+    total_planned_questions: selectedQuestions.length,
+    available_question_count: candidates.length,
+    topics: Array.from(topicAllocations.values()),
+    totals,
+    available_counts: availableCounts,
+  };
+};
+
+const normalizePlanTopicsInput = (topicsInput) => {
+  if (!Array.isArray(topicsInput) || topicsInput.length === 0) {
+    throw new AppError('generation_plan.topics must contain at least one row', 400);
+  }
+
+  return topicsInput.map((topic, index) => {
+    const topicId = parseRequiredInt(topic?.topic_id, `generation_plan.topics[${index}].topic_id`);
+    const row = {
+      topic_id: topicId,
+      direction: parseOptionalNumber(topic?.direction, `generation_plan.topics[${index}].direction`) ?? 0,
+      similar: parseOptionalNumber(topic?.similar, `generation_plan.topics[${index}].similar`) ?? 0,
+      reference: parseOptionalNumber(topic?.reference, `generation_plan.topics[${index}].reference`) ?? 0,
+      previous_year:
+        parseOptionalNumber(topic?.previous_year, `generation_plan.topics[${index}].previous_year`) ?? 0,
+    };
+
+    for (const groupType of QUESTION_GROUP_TYPES) {
+      const value = row[groupType];
+      if (!Number.isInteger(value) || value < 0) {
+        throw new AppError(`generation_plan.topics[${index}].${groupType} must be a non-negative integer`, 400);
+      }
+    }
+
+    return row;
+  });
+};
+
+const pickQuestionsForSectionByPlan = ({ candidates, requiredCount, topicRows, planTopics }) => {
+  const allowedTopicIds = new Set(topicRows.map((topic) => Number(topic.id)));
+  const topicPlanMap = new Map();
+  let totalRequested = 0;
+
+  for (const row of planTopics) {
+    if (!allowedTopicIds.has(Number(row.topic_id))) {
+      throw new AppError('Generation plan includes a topic outside the configured syllabus', 400);
+    }
+    const plannedCounts = createEmptyQuestionGroupCounts();
+    for (const groupType of QUESTION_GROUP_TYPES) {
+      plannedCounts[groupType] = Number(row[groupType] || 0);
+      plannedCounts.total += plannedCounts[groupType];
+    }
+    totalRequested += plannedCounts.total;
+    topicPlanMap.set(Number(row.topic_id), plannedCounts);
+  }
+
+  if (totalRequested !== requiredCount) {
+    throw new AppError(`Generation plan must total exactly ${requiredCount} questions`, 400);
+  }
+
+  const candidateBuckets = new Map();
+  for (const candidate of candidates) {
+    const topicId = Number(candidate.topic_id);
+    const groupType = candidate.question_group_type;
+    if (!topicPlanMap.has(topicId)) continue;
+    if (!candidateBuckets.has(topicId)) {
+      candidateBuckets.set(topicId, {
+        direction: [],
+        similar: [],
+        reference: [],
+        previous_year: [],
+      });
+    }
+    candidateBuckets.get(topicId)[groupType].push(candidate);
+  }
+
+  const selectedQuestions = [];
+  for (const topic of topicRows) {
+    const topicId = Number(topic.id);
+    const plannedCounts = topicPlanMap.get(topicId) ?? createEmptyQuestionGroupCounts();
+    const buckets = candidateBuckets.get(topicId) ?? {
+      direction: [],
+      similar: [],
+      reference: [],
+      previous_year: [],
+    };
+
+    for (const groupType of QUESTION_GROUP_TYPES) {
+      const requiredForGroup = plannedCounts[groupType] || 0;
+      if (buckets[groupType].length < requiredForGroup) {
+        throw new AppError(
+          `Not enough approved ${groupType.replace('_', ' ')} questions available for topic "${topic.name}"`,
+          400
+        );
+      }
+      selectedQuestions.push(...buckets[groupType].slice(0, requiredForGroup));
+    }
+  }
+
+  if (selectedQuestions.length !== requiredCount) {
+    throw new AppError('Generation plan could not be fulfilled with the available questions', 400);
+  }
+
+  return selectedQuestions;
+};
+
+const resolveSectionGenerationPlan = async ({ exam, section, planOverride = null }) => {
+  if (!exam.program_id) {
+    throw new AppError('Exam program is not configured', 400);
+  }
+  if (!section.selected_subject_id) {
+    throw new AppError('Section subject is not configured', 400);
+  }
+
+  const { topicRows, candidates } = await fetchSectionGenerationCandidates({ exam, section });
+  const requiredQuestionCount = Number(section.required_question_count || 0);
+  if (requiredQuestionCount <= 0) {
+    throw new AppError('Section required question count is invalid', 400);
+  }
+
+  const normalizedPlanTopics = planOverride
+    ? normalizePlanTopicsInput(planOverride.topics)
+    : buildEvenTopicDistributionPlan({ topicRows, section });
+
+  const selectedQuestions = normalizedPlanTopics
+    ? pickQuestionsForSectionByPlan({
+        candidates: [...candidates],
+        requiredCount: requiredQuestionCount,
+        topicRows,
+        planTopics: normalizedPlanTopics,
+      })
+    : pickQuestionsForSection({
+        candidates: [...candidates],
+        requiredCount: requiredQuestionCount,
+      });
+
+  return {
+    selectedQuestions,
+    plan: buildSectionGenerationPlan({
+      section,
+      topicRows,
+      candidates,
+      selectedQuestions,
+    }),
+  };
+};
+
+>>>>>>> Stashed changes
 const hydrateSectionRows = async (sectionRows) => {
   if (sectionRows.length === 0) return [];
 
@@ -692,6 +1141,10 @@ const fetchExamSectionsWithBlueprintData = async (examId) => {
     exam_id: Number(row.exam_id),
     blueprint_section_id: row.blueprint_section_id ? Number(row.blueprint_section_id) : null,
     required_question_count: row.required_question_count ? Number(row.required_question_count) : null,
+    direction_question_count: row.direction_question_count ? Number(row.direction_question_count) : 0,
+    similar_question_count: row.similar_question_count ? Number(row.similar_question_count) : 0,
+    previous_year_question_count: row.previous_year_question_count ? Number(row.previous_year_question_count) : 0,
+    reference_question_count: row.reference_question_count ? Number(row.reference_question_count) : 0,
     selected_subject_id: row.selected_subject_id ? Number(row.selected_subject_id) : null,
   })));
 };
@@ -822,7 +1275,7 @@ export const addQuestionToSection = async (req, res) => {
 
     const duplicateCheck = await dbQuery(
       'SELECT 1 FROM exam_questions WHERE section_id = $1 AND question_id = $2',
-      [sectionId, questionId]
+      [section.id, questionId]
     );
     if (duplicateCheck.rows.length > 0) {
       throw new AppError('Question already exists in this section', 409);
@@ -849,7 +1302,7 @@ export const addQuestionToSection = async (req, res) => {
     } else {
       const nextResult = await dbQuery(
         'SELECT COALESCE(MAX(order_index), 0) + 1 AS next_index FROM exam_questions WHERE section_id = $1',
-        [sectionId]
+        [section.id]
       );
       orderIndex = Number(nextResult.rows[0].next_index);
     }
@@ -858,7 +1311,11 @@ export const addQuestionToSection = async (req, res) => {
       `INSERT INTO exam_questions (section_id, question_id, order_index)
        VALUES ($1, $2, $3)
        RETURNING *`,
+<<<<<<< Updated upstream
       [sectionId, questionId, orderIndex]
+=======
+       [section.id, questionId, orderIndex, question.normalized_question_group_type]
+>>>>>>> Stashed changes
     );
 
     res.status(201).json(insertResult.rows[0]);
@@ -867,6 +1324,216 @@ export const addQuestionToSection = async (req, res) => {
   }
 };
 
+<<<<<<< Updated upstream
+=======
+const reindexSectionQuestionOrder = async (tx, sectionId) => {
+  await tx.query(
+    `
+      WITH ranked AS (
+        SELECT id, ROW_NUMBER() OVER (ORDER BY order_index, id) AS next_order_index
+        FROM exam_questions
+        WHERE section_id = $1
+      )
+      UPDATE exam_questions eq
+      SET order_index = ranked.next_order_index
+      FROM ranked
+      WHERE eq.id = ranked.id
+    `,
+    [sectionId]
+  );
+};
+
+const syncSectionCompletionState = async (tx, sectionId) => {
+  const result = await tx.query(
+    `
+      SELECT
+        es.selected_subject_id,
+        es.required_question_count,
+        COUNT(eq.id)::int AS question_count
+      FROM exam_sections es
+      LEFT JOIN exam_questions eq ON eq.section_id = es.id
+      WHERE es.id = $1
+      GROUP BY es.id
+    `,
+    [sectionId]
+  );
+
+  const row = result.rows[0];
+  const requiredQuestionCount = row?.required_question_count ? Number(row.required_question_count) : 0;
+  const questionCount = Number(row?.question_count ?? 0);
+  const hasSyllabus = Boolean(row?.selected_subject_id);
+  const isCompleted = requiredQuestionCount > 0 && questionCount === requiredQuestionCount;
+
+  await tx.query(
+    `
+      UPDATE exam_sections
+      SET completion_status = $1,
+          syllabus_locked = $2
+      WHERE id = $3
+    `,
+    [isCompleted ? 'completed' : hasSyllabus ? 'configured' : 'pending', isCompleted, sectionId]
+  );
+};
+
+export const removeQuestionFromSection = async (req, res) => {
+  try {
+    if (!req.user?.id || !req.user?.role) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { id: examId, sectionId, questionId } = req.params;
+
+    await getSectionByIdForAccess({ examId, sectionId, user: req.user });
+    const exam = await getExamByIdForAccess({ examId, user: req.user });
+    ensureExamEditable(exam);
+
+    const supportsDistributionColumns = await hasBlueprintDistributionColumns();
+    const tx = await getClient();
+    try {
+      await tx.query('BEGIN');
+
+      const deleteResult = await tx.query(
+        `
+          DELETE FROM exam_questions
+          WHERE section_id = $1
+            AND question_id = $2
+          RETURNING question_id
+        `,
+        [Number(sectionId), parseRequiredInt(questionId, 'questionId')]
+      );
+
+      if (deleteResult.rows.length === 0) {
+        throw new AppError('Question does not exist in this section', 404);
+      }
+
+      await reindexSectionQuestionOrder(tx, Number(sectionId));
+      await syncSectionCompletionState(tx, Number(sectionId));
+      await tx.query('COMMIT');
+    } catch (error) {
+      await tx.query('ROLLBACK');
+      throw error;
+    } finally {
+      tx.release();
+    }
+
+    res.json({ success: true, question_id: parseRequiredInt(questionId, 'questionId') });
+  } catch (err) {
+    handleServiceError(res, err, 'Failed to remove question from section');
+  }
+};
+
+export const clearQuestionGroupFromSection = async (req, res) => {
+  try {
+    if (!req.user?.id || !req.user?.role) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { id: examId, sectionId, groupType } = req.params;
+
+    await getSectionByIdForAccess({ examId, sectionId, user: req.user });
+    const exam = await getExamByIdForAccess({ examId, user: req.user });
+    ensureExamEditable(exam);
+
+    const normalizedGroupType = requireString(groupType, 'groupType').trim().toLowerCase();
+    if (!QUESTION_GROUP_TYPES.includes(normalizedGroupType)) {
+      throw new AppError('Invalid question group type', 400);
+    }
+
+    const tx = await getClient();
+    let deletedCount = 0;
+    try {
+      await tx.query('BEGIN');
+
+      const deleteResult = await tx.query(
+        `
+          DELETE FROM exam_questions
+          WHERE section_id = $1
+            AND question_group_type = $2
+          RETURNING question_id
+        `,
+        [Number(sectionId), normalizedGroupType]
+      );
+      deletedCount = deleteResult.rows.length;
+
+      await reindexSectionQuestionOrder(tx, Number(sectionId));
+      await syncSectionCompletionState(tx, Number(sectionId));
+      await tx.query('COMMIT');
+    } catch (error) {
+      await tx.query('ROLLBACK');
+      throw error;
+    } finally {
+      tx.release();
+    }
+
+    res.json({ success: true, group_type: normalizedGroupType, deleted_count: deletedCount });
+  } catch (err) {
+    handleServiceError(res, err, 'Failed to clear question group from section');
+  }
+};
+
+export const replaceQuestionInSection = async (req, res) => {
+  try {
+    if (!req.user?.id || !req.user?.role) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { id: examId, sectionId } = req.params;
+    const currentQuestionId = parseRequiredInt(req.body?.current_question_id, 'current_question_id');
+    const newQuestionId = parseRequiredInt(req.body?.new_question_id, 'new_question_id');
+
+    const section = await getSectionByIdForAccess({ examId, sectionId, user: req.user });
+    const exam = await getExamByIdForAccess({ examId, user: req.user });
+    ensureExamEditable(exam);
+
+    const existingResult = await dbQuery(
+      `SELECT * FROM exam_questions WHERE section_id = $1 AND question_id = $2 LIMIT 1`,
+      [section.id, currentQuestionId]
+    );
+    if (existingResult.rows.length === 0) {
+      throw new AppError('Current question does not exist in this section', 404);
+    }
+
+    if (currentQuestionId === newQuestionId) {
+      return res.json(existingResult.rows[0]);
+    }
+
+    const replacementQuestion = await validateQuestionForExamSection({ exam, questionId: newQuestionId });
+
+    const duplicateCheck = await dbQuery(
+      `
+        SELECT 1
+        FROM exam_questions eq
+        JOIN exam_sections es ON es.id = eq.section_id
+        WHERE es.exam_id = $1
+          AND eq.question_id = $2
+        LIMIT 1
+      `,
+      [exam.id, newQuestionId]
+    );
+    if (duplicateCheck.rows.length > 0) {
+      throw new AppError('Question already exists in this exam', 409);
+    }
+
+    const updateResult = await dbQuery(
+      `
+        UPDATE exam_questions
+        SET question_id = $1,
+            question_group_type = $2,
+            generated_from_topic_selection = FALSE
+        WHERE section_id = $3
+          AND question_id = $4
+        RETURNING *
+      `,
+      [newQuestionId, replacementQuestion.normalized_question_group_type, section.id, currentQuestionId]
+    );
+
+    res.json(updateResult.rows[0]);
+  } catch (err) {
+    handleServiceError(res, err, 'Failed to replace question in section');
+  }
+};
+
+>>>>>>> Stashed changes
 export const publishExam = async (req, res) => {
   try {
     if (!req.user?.id || !req.user?.role) {
@@ -1049,6 +1716,20 @@ export const listBlueprints = async (req, res) => {
     }
 
     const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const supportsDistributionColumns = await hasBlueprintDistributionColumns();
+    const distributionSelect = supportsDistributionColumns
+      ? `
+                'direction_question_count', bs.direction_question_count,
+                'similar_question_count', bs.similar_question_count,
+                'previous_year_question_count', bs.previous_year_question_count,
+                'reference_question_count', bs.reference_question_count,
+      `
+      : `
+                'direction_question_count', bs.required_question_count,
+                'similar_question_count', 0,
+                'previous_year_question_count', 0,
+                'reference_question_count', 0,
+      `;
     const result = await dbQuery(
       `
         SELECT
@@ -1061,6 +1742,7 @@ export const listBlueprints = async (req, res) => {
                 'id', bs.id,
                 'section_name', bs.section_name,
                 'required_question_count', bs.required_question_count,
+                ${distributionSelect}
                 'display_order', bs.display_order
               )
               ORDER BY bs.display_order, bs.id
@@ -1108,7 +1790,7 @@ export const createBlueprint = async (req, res) => {
     }
 
     const name = requireString(req.body?.name, 'name');
-    const sections = parseBlueprintSectionsInput(req.body?.sections);
+    const sections = await parseBlueprintSectionsInput(req.body?.sections);
     const clientId = isPlatformAdmin(req.user.role) ? parseRequiredInt(req.body?.client_id, 'client_id') : (req.clientId || req.user.client_id);
     if (!clientId) throw new AppError('client_id is required', 400);
 
@@ -1121,6 +1803,7 @@ export const createBlueprint = async (req, res) => {
     const status = req.body?.status ? requireString(req.body.status, 'status') : 'active';
     ensureBlueprintStatus(status);
 
+    const supportsDistributionColumns = await hasBlueprintDistributionColumns();
     const tx = await getClient();
     let blueprintId;
     try {
@@ -1136,13 +1819,41 @@ export const createBlueprint = async (req, res) => {
       blueprintId = Number(blueprintResult.rows[0].id);
 
       for (const section of sections) {
-        await tx.query(
-          `
-            INSERT INTO blueprint_sections (blueprint_id, section_name, required_question_count, display_order)
-            VALUES ($1, $2, $3, $4)
-          `,
-          [blueprintId, section.section_name, section.required_question_count, section.display_order]
-        );
+        if (supportsDistributionColumns) {
+          await tx.query(
+            `
+              INSERT INTO blueprint_sections (
+                blueprint_id,
+                section_name,
+                required_question_count,
+                direction_question_count,
+                similar_question_count,
+                previous_year_question_count,
+                reference_question_count,
+                display_order
+              )
+              VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            `,
+            [
+              blueprintId,
+              section.section_name,
+              section.required_question_count,
+              section.direction_question_count,
+              section.similar_question_count,
+              section.previous_year_question_count,
+              section.reference_question_count,
+              section.display_order,
+            ]
+          );
+        } else {
+          await tx.query(
+            `
+              INSERT INTO blueprint_sections (blueprint_id, section_name, required_question_count, display_order)
+              VALUES ($1, $2, $3, $4)
+            `,
+            [blueprintId, section.section_name, section.required_question_count, section.display_order]
+          );
+        }
       }
 
       await tx.query('COMMIT');
@@ -1191,7 +1902,7 @@ export const updateBlueprint = async (req, res) => {
       : existing.school_id;
 
     const sections = req.body?.sections !== undefined
-      ? parseBlueprintSectionsInput(req.body.sections)
+      ? await parseBlueprintSectionsInput(req.body.sections)
       : (Array.isArray(existing.sections) ? existing.sections : []);
 
     const tx = await getClient();
@@ -1209,13 +1920,41 @@ export const updateBlueprint = async (req, res) => {
       if (req.body?.sections !== undefined) {
         await tx.query(`DELETE FROM blueprint_sections WHERE blueprint_id = $1`, [blueprintId]);
         for (const section of sections) {
-          await tx.query(
-            `
-              INSERT INTO blueprint_sections (blueprint_id, section_name, required_question_count, display_order)
-              VALUES ($1, $2, $3, $4)
-            `,
-            [blueprintId, section.section_name, section.required_question_count, section.display_order]
-          );
+          if (supportsDistributionColumns) {
+            await tx.query(
+              `
+                INSERT INTO blueprint_sections (
+                  blueprint_id,
+                  section_name,
+                  required_question_count,
+                  direction_question_count,
+                  similar_question_count,
+                  previous_year_question_count,
+                  reference_question_count,
+                  display_order
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+              `,
+              [
+                blueprintId,
+                section.section_name,
+                section.required_question_count,
+                section.direction_question_count,
+                section.similar_question_count,
+                section.previous_year_question_count,
+                section.reference_question_count,
+                section.display_order,
+              ]
+            );
+          } else {
+            await tx.query(
+              `
+                INSERT INTO blueprint_sections (blueprint_id, section_name, required_question_count, display_order)
+                VALUES ($1, $2, $3, $4)
+              `,
+              [blueprintId, section.section_name, section.required_question_count, section.display_order]
+            );
+          }
         }
       }
 
@@ -1644,23 +2383,60 @@ export const createExam = async (req, res) => {
 
       createdExam = result.rows[0];
 
+      const supportsSectionDistributionColumns = await hasExamSectionDistributionColumns();
       if (blueprint) {
         for (const section of blueprint.sections) {
-          await tx.query(
-            `
-              INSERT INTO exam_sections
-                (exam_id, title, order_index, required_question_count, blueprint_section_id, completion_status, instructions, marks_per_question, negative_marks)
-              VALUES
-                ($1, $2, $3, $4, $5, 'pending', NULL, 4, 1)
-            `,
-            [
-              createdExam.id,
-              section.section_name,
-              section.display_order,
-              section.required_question_count,
-              section.id,
-            ]
-          );
+          if (supportsSectionDistributionColumns) {
+            await tx.query(
+              `
+                INSERT INTO exam_sections
+                  (
+                    exam_id,
+                    title,
+                    order_index,
+                    required_question_count,
+                    direction_question_count,
+                    similar_question_count,
+                    previous_year_question_count,
+                    reference_question_count,
+                    blueprint_section_id,
+                    completion_status,
+                    instructions,
+                    marks_per_question,
+                    negative_marks
+                  )
+                VALUES
+                  ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', NULL, 4, 1)
+              `,
+              [
+                createdExam.id,
+                section.section_name,
+                section.display_order,
+                section.required_question_count,
+                section.direction_question_count,
+                section.similar_question_count,
+                section.previous_year_question_count,
+                section.reference_question_count,
+                section.id,
+              ]
+            );
+          } else {
+            await tx.query(
+              `
+                INSERT INTO exam_sections
+                  (exam_id, title, order_index, required_question_count, blueprint_section_id, completion_status, instructions, marks_per_question, negative_marks)
+                VALUES
+                  ($1, $2, $3, $4, $5, 'pending', NULL, 4, 1)
+              `,
+              [
+                createdExam.id,
+                section.section_name,
+                section.display_order,
+                section.required_question_count,
+                section.id,
+              ]
+            );
+          }
         }
       }
 

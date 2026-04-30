@@ -113,6 +113,38 @@ export const addQuestionToSection = async (
   await api.post(`/exams/${examId}/sections/${sectionId}/questions`, payload);
 };
 
+<<<<<<< Updated upstream
+=======
+export const removeQuestionFromExamSection = async (
+  examId: number,
+  sectionId: number,
+  questionId: number
+): Promise<void> => {
+  await api.delete(`/exams/${examId}/sections/${sectionId}/questions/${questionId}`);
+};
+
+export const clearExamSectionQuestionGroup = async (
+  examId: number,
+  sectionId: number,
+  groupType: "direction" | "similar" | "previous_year" | "reference"
+): Promise<void> => {
+  await api.delete(`/exams/${examId}/sections/${sectionId}/questions/group/${groupType}`);
+};
+
+export interface ReplaceQuestionPayload {
+  current_question_id: number;
+  new_question_id: number;
+}
+
+export const replaceQuestionInSection = async (
+  examId: number,
+  sectionId: number,
+  payload: ReplaceQuestionPayload
+): Promise<void> => {
+  await api.put(`/exams/${examId}/sections/${sectionId}/questions/replace`, payload);
+};
+
+>>>>>>> Stashed changes
 // ============================================
 // EXAM PUBLISHING
 // ============================================
@@ -135,6 +167,10 @@ export interface BlueprintPayload {
   sections: Array<{
     section_name: string;
     required_question_count: number;
+    direction_question_count: number;
+    similar_question_count: number;
+    previous_year_question_count: number;
+    reference_question_count: number;
     display_order: number;
   }>;
 }
