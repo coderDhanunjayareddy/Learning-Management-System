@@ -28,9 +28,9 @@ import {
   fetchExamById,
   fetchExamPreview,
   fetchExamSectionSyllabusOptions,
-  finalizeBlueprintExam,
   generateExamSectionQuestions,
   removeQuestionFromExamSection,
+  replaceQuestionInSection,
 } from "@/features/exams/api";
 import type {
   CurriculumOption,
@@ -60,6 +60,11 @@ type AllocationTotals = {
   total: number;
 };
 
+type AllocationCountValues = Pick<
+  TopicAllocationRow,
+  "direction" | "similar" | "previous_year" | "reference"
+>;
+
 type SectionDistributionTargets = AllocationTotals & {
   isExplicit: boolean;
 };
@@ -81,13 +86,15 @@ type SectionEditorState = {
 type PickerQuestion = RenderableQuestion & {
   id: number;
   topic_id?: number | null;
-  category?: unknown;
+  category?: RenderableQuestion["category"];
 };
 
 type PickerState = {
+  mode: "add" | "replace";
   open: boolean;
   sectionId: number | null;
   groupType: QuestionGroupType | null;
+  replaceQuestionId: number | null;
   loading: boolean;
   saving: boolean;
   error: string | null;
@@ -148,9 +155,11 @@ const createDefaultEditorState = (): SectionEditorState => ({
 });
 
 const createDefaultPickerState = (): PickerState => ({
+  mode: "add",
   open: false,
   sectionId: null,
   groupType: null,
+  replaceQuestionId: null,
   loading: false,
   saving: false,
   error: null,
@@ -173,12 +182,12 @@ const formatDateTime = (value?: string | null) => {
   return parsed.toLocaleString();
 };
 
-const calculateRowTotal = (row: Omit<TopicAllocationRow, "total"> | TopicAllocationRow) =>
+const calculateRowTotal = (row: AllocationCountValues) =>
   row.direction + row.similar + row.previous_year + row.reference;
 
 const sanitizeCount = (value: string | number) => Math.max(0, Number(value || 0));
 
-const createEmptyAllocationCounts = () => ({
+const createEmptyAllocationCounts = (): AllocationCountValues => ({
   direction: 0,
   similar: 0,
   previous_year: 0,
@@ -241,7 +250,7 @@ const buildQuestionGroupSeed = (section: ExamBuilderSection) => {
   >();
 
   for (const groupType of QUESTION_GROUP_ORDER) {
-    for (const question of section.question_groups?.[groupType] ?? []) {
+    for (const question of (section.question_groups?.[groupType] ?? []) as GeneratedExamQuestion[]) {
       const topicId = question.topic_id ? String(question.topic_id) : "";
       if (!topicId) continue;
       const current = seed.get(topicId) ?? {
@@ -346,6 +355,43 @@ const calculateAllocationTotals = (rows: TopicAllocationRow[]): AllocationTotals
     { direction: 0, similar: 0, previous_year: 0, reference: 0, total: 0 }
   );
 
+const replaceSectionInPreview = (
+  preview: ExamPreviewPayload,
+  updatedSection: ExamBuilderSection
+): ExamPreviewPayload => {
+  const sections = preview.sections.map((section) =>
+    section.id === updatedSection.id ? updatedSection : section
+  );
+  const completedSectionCount = sections.filter(
+    (section) => section.completion_status === "completed"
+  ).length;
+  const questionCount = sections.reduce(
+    (sum, section) => sum + Number(section.question_count ?? 0),
+    0
+  );
+  const requiredQuestionCount = sections.reduce(
+    (sum, section) => sum + Number(section.required_question_count ?? 0),
+    0
+  );
+
+  return {
+    ...preview,
+    sections,
+    totals: {
+      section_count: sections.length,
+      question_count: questionCount,
+      required_question_count: requiredQuestionCount,
+      completed_section_count: completedSectionCount,
+    },
+    all_sections_completed: sections.every(
+      (section) =>
+        Number(section.question_count ?? 0) ===
+          Number(section.required_question_count ?? 0) &&
+        section.completion_status === "completed"
+    ),
+  };
+};
+
 const normalizeQuestionGroupTypeFromCategory = (category: unknown): QuestionGroupType | null => {
   const normalizeToken = (value: unknown) => {
     const normalized = String(value ?? "")
@@ -426,7 +472,7 @@ const normalizePickerQuestion = (item: unknown): PickerQuestion => {
     difficulty_level:
       typeof source.difficulty_level === "string" ? source.difficulty_level : undefined,
     topic_id: source.topic_id ? Number(source.topic_id) : null,
-    category: source.category,
+    category: source.category as RenderableQuestion["category"],
     comprehension: toRenderableField(source, "comprehension", null),
     comprehension_passage: toRenderableField(source, "comprehension_passage", null),
     comprehension_questions: toRenderableField(source, "comprehension_questions", null),
@@ -501,12 +547,12 @@ function SelectionDropdown({
 
   return (
     <div ref={rootRef} className="relative">
-      <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{label}</span>
+      <span className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">{label}</span>
       <button
         type="button"
         onClick={() => !disabled && setOpen((current) => !current)}
         disabled={disabled}
-        className="mt-2 flex w-full items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left text-sm text-slate-900 transition hover:border-slate-300 disabled:cursor-not-allowed disabled:opacity-60"
+        className="mt-2 flex w-full items-center justify-between gap-3 rounded-xl border border-slate-300/80 bg-white px-4 py-3 text-left text-sm text-slate-900 transition hover:border-slate-400 disabled:cursor-not-allowed disabled:opacity-60"
       >
         <div className="min-w-0 flex-1">
           {selectedOptions.length === 0 ? (
@@ -516,7 +562,7 @@ function SelectionDropdown({
               {selectedOptions.map((option) => (
                 <span
                   key={option.value}
-                  className="inline-flex max-w-full items-center rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 shadow-sm"
+                  className="inline-flex max-w-full items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700"
                 >
                   <span className="truncate">{option.label}</span>
                 </span>
@@ -530,7 +576,7 @@ function SelectionDropdown({
       </button>
 
       {open ? (
-        <div className="absolute z-30 mt-2 w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
+        <div className="absolute z-30 mt-2 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_18px_40px_-24px_rgba(15,23,42,0.35)]">
           <div className="max-h-72 overflow-y-auto p-2">
             {options.length === 0 ? (
               <div className="px-3 py-6 text-sm text-slate-500">No options available.</div>
@@ -554,7 +600,7 @@ function SelectionDropdown({
                       onChange(checked ? [] : [option.value]);
                       setOpen(false);
                     }}
-                    className={`flex w-full items-start justify-between gap-3 rounded-xl px-3 py-2.5 text-left transition ${checked ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-50"
+                    className={`flex w-full items-start justify-between gap-3 rounded-lg px-3 py-2.5 text-left transition ${checked ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-50"
                       }`}
                   >
                     <div className="min-w-0">
@@ -623,20 +669,20 @@ function TopicAllocationTable({
   } = validation;
 
   return (
-    <div className="rounded-[28px] border border-slate-200 bg-white shadow-sm">
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 px-5 py-4">
+    <div className="border-y border-slate-200 bg-white">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 px-1 py-4">
         <div>
-          <h3 className="text-base font-semibold text-slate-900">Topic Allocation</h3>
+          <h3 className="text-lg font-semibold tracking-tight text-slate-950">Topic Allocation</h3>
           <p className="mt-1 text-sm text-slate-500">
             Enter how many questions should be picked from each topic and category.
           </p>
         </div>
         <div
-          className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${hasError
-              ? "bg-rose-50 text-rose-700"
-              : isReady
-                ? "bg-emerald-50 text-emerald-700"
-                : "bg-amber-50 text-amber-700"
+          className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${hasError
+            ? "border-rose-200 bg-rose-50 text-rose-700"
+            : isReady
+              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+              : "border-amber-200 bg-amber-50 text-amber-700"
             }`}
         >
           <RiSparklingLine className="h-4 w-4" />
@@ -645,13 +691,13 @@ function TopicAllocationTable({
       </div>
 
       {rows.length === 0 ? (
-        <div className="px-5 py-10 text-sm text-slate-500">
+        <div className="px-1 py-10 text-sm text-slate-500">
           Select a subject and one or more chapters to load topics for this section.
         </div>
       ) : (
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-slate-200 text-sm">
-            <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+            <thead className="bg-transparent text-left text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
               <tr>
                 <th className="px-4 py-3">Topics</th>
                 {QUESTION_GROUP_ORDER.map((groupType) => (
@@ -670,25 +716,25 @@ function TopicAllocationTable({
             <tbody className="divide-y divide-slate-100">
               {rows.map((row) => (
                 <tr key={row.topicId} className="align-top">
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-3">
                     <div className="font-semibold text-slate-900">{row.topicName}</div>
                     {row.topicNumber !== null && row.topicNumber !== undefined ? (
                       <div className="mt-1 text-xs text-slate-400">Topic #{row.topicNumber}</div>
                     ) : null}
                   </td>
                   {QUESTION_GROUP_ORDER.map((groupType) => (
-                    <td key={groupType} className="px-4 py-3">
+                    <td key={groupType} className="px-3 py-3">
                       <input
                         type="number"
                         min={0}
                         value={row[groupType]}
                         disabled={disabled}
                         onChange={(event) => onChange(row.topicId, groupType, sanitizeCount(event.target.value))}
-                        className="w-24 rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-800 outline-none transition focus:border-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50"
+                        className="w-24 rounded-lg border border-slate-300/80 bg-white px-3 py-2 text-sm font-medium text-slate-800 outline-none transition focus:border-slate-500 disabled:cursor-not-allowed disabled:bg-slate-50"
                       />
                     </td>
                   ))}
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-3">
                     <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
                       {row.total}
                     </span>
@@ -696,7 +742,7 @@ function TopicAllocationTable({
                 </tr>
               ))}
             </tbody>
-            <tfoot className="border-t border-slate-200 bg-slate-50 text-sm font-semibold text-slate-900">
+            <tfoot className="border-t border-slate-200 bg-slate-50/60 text-sm font-semibold text-slate-900">
               <tr>
                 <td className="px-4 py-3">Total</td>
                 {QUESTION_GROUP_ORDER.map((groupType) => {
@@ -779,17 +825,17 @@ function QuestionGroupPreview({
   topicsById: Map<string, string>;
   onDeleteAll: (groupType: QuestionGroupType) => void;
   onDeleteQuestion: (question: GeneratedExamQuestion) => void;
-  onReplaceQuestion: (question: GeneratedExamQuestion) => void;
+  onReplaceQuestion: (question: GeneratedExamQuestion, groupType: QuestionGroupType) => void;
   onOpenPicker: (groupType: QuestionGroupType) => void;
   deletingGroup: boolean;
   deletingQuestionId: number | null;
 }) {
   return (
-    <section className="rounded-[28px] border border-slate-200 bg-white shadow-sm">
-      <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+    <section className="rounded-3xl border border-slate-200 bg-white px-5 py-5 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 pb-4">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-base font-semibold text-slate-900">{QUESTION_GROUP_LABELS[groupType]}</h3>
+            <h3 className="text-lg font-semibold tracking-tight text-slate-950">{QUESTION_GROUP_LABELS[groupType]}</h3>
             <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
               {questions.length}
             </span>
@@ -800,7 +846,7 @@ function QuestionGroupPreview({
           <button
             type="button"
             onClick={() => onOpenPicker(groupType)}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3.5 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-300/80 px-3.5 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
           >
             <RiAddLine className="h-4 w-4" />
             Select Question
@@ -809,7 +855,7 @@ function QuestionGroupPreview({
             type="button"
             onClick={() => onDeleteAll(groupType)}
             disabled={deletingGroup || questions.length === 0}
-            className="inline-flex items-center gap-2 rounded-xl border border-rose-200 px-3.5 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex items-center gap-2 rounded-lg border border-rose-200 px-3.5 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {deletingGroup ? <RiLoader4Line className="h-4 w-4 animate-spin" /> : <RiDeleteBinLine className="h-4 w-4" />}
             Delete All
@@ -818,13 +864,16 @@ function QuestionGroupPreview({
       </div>
 
       {questions.length === 0 ? (
-        <div className="px-5 py-10 text-sm text-slate-500">
+        <div className="py-10 text-sm text-slate-500">
           No questions in this part yet. Use Select Question to add approved questions manually.
         </div>
       ) : (
-        <div className="divide-y divide-slate-100">
+        <div className="mt-4 space-y-4">
           {questions.map((question) => (
-            <div key={`${groupType}-${question.question_id}`} className="px-5 py-5">
+            <div
+              key={`${groupType}-${question.question_id}`}
+              className="rounded-3xl border border-slate-200 bg-slate-50/70 px-4 py-5"
+            >
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
@@ -862,8 +911,8 @@ function QuestionGroupPreview({
                 <div className="flex shrink-0 flex-wrap items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => onReplaceQuestion(question)}
-                    className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                    onClick={() => onReplaceQuestion(question, groupType)}
+                    className="rounded-lg border border-slate-300/80 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
                   >
                     Replace
                   </button>
@@ -871,7 +920,7 @@ function QuestionGroupPreview({
                     type="button"
                     onClick={() => onDeleteQuestion(question)}
                     disabled={deletingQuestionId === question.question_id}
-                    className="inline-flex items-center gap-2 rounded-xl border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="inline-flex items-center gap-2 rounded-lg border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {deletingQuestionId === question.question_id ? (
                       <RiLoader4Line className="h-4 w-4 animate-spin" />
@@ -891,6 +940,7 @@ function QuestionGroupPreview({
 }
 
 function QuestionPickerModal({
+  mode,
   open,
   groupType,
   sectionTitle,
@@ -908,6 +958,7 @@ function QuestionPickerModal({
   onToggleQuestion,
   onSave,
 }: {
+  mode: "add" | "replace";
   open: boolean;
   groupType: QuestionGroupType | null;
   sectionTitle: string;
@@ -926,18 +977,21 @@ function QuestionPickerModal({
   onSave: () => void;
 }) {
   if (!open || !groupType) return null;
+  const isReplaceMode = mode === "replace";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 px-4 py-8">
-      <div className="max-h-[90vh] w-full max-w-6xl overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-2xl">
+      <div className="max-h-[90vh] w-full max-w-6xl overflow-hidden rounded-4xl border border-slate-200 bg-white shadow-2xl">
         <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 px-6 py-5">
           <div>
             <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">{sectionTitle}</div>
             <h2 className="mt-2 text-xl font-semibold text-slate-900">
-              Select {QUESTION_GROUP_LABELS[groupType]}
+              {isReplaceMode ? "Replace with" : "Select"} {QUESTION_GROUP_LABELS[groupType]}
             </h2>
             <p className="mt-1 text-sm text-slate-500">
-              Choose additional approved questions for this part using the filters below.
+              {isReplaceMode
+                ? "Choose one approved question to replace the current question in this part."
+                : "Choose additional approved questions for this part using the filters below."}
             </p>
           </div>
           <button
@@ -949,7 +1003,7 @@ function QuestionPickerModal({
           </button>
         </div>
 
-        <div className="grid gap-4 border-b border-slate-200 bg-slate-50 px-6 py-4 md:grid-cols-[1.3fr_0.7fr]">
+        <div className="grid gap-4 border-b border-slate-200 bg-slate-50/70 px-6 py-4 md:grid-cols-[1.3fr_0.7fr]">
           <label className="block">
             <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Search</span>
             <input
@@ -957,7 +1011,7 @@ function QuestionPickerModal({
               value={search}
               onChange={(event) => onSearchChange(event.target.value)}
               placeholder="Search approved questions"
-              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-slate-400"
+              className="mt-2 w-full rounded-lg border border-slate-300/80 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-slate-500"
             />
           </label>
           <label className="block">
@@ -965,7 +1019,7 @@ function QuestionPickerModal({
             <select
               value={selectedTopicId}
               onChange={(event) => onTopicChange(event.target.value)}
-              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-slate-400"
+              className="mt-2 w-full rounded-lg border border-slate-300/80 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-slate-500"
             >
               <option value="">All topics</option>
               {topics.map((topic) => (
@@ -997,14 +1051,14 @@ function QuestionPickerModal({
                 return (
                   <label
                     key={question.id}
-                    className={`block rounded-[24px] border p-4 transition ${checked
-                        ? "border-slate-900 bg-slate-50 shadow-sm"
-                        : "border-slate-200 bg-white hover:border-slate-300"
+                    className={`block rounded-2xl border p-4 transition ${checked
+                      ? "border-slate-900 bg-slate-50"
+                      : "border-slate-200 bg-white hover:border-slate-300"
                       }`}
                   >
                     <div className="flex flex-wrap items-start gap-4">
                       <input
-                        type="checkbox"
+                        type={isReplaceMode ? "radio" : "checkbox"}
                         checked={checked}
                         onChange={() => onToggleQuestion(String(question.id))}
                         className="mt-1"
@@ -1051,7 +1105,7 @@ function QuestionPickerModal({
             <button
               type="button"
               onClick={onClose}
-              className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              className="rounded-lg border border-slate-300/80 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
             >
               Cancel
             </button>
@@ -1059,10 +1113,10 @@ function QuestionPickerModal({
               type="button"
               onClick={onSave}
               disabled={saving || selectedQuestionIds.length === 0}
-              className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {saving ? <RiLoader4Line className="h-4 w-4 animate-spin" /> : <RiAddLine className="h-4 w-4" />}
-              Add Selected Questions
+              {isReplaceMode ? "Replace Question" : "Add Selected Questions"}
             </button>
           </div>
         </div>
@@ -1080,7 +1134,6 @@ export default function ExamBuilderPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editors, setEditors] = useState<Record<number, SectionEditorState>>({});
-  const [finalizing, setFinalizing] = useState(false);
   const [activeSectionId, setActiveSectionId] = useState<number | null>(null);
   const [picker, setPicker] = useState<PickerState>(createDefaultPickerState);
 
@@ -1240,10 +1293,26 @@ export default function ExamBuilderPage() {
     }
   }, [activeEditor, activeSection, loadSectionOptions]);
 
-  const handleReplaceQuestion = (sectionId: number, question: GeneratedExamQuestion) => {
-    navigate(
-      `/exams/${examId}/sections/${sectionId}/questions?replaceQuestionId=${question.question_id}&orderIndex=${question.order_index}`
-    );
+  const handleReplaceQuestion = (
+    section: ExamBuilderSection,
+    question: GeneratedExamQuestion,
+    groupType: QuestionGroupType
+  ) => {
+    const resolvedGroupType = question.question_group_type ?? groupType;
+    if (!resolvedGroupType) {
+      toast.error("This question cannot be replaced because its group type is missing.");
+      return;
+    }
+
+    setPicker({
+      ...createDefaultPickerState(),
+      mode: "replace",
+      open: true,
+      sectionId: section.id,
+      groupType: resolvedGroupType,
+      replaceQuestionId: question.question_id,
+      selectedTopicId: question.topic_id ? String(question.topic_id) : "",
+    });
   };
 
   const handleSubjectChange = async (section: ExamBuilderSection, subjectId: string) => {
@@ -1390,7 +1459,7 @@ export default function ExamBuilderPage() {
         });
       }
 
-      await generateExamSectionQuestions(examId, section.id, {
+      const generatedSection = await generateExamSectionQuestions(examId, section.id, {
         generation_plan: {
           topics: editor.allocationRows.map((row) => ({
             topic_id: Number(row.topicId),
@@ -1402,8 +1471,10 @@ export default function ExamBuilderPage() {
         },
       });
 
+      setPreview((current) =>
+        current ? replaceSectionInPreview(current, generatedSection) : current
+      );
       toast.success(`${section.title} generated successfully.`);
-      await loadPreview();
     } catch (err) {
       toast.error(readApiErrorMessage(err, "Failed to generate section questions."));
     } finally {
@@ -1427,9 +1498,11 @@ export default function ExamBuilderPage() {
     }));
 
     try {
-      await removeQuestionFromExamSection(examId, section.id, question.question_id);
+      const updatedSection = await removeQuestionFromExamSection(examId, section.id, question.question_id);
+      setPreview((current) =>
+        current ? replaceSectionInPreview(current, updatedSection) : current
+      );
       toast.success("Question removed from section.");
-      await loadPreview();
     } catch (err) {
       toast.error(readApiErrorMessage(err, "Failed to remove question."));
     } finally {
@@ -1453,9 +1526,11 @@ export default function ExamBuilderPage() {
     }));
 
     try {
-      await clearExamSectionQuestionGroup(examId, section.id, groupType);
+      const updatedSection = await clearExamSectionQuestionGroup(examId, section.id, groupType);
+      setPreview((current) =>
+        current ? replaceSectionInPreview(current, updatedSection) : current
+      );
       toast.success(`${QUESTION_GROUP_LABELS[groupType]}s removed.`);
-      await loadPreview();
     } catch (err) {
       toast.error(readApiErrorMessage(err, "Failed to clear question group."));
     } finally {
@@ -1472,6 +1547,7 @@ export default function ExamBuilderPage() {
   const handleOpenPicker = (section: ExamBuilderSection, groupType: QuestionGroupType) => {
     setPicker({
       ...createDefaultPickerState(),
+      mode: "add",
       open: true,
       sectionId: section.id,
       groupType,
@@ -1498,7 +1574,9 @@ export default function ExamBuilderPage() {
     const usedQuestionIds = new Set(
       (preview?.sections ?? []).flatMap((section) =>
         QUESTION_GROUP_ORDER.flatMap((groupType) =>
-          (section.question_groups?.[groupType] ?? []).map((question) => question.question_id)
+          ((section.question_groups?.[groupType] ?? []) as GeneratedExamQuestion[]).map(
+            (question: GeneratedExamQuestion) => question.question_id
+          )
         )
       )
     );
@@ -1530,11 +1608,11 @@ export default function ExamBuilderPage() {
 
         const res = await api.get("/questions", { params });
         const payload = Array.isArray(res.data?.data) ? res.data.data : [];
-        const nextQuestions = payload
+        const nextQuestions: PickerQuestion[] = payload
           .map(normalizePickerQuestion)
-          .filter((question) => normalizeQuestionGroupTypeFromCategory(question.category) === picker.groupType)
-          .filter((question) => !usedQuestionIds.has(question.id))
-          .filter((question) =>
+          .filter((question: PickerQuestion) => normalizeQuestionGroupTypeFromCategory(question.category) === picker.groupType)
+          .filter((question: PickerQuestion) => !usedQuestionIds.has(question.id))
+          .filter((question: PickerQuestion) =>
             question.topic_id ? allowedTopicIds.has(Number(question.topic_id)) : true
           );
 
@@ -1544,10 +1622,10 @@ export default function ExamBuilderPage() {
           ...current,
           loading: false,
           questions: nextQuestions,
-          selectedQuestionIds: current.selectedQuestionIds.filter((selectedId) =>
-            nextQuestions.some((question) => String(question.id) === selectedId)
-          ),
-        }));
+            selectedQuestionIds: current.selectedQuestionIds.filter((selectedId) =>
+              nextQuestions.some((question: PickerQuestion) => String(question.id) === selectedId)
+            ),
+          }));
       } catch (err) {
         if (cancelled) return;
         setPicker((current) => ({
@@ -1577,9 +1655,14 @@ export default function ExamBuilderPage() {
   const handleTogglePickerQuestion = (questionId: string) => {
     setPicker((current) => ({
       ...current,
-      selectedQuestionIds: current.selectedQuestionIds.includes(questionId)
-        ? current.selectedQuestionIds.filter((idValue) => idValue !== questionId)
-        : [...current.selectedQuestionIds, questionId],
+      selectedQuestionIds:
+        current.mode === "replace"
+          ? current.selectedQuestionIds.includes(questionId)
+            ? []
+            : [questionId]
+          : current.selectedQuestionIds.includes(questionId)
+            ? current.selectedQuestionIds.filter((idValue) => idValue !== questionId)
+            : [...current.selectedQuestionIds, questionId],
     }));
   };
 
@@ -1599,6 +1682,26 @@ export default function ExamBuilderPage() {
     let failed = 0;
 
     try {
+      if (picker.mode === "replace") {
+        if (!picker.replaceQuestionId) {
+          toast.error("The current question for replacement is missing.");
+          return;
+        }
+
+        const replacementQuestionId = Number(picker.selectedQuestionIds[0]);
+        const updatedSection = await replaceQuestionInSection(examId, pickerSection.id, {
+          current_question_id: picker.replaceQuestionId,
+          new_question_id: replacementQuestionId,
+        });
+
+        setPreview((current) =>
+          current ? replaceSectionInPreview(current, updatedSection) : current
+        );
+        setPicker(createDefaultPickerState());
+        toast.success(`Question replaced in ${pickerSection.title}.`);
+        return;
+      }
+
       for (const selectedId of picker.selectedQuestionIds) {
         try {
           await addQuestionToSection(examId, pickerSection.id, {
@@ -1626,22 +1729,12 @@ export default function ExamBuilderPage() {
     }
   };
 
-  const handleFinalize = async () => {
+  const handleOpenSavePreview = () => {
     if (!preview?.all_sections_completed) {
       toast.error("Complete every blueprint section before saving the exam.");
       return;
     }
-
-    setFinalizing(true);
-    try {
-      const payload = await finalizeBlueprintExam(examId, { status: "draft" });
-      setPreview(payload);
-      toast.success("Exam saved successfully.");
-    } catch (err) {
-      toast.error(readApiErrorMessage(err, "Failed to save exam."));
-    } finally {
-      setFinalizing(false);
-    }
+    navigate(`/exams/${examId}/paper-preview`);
   };
 
   const completedSections =
@@ -1651,7 +1744,6 @@ export default function ExamBuilderPage() {
     activeSection && activeEditor
       ? getAllocationValidation(activeEditor.allocationRows, activeSection)
       : null;
-  const activeTotals = activeAllocationValidation?.totals ?? null;
   const activeTopicsById = new Map(
     (activeEditor?.allocationRows ?? []).map((row) => [row.topicId, row.topicName])
   );
@@ -1673,31 +1765,31 @@ export default function ExamBuilderPage() {
             </button>
             <button
               type="button"
-              onClick={handleFinalize}
-              disabled={!preview?.all_sections_completed || finalizing}
+              onClick={handleOpenSavePreview}
+              disabled={!preview?.all_sections_completed}
               className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {finalizing ? <RiLoader4Line className="h-4 w-4 animate-spin" /> : <RiArrowRightUpLine className="h-4 w-4" />}
-              {finalizing ? "Saving..." : "Save Exam"}
+              <RiArrowRightUpLine className="h-4 w-4" />
+              Save and Preview Exam
             </button>
           </>
         }
       >
         {loading ? (
-          <div className="rounded-[28px] border border-slate-200 bg-white p-10 text-center text-sm text-slate-500 shadow-sm">
+          <div className="border-y border-slate-200 py-12 text-center text-sm text-slate-500">
             Loading exam builder...
           </div>
         ) : error ? (
-          <div className="rounded-[28px] border border-rose-200 bg-rose-50 p-5 text-sm text-rose-700 shadow-sm">
+          <div className="border-l-2 border-rose-500 bg-rose-50/70 px-4 py-4 text-sm text-rose-700">
             {error}
           </div>
         ) : !preview ? (
-          <div className="rounded-[28px] border border-slate-200 bg-white p-10 text-center text-sm text-slate-500 shadow-sm">
+          <div className="border-y border-slate-200 py-12 text-center text-sm text-slate-500">
             Exam not found.
           </div>
         ) : (
           <div className="space-y-6">
-            <section className="sticky top-4 z-20 rounded-[18px] border border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(148,163,184,0.09),_transparent_32%),linear-gradient(180deg,_rgba(255,255,255,0.98),_rgba(248,250,252,0.96))] px-4 py-3 shadow-sm backdrop-blur">
+            <section className="sticky top-4 z-20 rounded-[18px] border border-slate-200 bg-[radial-gradient(circle_at_top_left,rgba(148,163,184,0.09),transparent_32%),linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.96))] px-4 py-3 shadow-sm backdrop-blur">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
@@ -1754,7 +1846,7 @@ export default function ExamBuilderPage() {
                           key={`sticky-section-${section.id}`}
                           type="button"
                           onClick={() => startTransition(() => setActiveSectionId(section.id))}
-                          className={`min-w-[150px] rounded-[14px] border px-3 py-2 text-left transition ${isActive
+                          className={`min-w-37.5 rounded-[14px] border px-3 py-2 text-left transition ${isActive
                               ? "border-slate-900 bg-slate-900 text-white shadow-lg shadow-slate-900/10"
                               : "border-slate-200 bg-slate-50 text-slate-900 hover:border-slate-300 hover:bg-white"
                             }`}
@@ -1780,12 +1872,12 @@ export default function ExamBuilderPage() {
                         key={section.id}
                         type="button"
                         onClick={() => startTransition(() => setActiveSectionId(section.id))}
-                        className={`min-w-[210px] rounded-[18px] border px-3.5 py-3 text-left transition ${isActive
+                        className={`min-w-52.5 rounded-[18px] border px-3.5 py-3 text-left transition ${isActive
                             ? "border-slate-900 bg-slate-900 text-white shadow-lg shadow-slate-900/10"
                             : "border-slate-200 bg-slate-50 text-slate-900 hover:border-slate-300 hover:bg-white"
                           }`}
                       >
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.24em] opacity-70">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.22em] opacity-70">
                           Section {index + 1}
                         </div>
                         <div className="mt-1.5 text-sm font-semibold">{section.title}</div>
@@ -1881,7 +1973,7 @@ export default function ExamBuilderPage() {
                   </div>
 
                   {activeEditor.loadingOptions ? (
-                    <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-500">
+                    <div className="mt-5 border-l-2 border-slate-300 bg-slate-50/70 px-4 py-4 text-sm text-slate-500">
                       Loading section syllabus...
                     </div>
                   ) : null}
@@ -1897,7 +1989,7 @@ export default function ExamBuilderPage() {
                     />
                   </div>
 
-                  <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-[24px] border border-slate-200 bg-slate-50 px-5 py-4">
+                  <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-3xl border border-slate-200 bg-slate-50 px-5 py-4">
                     <div>
                       <div className="text-sm font-semibold text-slate-900">Generate Section</div>
                       <p className="mt-1 text-sm text-slate-500">
@@ -1913,7 +2005,7 @@ export default function ExamBuilderPage() {
                         activeEditor.allocationRows.length === 0 ||
                         !activeAllocationValidation?.isReady
                       }
-                      className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {activeEditor.generating ? (
                         <RiLoader4Line className="h-4 w-4 animate-spin" />
@@ -1939,13 +2031,17 @@ export default function ExamBuilderPage() {
                     <QuestionGroupPreview
                       key={`${activeSection.id}-${groupType}`}
                       groupType={groupType}
-                      questions={activeSection.question_groups?.[groupType] ?? []}
+                      questions={
+                        (activeSection.question_groups?.[groupType] ?? []) as GeneratedExamQuestion[]
+                      }
                       topicsById={activeTopicsById}
                       deletingGroup={activeEditor.deletingGroup === groupType}
                       deletingQuestionId={activeEditor.deletingQuestionId}
                       onDeleteAll={(nextGroupType) => void handleDeleteGroup(activeSection, nextGroupType)}
                       onDeleteQuestion={(question) => void handleDeleteQuestion(activeSection, question)}
-                      onReplaceQuestion={(question) => handleReplaceQuestion(activeSection.id, question)}
+                      onReplaceQuestion={(question, nextGroupType) =>
+                        handleReplaceQuestion(activeSection, question, nextGroupType)
+                      }
                       onOpenPicker={(nextGroupType) => handleOpenPicker(activeSection, nextGroupType)}
                     />
                   ))}
@@ -1957,6 +2053,7 @@ export default function ExamBuilderPage() {
       </ExamShell>
 
       <QuestionPickerModal
+        mode={picker.mode}
         open={picker.open}
         groupType={picker.groupType}
         sectionTitle={pickerSection?.title ?? "Section"}
@@ -1983,7 +2080,7 @@ export default function ExamBuilderPage() {
         }
         onToggleQuestion={handleTogglePickerQuestion}
         onSave={() => void handleSavePickedQuestions()}
-      />
-    </>
-  );
-}
+        />
+      </>
+    );
+  }

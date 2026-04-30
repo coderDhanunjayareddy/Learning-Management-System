@@ -1103,8 +1103,13 @@ const hydrateSectionRows = async (sectionRows) => {
   if (sectionRows.length === 0) return [];
 
   const sectionIds = sectionRows.map((row) => Number(row.id));
-  const [chaptersResult, topicsResult, questionsResult] = await Promise.all([
-    dbQuery(
+  const client = await getClient();
+  let chaptersResult;
+  let topicsResult;
+  let questionsResult;
+
+  try {
+    chaptersResult = await client.query(
       `
         SELECT esc.exam_section_id, c.id, c.name, c.chapter_number
         FROM exam_section_chapters esc
@@ -1113,8 +1118,9 @@ const hydrateSectionRows = async (sectionRows) => {
         ORDER BY c.chapter_number, c.id
       `,
       [sectionIds]
-    ),
-    dbQuery(
+    );
+
+    topicsResult = await client.query(
       `
         SELECT est.exam_section_id, t.id, t.name, t.topic_number, t.chapter_id
         FROM exam_section_topics est
@@ -1123,8 +1129,9 @@ const hydrateSectionRows = async (sectionRows) => {
         ORDER BY t.topic_number, t.id
       `,
       [sectionIds]
-    ),
-    dbQuery(
+    );
+
+    questionsResult = await client.query(
       `
         SELECT
           eq.section_id,
@@ -1147,8 +1154,10 @@ const hydrateSectionRows = async (sectionRows) => {
         ORDER BY eq.section_id, eq.order_index, eq.id
       `,
       [sectionIds]
-    ),
-  ]);
+    );
+  } finally {
+    client.release();
+  }
 
   const chaptersBySection = new Map();
   for (const row of chaptersResult.rows) {
@@ -1329,6 +1338,37 @@ const validateCoursesForExamAssignment = async ({ courseIds, exam, user }) => {
   }
 };
 
+const validateQuestionForExamSection = async ({ exam, questionId }) => {
+  const questionResult = await dbQuery('SELECT * FROM questions WHERE id = $1', [questionId]);
+  if (questionResult.rows.length === 0) {
+    throw new AppError('Question not found', 404);
+  }
+
+  const question = questionResult.rows[0];
+  if (String(question.status).toLowerCase() !== 'approved') {
+    throw new AppError('Only approved questions can be added', 400);
+  }
+  if (String(question.question_type).toLowerCase() === 'comprehensive') {
+    throw new AppError(
+      'Legacy comprehensive parent records cannot be added to exams. Add linked child questions instead.',
+      400
+    );
+  }
+
+  if (question.client_id && Number(question.client_id) !== Number(exam.client_id)) {
+    throw new AppError('Question does not belong to the same client scope as the exam', 403);
+  }
+
+  if (question.school_id && exam.school_id && Number(question.school_id) !== Number(exam.school_id)) {
+    throw new AppError('Question does not belong to the same school scope as the exam', 403);
+  }
+
+  return {
+    question,
+    normalized_question_group_type: normalizeQuestionGroupTypeFromCategory(question.category),
+  };
+};
+
 export const addQuestionToSection = async (req, res) => {
   try {
     if (!req.user?.id || !req.user?.role) {
@@ -1342,26 +1382,10 @@ export const addQuestionToSection = async (req, res) => {
     const exam = await getExamByIdForAccess({ examId, user: req.user });
     ensureExamEditable(exam);
 
-    const questionResult = await dbQuery('SELECT * FROM questions WHERE id = $1', [questionId]);
-    if (questionResult.rows.length === 0) {
-      throw new AppError('Question not found', 404);
-    }
-
-    const question = questionResult.rows[0];
-    if (String(question.status).toLowerCase() !== 'approved') {
-      throw new AppError('Only approved questions can be added', 400);
-    }
-    if (String(question.question_type).toLowerCase() === 'comprehensive') {
-      throw new AppError('Legacy comprehensive parent records cannot be added to exams. Add linked child questions instead.', 400);
-    }
-
-    if (question.client_id && Number(question.client_id) !== Number(exam.client_id)) {
-      throw new AppError('Question does not belong to the same client scope as the exam', 403);
-    }
-
-    if (question.school_id && exam.school_id && Number(question.school_id) !== Number(exam.school_id)) {
-      throw new AppError('Question does not belong to the same school scope as the exam', 403);
-    }
+    const { normalized_question_group_type } = await validateQuestionForExamSection({
+      exam,
+      questionId,
+    });
 
     const duplicateCheck = await dbQuery(
       'SELECT 1 FROM exam_questions WHERE section_id = $1 AND question_id = $2',
@@ -1398,10 +1422,14 @@ export const addQuestionToSection = async (req, res) => {
     }
 
     const insertResult = await dbQuery(
-      `INSERT INTO exam_questions (section_id, question_id, order_index)
-       VALUES ($1, $2, $3)
-       RETURNING *`,
-      [section.id, questionId, orderIndex, question.normalized_question_group_type]
+      `
+        INSERT INTO exam_questions
+          (section_id, question_id, order_index, question_group_type, generated_from_topic_selection)
+        VALUES
+          ($1, $2, $3, $4, FALSE)
+        RETURNING *
+      `,
+      [section.id, questionId, orderIndex, normalized_question_group_type]
     );
 
     res.status(201).json(insertResult.rows[0]);
@@ -1467,7 +1495,7 @@ export const removeQuestionFromSection = async (req, res) => {
 
     const { id: examId, sectionId, questionId } = req.params;
 
-    await getSectionByIdForAccess({ examId, sectionId, user: req.user });
+    const section = await getSectionByIdForAccess({ examId, sectionId, user: req.user });
     const exam = await getExamByIdForAccess({ examId, user: req.user });
     ensureExamEditable(exam);
 
@@ -1500,7 +1528,13 @@ export const removeQuestionFromSection = async (req, res) => {
       tx.release();
     }
 
-    res.json({ success: true, question_id: parseRequiredInt(questionId, 'questionId') });
+    const sections = await fetchExamSectionsWithBlueprintData(Number(exam.id));
+    const updatedSection = sections.find((item) => Number(item.id) === Number(section.id));
+    if (!updatedSection) {
+      throw new AppError('Section not found after removing question', 500);
+    }
+
+    res.json(updatedSection);
   } catch (err) {
     handleServiceError(res, err, 'Failed to remove question from section');
   }
@@ -1514,7 +1548,7 @@ export const clearQuestionGroupFromSection = async (req, res) => {
 
     const { id: examId, sectionId, groupType } = req.params;
 
-    await getSectionByIdForAccess({ examId, sectionId, user: req.user });
+    const section = await getSectionByIdForAccess({ examId, sectionId, user: req.user });
     const exam = await getExamByIdForAccess({ examId, user: req.user });
     ensureExamEditable(exam);
 
@@ -1549,7 +1583,13 @@ export const clearQuestionGroupFromSection = async (req, res) => {
       tx.release();
     }
 
-    res.json({ success: true, group_type: normalizedGroupType, deleted_count: deletedCount });
+    const sections = await fetchExamSectionsWithBlueprintData(Number(exam.id));
+    const updatedSection = sections.find((item) => Number(item.id) === Number(section.id));
+    if (!updatedSection) {
+      throw new AppError('Section not found after clearing question group', 500);
+    }
+
+    res.json(updatedSection);
   } catch (err) {
     handleServiceError(res, err, 'Failed to clear question group from section');
   }
@@ -1611,7 +1651,13 @@ export const replaceQuestionInSection = async (req, res) => {
       [newQuestionId, replacementQuestion.normalized_question_group_type, section.id, currentQuestionId]
     );
 
-    res.json(updateResult.rows[0]);
+    const sections = await fetchExamSectionsWithBlueprintData(Number(exam.id));
+    const updatedSection = sections.find((item) => Number(item.id) === Number(section.id));
+    if (!updatedSection) {
+      throw new AppError('Section not found after replacing question', 500);
+    }
+
+    res.json(updatedSection);
   } catch (err) {
     handleServiceError(res, err, 'Failed to replace question in section');
   }

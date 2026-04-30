@@ -119,16 +119,18 @@ export const removeQuestionFromExamSection = async (
   examId: number,
   sectionId: number,
   questionId: number
-): Promise<void> => {
-  await api.delete(`/exams/${examId}/sections/${sectionId}/questions/${questionId}`);
+): Promise<ExamBuilderSection> => {
+  const res = await api.delete(`/exams/${examId}/sections/${sectionId}/questions/${questionId}`);
+  return res.data as ExamBuilderSection;
 };
 
 export const clearExamSectionQuestionGroup = async (
   examId: number,
   sectionId: number,
   groupType: "direction" | "similar" | "previous_year" | "reference"
-): Promise<void> => {
-  await api.delete(`/exams/${examId}/sections/${sectionId}/questions/group/${groupType}`);
+): Promise<ExamBuilderSection> => {
+  const res = await api.delete(`/exams/${examId}/sections/${sectionId}/questions/group/${groupType}`);
+  return res.data as ExamBuilderSection;
 };
 
 export interface ReplaceQuestionPayload {
@@ -140,8 +142,9 @@ export const replaceQuestionInSection = async (
   examId: number,
   sectionId: number,
   payload: ReplaceQuestionPayload
-): Promise<void> => {
-  await api.put(`/exams/${examId}/sections/${sectionId}/questions/replace`, payload);
+): Promise<ExamBuilderSection> => {
+  const res = await api.put(`/exams/${examId}/sections/${sectionId}/questions/replace`, payload);
+  return res.data as ExamBuilderSection;
 };
 
 // ============================================
