@@ -42,6 +42,53 @@ const parseOptionalNumber = (value, fieldName) => {
   return parsed;
 };
 
+const normalizeQuestionGroupTypeFromCategory = (category) => {
+  const normalizeToken = (value) => {
+    const normalized = String(value ?? '')
+      .trim()
+      .toLowerCase()
+      .replace(/[\s-]+/g, '_');
+
+    if (!normalized) return null;
+    if (QUESTION_GROUP_TYPES.includes(normalized)) return normalized;
+    if (['direct', 'direction_question', 'direct_question'].includes(normalized)) return 'direction';
+    if (['similar_question', 'similar_questions'].includes(normalized)) return 'similar';
+    if (
+      ['previous_year_question', 'previous_year_questions', 'previousyear', 'previousyear_question'].includes(
+        normalized
+      )
+    ) {
+      return 'previous_year';
+    }
+    if (['reference_question', 'reference_questions'].includes(normalized)) return 'reference';
+    return null;
+  };
+
+  if (typeof category === 'string') return normalizeToken(category);
+
+  if (Array.isArray(category)) {
+    for (const entry of category) {
+      const match = normalizeToken(entry);
+      if (match) return match;
+    }
+    return null;
+  }
+
+  if (category && typeof category === 'object') {
+    return (
+      normalizeToken(category.label) ||
+      normalizeToken(category.name) ||
+      normalizeToken(category.value) ||
+      normalizeToken(category.type) ||
+      (Array.isArray(category.tags)
+        ? category.tags.map((entry) => normalizeToken(entry)).find(Boolean) ?? null
+        : null)
+    );
+  }
+
+  return null;
+};
+
 const parsePagination = (query) => {
   const page = Math.max(parseInt(query?.page || '1', 10), 1);
   const pageSize = Math.min(Math.max(parseInt(query?.page_size || '20', 10), 1), 100);
@@ -1371,7 +1418,7 @@ export const removeQuestionFromSection = async (req, res) => {
 
     const { id: examId, sectionId, questionId } = req.params;
 
-    await getSectionByIdForAccess({ examId, sectionId, user: req.user });
+    const section = await getSectionByIdForAccess({ examId, sectionId, user: req.user });
     const exam = await getExamByIdForAccess({ examId, user: req.user });
     ensureExamEditable(exam);
 
@@ -1404,7 +1451,13 @@ export const removeQuestionFromSection = async (req, res) => {
       tx.release();
     }
 
-    res.json({ success: true, question_id: parseRequiredInt(questionId, 'questionId') });
+    const sections = await fetchExamSectionsWithBlueprintData(Number(exam.id));
+    const updatedSection = sections.find((item) => Number(item.id) === Number(section.id));
+    if (!updatedSection) {
+      throw new AppError('Section not found after removing question', 500);
+    }
+
+    res.json(updatedSection);
   } catch (err) {
     handleServiceError(res, err, 'Failed to remove question from section');
   }
@@ -1418,7 +1471,7 @@ export const clearQuestionGroupFromSection = async (req, res) => {
 
     const { id: examId, sectionId, groupType } = req.params;
 
-    await getSectionByIdForAccess({ examId, sectionId, user: req.user });
+    const section = await getSectionByIdForAccess({ examId, sectionId, user: req.user });
     const exam = await getExamByIdForAccess({ examId, user: req.user });
     ensureExamEditable(exam);
 
@@ -1453,7 +1506,13 @@ export const clearQuestionGroupFromSection = async (req, res) => {
       tx.release();
     }
 
-    res.json({ success: true, group_type: normalizedGroupType, deleted_count: deletedCount });
+    const sections = await fetchExamSectionsWithBlueprintData(Number(exam.id));
+    const updatedSection = sections.find((item) => Number(item.id) === Number(section.id));
+    if (!updatedSection) {
+      throw new AppError('Section not found after clearing question group', 500);
+    }
+
+    res.json(updatedSection);
   } catch (err) {
     handleServiceError(res, err, 'Failed to clear question group from section');
   }
@@ -1515,7 +1574,13 @@ export const replaceQuestionInSection = async (req, res) => {
       [newQuestionId, replacementQuestion.normalized_question_group_type, section.id, currentQuestionId]
     );
 
-    res.json(updateResult.rows[0]);
+    const sections = await fetchExamSectionsWithBlueprintData(Number(exam.id));
+    const updatedSection = sections.find((item) => Number(item.id) === Number(section.id));
+    if (!updatedSection) {
+      throw new AppError('Section not found after replacing question', 500);
+    }
+
+    res.json(updatedSection);
   } catch (err) {
     handleServiceError(res, err, 'Failed to replace question in section');
   }
@@ -2929,7 +2994,7 @@ export const generateExamSectionQuestions = async (req, res) => {
         SELECT
           q.id,
           q.question_type,
-          q.question_group_type,
+          q.category,
           q.question_text,
           q.options,
           q.correct_answer,
@@ -2945,7 +3010,6 @@ export const generateExamSectionQuestions = async (req, res) => {
         JOIN grades g ON g.id = s.grade_id
         WHERE q.status = 'approved'
           AND q.question_type <> 'comprehensive'
-          AND q.question_group_type IS NOT NULL
           AND q.subject_id = $1
           AND q.topic_id = ANY($2::int[])
           AND g.program_id = $3
@@ -2960,10 +3024,13 @@ export const generateExamSectionQuestions = async (req, res) => {
       ]
     );
 
-    const candidates = candidateResult.rows.map((row) => ({
-      ...row,
-      id: Number(row.id),
-    }));
+    const candidates = candidateResult.rows
+      .map((row) => ({
+        ...row,
+        id: Number(row.id),
+        question_group_type: normalizeQuestionGroupTypeFromCategory(row.category),
+      }))
+      .filter((row) => row.question_group_type);
 
     const requiredQuestionCount = Number(section.required_question_count || 0);
     if (requiredQuestionCount <= 0) {
